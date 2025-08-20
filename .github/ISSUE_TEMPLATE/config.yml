@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 提问与讨论
+    url: https://github.com/tcbvilla/travel-planner/discussions
+    about: 一般性的讨论、问答
