@@ -1,0 +1,1156 @@
+# 旅行规划系统第一阶段项目计划书
+
+## 1. 项目概述
+
+### 1.1 项目背景和目标
+**项目名称：** 智能旅行规划系统 - 第一阶段（基础旅行计划管理）
+
+**项目目标：**
+- 构建基于事件驱动的旅行规划核心功能
+- 提供智能化的信息自动生成，减少用户手动输入
+- 实现实时可视化的行程预览和管理
+- 建立完整的费用统计和预算管理体系
+- 为后续阶段的签证行程单生成和AI推荐奠定数据基础
+
+**核心价值：**
+- 简化旅行规划流程，提升用户体验
+- 智能化减少用户操作负担
+- 提供专业级的费用管理和统计分析
+- 建立可扩展的系统架构，支持后续功能迭代
+
+### 1.2 功能范围
+**核心功能模块：**
+1. 用户管理和权限系统
+2. 旅行计划创建和管理
+3. 事件管理系统（景点、住宿、交通）
+4. 智能信息生成服务
+5. 实时行程预览界面
+6. 费用统计和预算管理
+7. 数据同步和备份系统
+
+**技术要求：**
+- 支持1万+并发用户
+- 响应时间 < 3秒
+- 数据准确性 99.9%
+- 系统可用性 99.5%
+
+## 2. 技术架构设计
+
+### 2.1 整体技术栈
+
+**后端技术栈：**
+```
+Java技术栈：
+├── 开发框架
+│   ├── Spring Boot 3.2.x（主框架）
+│   ├── Spring Security 6.x（安全认证）
+│   ├── Spring Data JPA（数据访问）
+│   └── Spring Cloud Gateway（API网关）
+├── 数据存储
+│   ├── PostgreSQL 15（主数据库）
+│   ├── Redis 7.x（缓存和会话）
+│   ├── Elasticsearch 8.x（搜索引擎）
+│   └── MinIO（文件存储）
+├── 中间件
+│   ├── RabbitMQ 3.12.x（消息队列）
+│   ├── Apache Kafka（事件流处理）
+│   └── Quartz（定时任务）
+├── 外部集成
+│   ├── 高德地图API（地理信息）
+│   ├── 第三方旅游数据API
+│   └── 汇率转换API
+└── 开发工具
+    ├── Maven 3.9.x（项目管理）
+    ├── JUnit 5（单元测试）
+    ├── Mockito（Mock测试）
+    └── SonarQube（代码质量）
+```
+
+**前端技术栈：**
+```
+React技术栈：
+├── 核心框架
+│   ├── React 18.x（UI框架）
+│   ├── TypeScript 5.x（类型系统）
+│   ├── React Router 6.x（路由管理）
+│   └── React Query/TanStack Query（数据管理）
+├── 状态管理
+│   ├── Zustand（轻量级状态管理）
+│   ├── React Context（全局状态）
+│   └── React Hook Form（表单状态）
+├── UI组件库
+│   ├── Ant Design 5.x（主要UI组件）
+│   ├── React DnD（拖拽功能）
+│   ├── Recharts（图表组件）
+│   └── Day.js（时间处理）
+├── 地图集成
+│   ├── React AMap（高德地图React版）
+│   ├── @amap/amap-jsapi-loader
+│   └── 自定义地图组件
+├── 开发工具
+│   ├── Vite 5.x（构建工具）
+│   ├── ESLint + Prettier（代码规范）
+│   ├── Jest + React Testing Library（测试）
+│   └── Storybook（组件开发）
+└── 部署相关
+    ├── Docker（容器化）
+    ├── Nginx（静态资源服务）
+    └── CDN（资源加速）
+```
+
+### 2.2 系统架构图
+
+```
+系统架构设计：
+┌─────────────────────────────────────────────────────────────┐
+│                     前端层 (Frontend)                        │
+├─────────────────────────────────────────────────────────────┤
+│  React应用   │  移动端H5   │  管理后台   │  API文档页面      │
+│  (主应用)    │  (响应式)   │  (运营)     │  (开发者)        │
+└─────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    API网关层 (Gateway)                       │
+├─────────────────────────────────────────────────────────────┤
+│  Spring Cloud Gateway │ 路由转发 │ 认证鉴权 │ 限流熔断      │
+└─────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   业务服务层 (Services)                      │
+├─────────────────────────────────────────────────────────────┤
+│ 用户服务    │ 计划服务    │ 事件服务    │ 推荐服务          │
+│ User        │ Plan        │ Event       │ Recommendation    │
+│ Service     │ Service     │ Service     │ Service           │
+├─────────────────────────────────────────────────────────────┤
+│ 费用服务    │ 文件服务    │ 通知服务    │ 外部集成服务      │
+│ Expense     │ File        │ Notification│ Integration       │
+│ Service     │ Service     │ Service     │ Service           │
+└─────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   数据访问层 (Data Layer)                    │
+├─────────────────────────────────────────────────────────────┤
+│ Spring Data JPA │ Redis Client │ ES Client │ 文件存储客户端 │
+└─────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   数据存储层 (Storage)                       │
+├─────────────────────────────────────────────────────────────┤
+│ PostgreSQL      │ Redis        │ Elasticsearch │ MinIO      │
+│ (主数据库)      │ (缓存/会话)  │ (搜索引擎)    │ (文件存储) │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 2.3 微服务架构设计
+
+**服务拆分策略：**
+```
+微服务设计：
+├── 用户服务 (user-service)
+│   ├── 用户注册登录
+│   ├── 用户信息管理
+│   ├── 权限控制
+│   └── 用户偏好设置
+├── 计划服务 (plan-service)
+│   ├── 旅行计划CRUD
+│   ├── 计划分享协作
+│   ├── 计划模板管理
+│   └── 计划数据统计
+├── 事件服务 (event-service)
+│   ├── 活动事件管理
+│   ├── 交通事件管理
+│   ├── 事件关联关系
+│   └── 事件时间调度
+├── 数据服务 (data-service)
+│   ├── 景点信息管理
+│   ├── 住宿信息管理
+│   ├── 地理信息服务
+│   └── 外部API集成
+├── 费用服务 (expense-service)
+│   ├── 费用记录管理
+│   ├── 预算管理
+│   ├── 费用统计分析
+│   └── 财务报表生成
+├── 文件服务 (file-service)
+│   ├── 文件上传下载
+│   ├── 图片处理
+│   ├── 文件存储管理
+│   └── CDN集成
+└── 网关服务 (gateway-service)
+    ├── 路由管理
+    ├── 认证鉴权
+    ├── 限流熔断
+    └── 监控日志
+```
+
+## 3. 数据库设计
+
+### 3.1 核心数据模型
+
+**用户相关表：**
+```sql
+-- 用户表
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    email VARCHAR(100) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    nickname VARCHAR(50),
+    avatar_url VARCHAR(500),
+    phone VARCHAR(20),
+    birth_date DATE,
+    gender SMALLINT, -- 0:未知, 1:男, 2:女
+    country VARCHAR(50),
+    city VARCHAR(50),
+    timezone VARCHAR(50) DEFAULT 'Asia/Shanghai',
+    language VARCHAR(10) DEFAULT 'zh-CN',
+    status SMALLINT DEFAULT 1, -- 0:禁用, 1:正常, 2:锁定
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_login_at TIMESTAMP
+);
+
+-- 用户偏好表
+CREATE TABLE user_preferences (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT REFERENCES users(id),
+    travel_pace SMALLINT DEFAULT 2, -- 1:慢节奏, 2:适中, 3:紧凑
+    budget_level SMALLINT DEFAULT 2, -- 1:经济, 2:标准, 3:豪华, 4:不限
+    accommodation_priority SMALLINT DEFAULT 1, -- 1:位置, 2:价格, 3:体验
+    transport_priority SMALLINT DEFAULT 1, -- 1:时间, 2:价格, 3:舒适
+    activity_preferences JSONB, -- 活动类型偏好JSON
+    dietary_restrictions JSONB, -- 饮食限制JSON
+    accessibility_needs JSONB, -- 无障碍需求JSON
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**旅行计划相关表：**
+```sql
+-- 旅行计划表
+CREATE TABLE travel_plans (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT REFERENCES users(id),
+    title VARCHAR(200) NOT NULL,
+    description TEXT,
+    main_destination VARCHAR(100) NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    participant_count INTEGER DEFAULT 1,
+    total_budget DECIMAL(12,2),
+    currency VARCHAR(3) DEFAULT 'CNY',
+    travel_type SMALLINT DEFAULT 1, -- 1:休闲, 2:商务, 3:探亲, 4:学习
+    travel_style SMALLINT DEFAULT 1, -- 1:自由行, 2:跟团, 3:半自助
+    privacy_level SMALLINT DEFAULT 1, -- 1:私人, 2:朋友, 3:公开
+    status SMALLINT DEFAULT 1, -- 1:草稿, 2:进行中, 3:已完成, 4:已取消
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_status (user_id, status),
+    INDEX idx_destination_date (main_destination, start_date)
+);
+
+-- 旅行计划参与者表
+CREATE TABLE travel_plan_participants (
+    id BIGSERIAL PRIMARY KEY,
+    plan_id BIGINT REFERENCES travel_plans(id),
+    user_id BIGINT REFERENCES users(id),
+    role SMALLINT DEFAULT 1, -- 1:创建者, 2:编辑者, 3:查看者
+    nickname VARCHAR(50),
+    join_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(plan_id, user_id)
+);
+```
+
+**事件相关表：**
+```sql
+-- 活动事件表（景点和住宿）
+CREATE TABLE activity_events (
+    id BIGSERIAL PRIMARY KEY,
+    plan_id BIGINT REFERENCES travel_plans(id),
+    event_type SMALLINT NOT NULL, -- 1:景点, 2:住宿
+    name VARCHAR(200) NOT NULL,
+    description TEXT,
+    address VARCHAR(500),
+    latitude DECIMAL(10,8),
+    longitude DECIMAL(11,8),
+    city VARCHAR(100),
+    country VARCHAR(50),
+    contact_phone VARCHAR(50),
+    contact_email VARCHAR(100),
+    website_url VARCHAR(500),
+    
+    -- 时间安排
+    event_date DATE NOT NULL,
+    start_time TIME,
+    end_time TIME,
+    duration_hours DECIMAL(4,2),
+    
+    -- 景点特有字段
+    attraction_type VARCHAR(50), -- 自然风光、人文古迹等
+    opening_hours JSONB, -- 营业时间JSON
+    ticket_price DECIMAL(10,2),
+    rating DECIMAL(3,2),
+    
+    -- 住宿特有字段
+    accommodation_type VARCHAR(50), -- 酒店、民宿等
+    checkin_time TIME,
+    checkout_time TIME,
+    room_type VARCHAR(100),
+    include_breakfast BOOLEAN DEFAULT FALSE,
+    cancellation_policy TEXT,
+    nightly_rate DECIMAL(10,2),
+    
+    -- 费用信息
+    estimated_cost DECIMAL(10,2),
+    actual_cost DECIMAL(10,2),
+    cost_currency VARCHAR(3) DEFAULT 'CNY',
+    cost_notes TEXT,
+    
+    -- 状态和元数据
+    status SMALLINT DEFAULT 1, -- 1:计划中, 2:已确认, 3:已完成, 4:已取消
+    sort_order INTEGER DEFAULT 0,
+    auto_generated BOOLEAN DEFAULT FALSE, -- 是否自动生成
+    external_id VARCHAR(100), -- 外部系统ID
+    metadata JSONB, -- 扩展信息
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    INDEX idx_plan_date (plan_id, event_date),
+    INDEX idx_plan_type (plan_id, event_type),
+    INDEX idx_location (latitude, longitude)
+);
+
+-- 交通事件表
+CREATE TABLE transport_events (
+    id BIGSERIAL PRIMARY KEY,
+    plan_id BIGINT REFERENCES travel_plans(id),
+    from_event_id BIGINT REFERENCES activity_events(id),
+    to_event_id BIGINT REFERENCES activity_events(id),
+    
+    transport_type SMALLINT NOT NULL, -- 1:飞机, 2:火车, 3:汽车, 4:轮船, 5:其他
+    transport_name VARCHAR(200), -- 航班号、车次号等
+    
+    departure_location VARCHAR(200),
+    arrival_location VARCHAR(200),
+    departure_date DATE NOT NULL,
+    departure_time TIME,
+    arrival_date DATE,
+    arrival_time TIME,
+    duration_hours DECIMAL(5,2),
+    
+    -- 预订信息
+    booking_reference VARCHAR(100),
+    seat_class VARCHAR(50), -- 座位等级
+    seat_number VARCHAR(20),
+    baggage_allowance VARCHAR(100),
+    
+    -- 费用信息
+    ticket_price DECIMAL(10,2),
+    additional_fees DECIMAL(10,2),
+    total_cost DECIMAL(10,2),
+    cost_currency VARCHAR(3) DEFAULT 'CNY',
+    
+    -- 政策信息
+    cancellation_policy TEXT,
+    change_policy TEXT,
+    refund_policy TEXT,
+    
+    -- 状态和元数据
+    booking_status SMALLINT DEFAULT 1, -- 1:未预订, 2:已预订, 3:已确认, 4:已完成
+    auto_generated BOOLEAN DEFAULT FALSE,
+    sort_order INTEGER DEFAULT 0,
+    notes TEXT,
+    metadata JSONB,
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    INDEX idx_plan_date (plan_id, departure_date),
+    INDEX idx_from_to (from_event_id, to_event_id)
+);
+```
+
+**费用相关表：**
+```sql
+-- 费用记录表
+CREATE TABLE expense_records (
+    id BIGSERIAL PRIMARY KEY,
+    plan_id BIGINT REFERENCES travel_plans(id),
+    event_id BIGINT, -- 关联的事件ID（可能是activity_events或transport_events）
+    event_type SMALLINT, -- 1:活动事件, 2:交通事件, 3:其他
+    
+    category SMALLINT NOT NULL, -- 1:交通, 2:住宿, 3:景点, 4:餐饮, 5:购物, 6:其他
+    subcategory VARCHAR(50), -- 子分类
+    
+    description VARCHAR(200) NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    currency VARCHAR(3) DEFAULT 'CNY',
+    exchange_rate DECIMAL(10,6) DEFAULT 1.0, -- 对人民币汇率
+    amount_cny DECIMAL(10,2), -- 人民币金额
+    
+    expense_date DATE NOT NULL,
+    payment_method SMALLINT, -- 1:现金, 2:信用卡, 3:借记卡, 4:移动支付, 5:其他
+    payment_status SMALLINT DEFAULT 1, -- 1:未支付, 2:已支付, 3:已退款
+    
+    payer_id BIGINT REFERENCES users(id), -- 付款人
+    participants JSONB, -- 参与分摊的人员和比例
+    
+    receipt_url VARCHAR(500), -- 收据图片URL
+    notes TEXT,
+    tags JSONB, -- 标签数组
+    
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    INDEX idx_plan_date (plan_id, expense_date),
+    INDEX idx_plan_category (plan_id, category),
+    INDEX idx_payer (payer_id)
+);
+
+-- 预算表
+CREATE TABLE budgets (
+    id BIGSERIAL PRIMARY KEY,
+    plan_id BIGINT REFERENCES travel_plans(id),
+    category SMALLINT NOT NULL, -- 费用分类
+    allocated_amount DECIMAL(10,2) NOT NULL,
+    spent_amount DECIMAL(10,2) DEFAULT 0,
+    currency VARCHAR(3) DEFAULT 'CNY',
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(plan_id, category)
+);
+```
+
+### 3.2 索引和优化策略
+
+**主要索引设计：**
+```sql
+-- 复合索引优化查询性能
+CREATE INDEX idx_travel_plans_user_status_date ON travel_plans(user_id, status, start_date DESC);
+CREATE INDEX idx_activity_events_plan_date_type ON activity_events(plan_id, event_date, event_type);
+CREATE INDEX idx_transport_events_plan_departure ON transport_events(plan_id, departure_date);
+CREATE INDEX idx_expense_records_plan_date_category ON expense_records(plan_id, expense_date, category);
+
+-- 地理位置索引
+CREATE INDEX idx_activity_events_location ON activity_events USING GIST(point(longitude, latitude));
+
+-- 全文搜索索引
+CREATE INDEX idx_travel_plans_search ON travel_plans USING GIN(to_tsvector('simple', title || ' ' || description));
+CREATE INDEX idx_activity_events_search ON activity_events USING GIN(to_tsvector('simple', name || ' ' || description));
+```
+
+## 4. API设计
+
+### 4.1 RESTful API规范
+
+**API设计原则：**
+- 遵循RESTful设计规范
+- 统一的响应格式
+- 完整的错误处理
+- API版本控制
+- 请求限流和安全控制
+
+**统一响应格式：**
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {},
+  "timestamp": "2024-01-15T10:30:00Z",
+  "traceId": "abc123def456"
+}
+```
+
+### 4.2 核心API接口
+
+**用户管理API：**
+```javascript
+// 用户认证
+POST /api/v1/auth/login
+POST /api/v1/auth/logout
+POST /api/v1/auth/refresh-token
+
+// 用户管理
+GET    /api/v1/users/profile
+PUT    /api/v1/users/profile
+POST   /api/v1/users/register
+PUT    /api/v1/users/preferences
+GET    /api/v1/users/preferences
+```
+
+**旅行计划API：**
+```javascript
+// 计划CRUD
+GET    /api/v1/plans                    // 获取用户的计划列表
+POST   /api/v1/plans                    // 创建新计划
+GET    /api/v1/plans/{planId}           // 获取计划详情
+PUT    /api/v1/plans/{planId}           // 更新计划
+DELETE /api/v1/plans/{planId}           // 删除计划
+
+// 计划协作
+POST   /api/v1/plans/{planId}/participants    // 添加参与者
+DELETE /api/v1/plans/{planId}/participants/{userId}  // 移除参与者
+PUT    /api/v1/plans/{planId}/participants/{userId}  // 更新参与者角色
+
+// 计划分享
+POST   /api/v1/plans/{planId}/share     // 生成分享链接
+GET    /api/v1/plans/shared/{shareId}   // 通过分享链接访问
+```
+
+**事件管理API：**
+```javascript
+// 活动事件
+GET    /api/v1/plans/{planId}/events                // 获取计划的所有事件
+POST   /api/v1/plans/{planId}/events                // 创建新事件
+GET    /api/v1/plans/{planId}/events/{eventId}      // 获取事件详情
+PUT    /api/v1/plans/{planId}/events/{eventId}      // 更新事件
+DELETE /api/v1/plans/{planId}/events/{eventId}      // 删除事件
+
+// 事件排序和时间管理
+PUT    /api/v1/plans/{planId}/events/reorder        // 重新排序事件
+POST   /api/v1/plans/{planId}/events/auto-schedule  // 自动安排时间
+
+// 交通事件
+GET    /api/v1/plans/{planId}/transports            // 获取交通事件
+POST   /api/v1/plans/{planId}/transports            // 创建交通事件
+PUT    /api/v1/plans/{planId}/transports/{transportId}  // 更新交通事件
+DELETE /api/v1/plans/{planId}/transports/{transportId}  // 删除交通事件
+POST   /api/v1/plans/{planId}/transports/auto-generate  // 自动生成交通事件
+```
+
+**费用管理API：**
+```javascript
+// 费用记录
+GET    /api/v1/plans/{planId}/expenses              // 获取费用记录
+POST   /api/v1/plans/{planId}/expenses              // 添加费用记录
+PUT    /api/v1/plans/{planId}/expenses/{expenseId}  // 更新费用记录
+DELETE /api/v1/plans/{planId}/expenses/{expenseId}  // 删除费用记录
+
+// 费用统计
+GET    /api/v1/plans/{planId}/expenses/summary      // 费用汇总
+GET    /api/v1/plans/{planId}/expenses/by-category  // 按分类统计
+GET    /api/v1/plans/{planId}/expenses/by-date      // 按日期统计
+GET    /api/v1/plans/{planId}/expenses/by-participant  // 按参与者统计
+
+// 预算管理
+GET    /api/v1/plans/{planId}/budgets               // 获取预算设置
+PUT    /api/v1/plans/{planId}/budgets               // 更新预算设置
+GET    /api/v1/plans/{planId}/budgets/status        // 预算执行状态
+```
+
+**数据服务API：**
+```javascript
+// 地理信息
+GET    /api/v1/geo/search?keyword={keyword}&city={city}  // 地点搜索
+GET    /api/v1/geo/nearby?lat={lat}&lng={lng}&radius={radius}  // 附近地点
+GET    /api/v1/geo/details/{placeId}                    // 地点详情
+
+// 景点信息
+GET    /api/v1/attractions/search                      // 景点搜索
+GET    /api/v1/attractions/{attractionId}              // 景点详情
+GET    /api/v1/attractions/{attractionId}/auto-info    // 自动生成信息
+
+// 住宿信息
+GET    /api/v1/accommodations/search                   // 住宿搜索
+GET    /api/v1/accommodations/{accommodationId}        // 住宿详情
+GET    /api/v1/accommodations/{accommodationId}/auto-info  // 自动生成信息
+
+// 汇率服务
+GET    /api/v1/exchange-rates?from={from}&to={to}      // 汇率查询
+GET    /api/v1/exchange-rates/supported-currencies     // 支持的货币列表
+```
+
+### 4.3 API安全设计
+
+**认证和授权：**
+```javascript
+// JWT Token结构
+{
+  "header": {
+    "alg": "HS256",
+    "typ": "JWT"
+  },
+  "payload": {
+    "sub": "user_id",
+    "iat": 1642234567,
+    "exp": 1642321567,
+    "roles": ["USER"],
+    "permissions": ["PLAN_READ", "PLAN_WRITE"]
+  }
+}
+
+// 权限控制
+@PreAuthorize("hasPermission(#planId, 'PLAN', 'READ')")
+@GetMapping("/plans/{planId}")
+public ResponseEntity<TravelPlan> getPlan(@PathVariable Long planId);
+
+@PreAuthorize("hasPermission(#planId, 'PLAN', 'WRITE')")
+@PutMapping("/plans/{planId}")
+public ResponseEntity<TravelPlan> updatePlan(@PathVariable Long planId, @RequestBody TravelPlan plan);
+```
+
+## 5. 前端组件设计
+
+### 5.1 组件架构
+
+**组件层次结构：**
+```
+前端组件架构：
+├── 页面组件 (Pages)
+│   ├── HomePage - 首页
+│   ├── PlanListPage - 计划列表页
+│   ├── PlanDetailPage - 计划详情页
+│   ├── PlanEditPage - 计划编辑页
+│   └── ExpensePage - 费用管理页
+├── 布局组件 (Layouts)
+│   ├── MainLayout - 主布局
+│   ├── AuthLayout - 认证布局
+│   └── EmptyLayout - 空布局
+├── 业务组件 (Business)
+│   ├── TravelPlanCard - 旅行计划卡片
+│   ├── EventTimeline - 事件时间轴
+│   ├── EventCard - 事件卡片
+│   ├── ExpenseChart - 费用图表
+│   ├── BudgetProgress - 预算进度
+│   ├── MapView - 地图视图
+│   └── PlaceSelector - 地点选择器
+├── 通用组件 (Common)
+│   ├── Header - 页面头部
+│   ├── Sidebar - 侧边栏
+│   ├── SearchBox - 搜索框
+│   ├── DateRangePicker - 日期范围选择
+│   ├── CurrencyInput - 货币输入
+│   ├── ImageUpload - 图片上传
+│   └── Loading - 加载组件
+└── 工具组件 (Utils)
+    ├── ErrorBoundary - 错误边界
+    ├── LazyLoad - 懒加载
+    ├── Tooltip - 提示框
+    └── Modal - 对话框
+```
+
+### 5.2 核心组件设计
+
+**事件时间轴组件：**
+```typescript
+// EventTimeline.tsx
+interface Event {
+  id: string;
+  type: 'activity' | 'transport';
+  name: string;
+  startTime: Date;
+  endTime: Date;
+  location?: string;
+  cost?: number;
+  status: 'planned' | 'confirmed' | 'completed';
+}
+
+interface EventTimelineProps {
+  events: Event[];
+  selectedDate?: Date;
+  onEventClick?: (event: Event) => void;
+  onEventDrag?: (eventId: string, newTime: Date) => void;
+  onEventCreate?: (type: Event['type'], time: Date) => void;
+  readonly?: boolean;
+}
+
+const EventTimeline: React.FC<EventTimelineProps> = ({
+  events,
+  selectedDate,
+  onEventClick,
+  onEventDrag,
+  onEventCreate,
+  readonly = false
+}) => {
+  // 组件实现
+  return (
+    <div className="event-timeline">
+      <div className="timeline-header">
+        <h3>{selectedDate?.toLocaleDateString()}</h3>
+        {!readonly && (
+          <Button onClick={() => onEventCreate?.('activity', new Date())}>
+            添加活动
+          </Button>
+        )}
+      </div>
+      <div className="timeline-content">
+        {events.map(event => (
+          <EventCard
+            key={event.id}
+            event={event}
+            onClick={() => onEventClick?.(event)}
+            onDrag={onEventDrag}
+            draggable={!readonly}
+          />
+        ))}
+      </div>
+    </div>
+  );
+};
+```
+
+**费用统计组件：**
+```typescript
+// ExpenseChart.tsx
+interface ExpenseData {
+  category: string;
+  amount: number;
+  budget?: number;
+  color: string;
+}
+
+interface ExpenseChartProps {
+  data: ExpenseData[];
+  type: 'pie' | 'bar' | 'line';
+  currency: string;
+  showBudget?: boolean;
+}
+
+const ExpenseChart: React.FC<ExpenseChartProps> = ({
+  data,
+  type,
+  currency,
+  showBudget = false
+}) => {
+  const renderChart = () => {
+    switch (type) {
+      case 'pie':
+        return (
+          <PieChart width={400} height={300}>
+            <Pie
+              data={data}
+              dataKey="amount"
+              nameKey="category"
+              cx="50%"
+              cy="50%"
+              outerRadius={100}
+              fill="#8884d8"
+            />
+            <Tooltip formatter={(value) => `${currency} ${value}`} />
+            <Legend />
+          </PieChart>
+        );
+      case 'bar':
+        return (
+          <BarChart width={600} height={300} data={data}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="category" />
+            <YAxis />
+            <Tooltip formatter={(value) => `${currency} ${value}`} />
+            <Bar dataKey="amount" fill="#8884d8" />
+            {showBudget && <Bar dataKey="budget" fill="#82ca9d" />}
+          </BarChart>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="expense-chart">
+      <div className="chart-container">
+        {renderChart()}
+      </div>
+    </div>
+  );
+};
+```
+
+### 5.3 状态管理设计
+
+**Zustand状态设计：**
+```typescript
+// stores/planStore.ts
+interface PlanState {
+  // 状态数据
+  currentPlan: TravelPlan | null;
+  events: Event[];
+  expenses: Expense[];
+  loading: boolean;
+  error: string | null;
+  
+  // 操作方法
+  setCurrentPlan: (plan: TravelPlan) => void;
+  addEvent: (event: Event) => void;
+  updateEvent: (eventId: string, updates: Partial<Event>) => void;
+  deleteEvent: (eventId: string) => void;
+  reorderEvents: (eventIds: string[]) => void;
+  
+  addExpense: (expense: Expense) => void;
+  updateExpense: (expenseId: string, updates: Partial<Expense>) => void;
+  deleteExpense: (expenseId: string) => void;
+  
+  // 异步操作
+  fetchPlan: (planId: string) => Promise<void>;
+  savePlan: () => Promise<void>;
+  autoGenerateTransport: () => Promise<void>;
+}
+
+const usePlanStore = create<PlanState>((set, get) => ({
+  currentPlan: null,
+  events: [],
+  expenses: [],
+  loading: false,
+  error: null,
+  
+  setCurrentPlan: (plan) => set({ currentPlan: plan }),
+  
+  addEvent: (event) => set((state) => ({
+    events: [...state.events, event]
+  })),
+  
+  updateEvent: (eventId, updates) => set((state) => ({
+    events: state.events.map(event => 
+      event.id === eventId ? { ...event, ...updates } : event
+    )
+  })),
+  
+  deleteEvent: (eventId) => set((state) => ({
+    events: state.events.filter(event => event.id !== eventId)
+  })),
+  
+  fetchPlan: async (planId) => {
+    set({ loading: true, error: null });
+    try {
+      const plan = await planService.getPlan(planId);
+      const events = await eventService.getEvents(planId);
+      const expenses = await expenseService.getExpenses(planId);
+      set({ currentPlan: plan, events, expenses, loading: false });
+    } catch (error) {
+      set({ error: error.message, loading: false });
+    }
+  },
+  
+  // 其他方法实现...
+}));
+```
+
+## 6. 开发计划
+
+### 6.1 项目里程碑
+
+**第一阶段开发计划（16周）：**
+
+```
+开发里程碑规划：
+├── 第1-2周：项目初始化和基础架构
+│   ├── 项目脚手架搭建
+│   ├── 开发环境配置
+│   ├── CI/CD流水线搭建
+│   ├── 数据库设计和创建
+│   └── 基础组件库搭建
+├── 第3-4周：用户系统开发
+│   ├── 用户注册登录功能
+│   ├── JWT认证和授权
+│   ├── 用户信息管理
+│   └── 权限控制系统
+├── 第5-7周：旅行计划管理
+│   ├── 计划CRUD功能
+│   ├── 计划分享协作
+│   ├── 计划列表和搜索
+│   └── 前端计划管理界面
+├── 第8-10周：事件管理系统
+│   ├── 活动事件管理
+│   ├── 交通事件管理
+│   ├── 事件时间轴组件
+│   └── 拖拽排序功能
+├── 第11-12周：智能信息生成
+│   ├── 外部API集成
+│   ├── 地理信息服务
+│   ├── 景点信息自动获取
+│   └── 住宿信息自动获取
+├── 第13-14周：费用管理系统
+│   ├── 费用记录功能
+│   ├── 预算管理
+│   ├── 费用统计分析
+│   └── 费用图表展示
+├── 第15周：系统集成和测试
+│   ├── 功能集成测试
+│   ├── 性能测试
+│   ├── 安全测试
+│   └── 用户体验测试
+└── 第16周：部署和上线
+    ├── 生产环境部署
+    ├── 监控和日志配置
+    ├── 用户培训和文档
+    └── 正式发布
+```
+
+### 6.2 详细开发任务
+
+**第1-2周：项目初始化**
+```
+后端任务：
+- [ ] Spring Boot项目初始化
+- [ ] 数据库连接配置
+- [ ] Redis缓存配置
+- [ ] API网关配置
+- [ ] 日志和监控配置
+- [ ] 单元测试框架搭建
+- [ ] Docker容器化配置
+
+前端任务：
+- [ ] React项目初始化（Vite）
+- [ ] TypeScript配置
+- [ ] Ant Design集成
+- [ ] 路由配置
+- [ ] 状态管理配置（Zustand）
+- [ ] API客户端配置
+- [ ] 代码规范配置（ESLint + Prettier）
+
+DevOps任务：
+- [ ] Git仓库建立和分支策略
+- [ ] Jenkins/GitHub Actions CI/CD
+- [ ] 开发环境Docker Compose
+- [ ] 测试环境部署脚本
+- [ ] 代码质量检查配置
+```
+
+**第3-4周：用户系统**
+```
+后端任务：
+- [ ] 用户实体和Repository
+- [ ] 用户注册接口
+- [ ] 用户登录接口
+- [ ] JWT Token生成和验证
+- [ ] 用户信息管理接口
+- [ ] 权限控制注解
+- [ ] 密码加密和验证
+- [ ] 邮箱验证功能
+
+前端任务：
+- [ ] 登录页面组件
+- [ ] 注册页面组件
+- [ ] 用户信息页面
+- [ ] 认证状态管理
+- [ ] 路由守卫
+- [ ] 用户偏好设置页面
+- [ ] 头像上传组件
+```
+
+**第5-7周：旅行计划管理**
+```
+后端任务：
+- [ ] 旅行计划实体设计
+- [ ] 计划CRUD接口
+- [ ] 计划参与者管理
+- [ ] 计划分享功能
+- [ ] 计划搜索和过滤
+- [ ] 计划权限控制
+- [ ] 计划模板功能
+- [ ] 计划统计接口
+
+前端任务：
+- [ ] 计划列表页面
+- [ ] 计划创建向导
+- [ ] 计划详情页面
+- [ ] 计划编辑页面
+- [ ] 计划卡片组件
+- [ ] 计划分享对话框
+- [ ] 计划搜索和筛选
+- [ ] 计划删除确认
+```
+
+**第8-10周：事件管理系统**
+```
+后端任务：
+- [ ] 活动事件实体和接口
+- [ ] 交通事件实体和接口
+- [ ] 事件时间冲突检测
+- [ ] 事件排序算法
+- [ ] 事件关联关系管理
+- [ ] 自动交通事件生成
+- [ ] 事件搜索和过滤
+- [ ] 事件模板管理
+
+前端任务：
+- [ ] 事件时间轴组件
+- [ ] 事件卡片组件
+- [ ] 事件创建表单
+- [ ] 事件编辑表单
+- [ ] 拖拽排序功能
+- [ ] 地图视图组件
+- [ ] 事件筛选器
+- [ ] 事件复制和模板
+```
+
+**第11-12周：智能信息生成**
+```
+后端任务：
+- [ ] 高德地图API集成
+- [ ] 景点信息API集成
+- [ ] 住宿信息API集成
+- [ ] 地理信息搜索服务
+- [ ] 信息缓存策略
+- [ ] 外部API限流控制
+- [ ] 数据清洗和标准化
+- [ ] 信息推荐算法
+
+前端任务：
+- [ ] 地点搜索组件
+- [ ] 地图选点组件
+- [ ] 景点信息展示
+- [ ] 住宿信息展示
+- [ ] 自动填充表单
+- [ ] 信息确认对话框
+- [ ] 地理位置服务
+- [ ] 离线数据缓存
+```
+
+**第13-14周：费用管理系统**
+```
+后端任务：
+- [ ] 费用记录实体和接口
+- [ ] 预算管理接口
+- [ ] 费用统计算法
+- [ ] 汇率转换服务
+- [ ] 费用分摊计算
+- [ ] 费用导入导出
+- [ ] 费用提醒服务
+- [ ] 财务报表生成
+
+前端任务：
+- [ ] 费用录入表单
+- [ ] 费用列表组件
+- [ ] 费用统计图表
+- [ ] 预算设置页面
+- [ ] 预算进度组件
+- [ ] 费用分摊计算器
+- [ ] 费用导出功能
+- [ ] 汇率转换工具
+```
+
+### 6.3 团队分工
+
+**开发团队结构（8人）：**
+```
+团队分工：
+├── 后端开发（4人）
+│   ├── 架构师兼高级后端（1人）
+│   │   ├── 系统架构设计
+│   │   ├── 核心模块开发
+│   │   ├── 性能优化
+│   │   └── 团队技术指导
+│   ├── 后端开发工程师（2人）
+│   │   ├── 业务逻辑开发
+│   │   ├── API接口开发
+│   │   ├── 数据库设计
+│   │   └── 外部集成开发
+│   └── 测试开发工程师（1人）
+│       ├── 单元测试编写
+│       ├── 集成测试开发
+│       ├── 性能测试
+│       └── 自动化测试
+├── 前端开发（3人）
+│   ├── 前端架构师（1人）
+│   │   ├── 前端架构设计
+│   │   ├── 组件库设计
+│   │   ├── 状态管理设计
+│   │   └── 前端性能优化
+│   └── 前端开发工程师（2人）
+│       ├── 页面组件开发
+│       ├── 业务逻辑实现
+│       ├── 用户体验优化
+│       └── 移动端适配
+└── DevOps工程师（1人）
+    ├── CI/CD流水线建设
+    ├── 容器化部署
+    ├── 监控和日志系统
+    └── 生产环境维护
+```
+
+### 6.4 质量保证
+
+**代码质量标准：**
+```
+质量控制措施：
+├── 代码规范
+│   ├── Java代码规范（阿里巴巴Java开发手册）
+│   ├── TypeScript代码规范（Airbnb规范）
+│   ├── 数据库设计规范
+│   └── API设计规范
+├── 代码审查
+│   ├── 所有代码必须通过Code Review
+│   ├── 关键模块至少2人审查
+│   ├── 架构变更需要架构师审批
+│   └── 安全相关代码专门审查
+├── 测试覆盖率
+│   ├── 单元测试覆盖率 > 80%
+│   ├── 集成测试覆盖率 > 70%
+│   ├── 核心业务逻辑覆盖率 > 90%
+│   └── API接口测试覆盖率 100%
+├── 性能要求
+│   ├── API响应时间 < 500ms（95%请求）
+│   ├── 页面加载时间 < 3秒
+│   ├── 并发用户数 > 1000
+│   └── 系统可用性 > 99.5%
+└── 安全要求
+    ├── SQL注入防护
+    ├── XSS攻击防护
+    ├── CSRF攻击防护
+    └── 敏感数据加密存储
+```
+
+### 6.5 风险控制
+
+**主要风险和应对措施：**
+```
+风险控制计划：
+├── 技术风险
+│   ├── 外部API稳定性风险
+│   │   ├── 多个API提供商备选
+│   │   ├── 缓存机制减少依赖
+│   │   └── 降级策略
+│   ├── 性能风险
+│   │   ├── 数据库查询优化
+│   │   ├── 缓存策略设计
+│   │   ├── 负载测试验证
+│   │   └── 监控预警机制
+│   └── 数据安全风险
+│       ├── 数据加密存储
+│       ├── 访问权限控制
+│       ├── 审计日志记录
+│       └── 定期安全检查
+├── 进度风险
+│   ├── 需求变更风险
+│   │   ├── 需求冻结机制
+│   │   ├── 变更评估流程
+│   │   └── 敏捷开发适应
+│   ├── 人员风险
+│   │   ├── 核心人员备份培养
+│   │   ├── 知识文档化
+│   │   └── 任务交叉覆盖
+│   └── 技术难点风险
+│       ├── 技术预研和验证
+│       ├── 原型开发验证
+│       └── 专家咨询支持
+└── 业务风险
+    ├── 用户需求变化
+    │   ├── 用户调研和反馈
+    │   ├── MVP快速验证
+    │   └── 迭代优化策略
+    └── 竞争对手风险
+        ├── 市场动态监控
+        ├── 差异化功能设计
+        └── 快速迭代能力
+```
+
+## 7. 总结
+
+本项目计划书详细规划了旅行规划系统第一阶段的开发工作，采用Java + React技术栈，建立了完整的事件驱动架构，实现了智能化的旅行规划管理功能。
+
+**关键成功因素：**
+1. **清晰的架构设计**：微服务架构确保系统可扩展性
+2. **智能化用户体验**：减少用户手动输入，提升使用效率
+3. **完整的数据模型**：为后续阶段提供坚实的数据基础
+4. **严格的质量控制**：确保系统稳定性和安全性
+5. **合理的团队分工**：确保开发进度和质量
+
+通过16周的开发周期，将建成一个功能完整、性能稳定、用户体验优良的旅行规划管理系统，为第二阶段的签证行程单生成和第三阶段的AI智能推荐奠定坚实基础。

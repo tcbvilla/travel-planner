@@ -1,0 +1,21 @@
+# Root
+.DS_Store
+node_modules/
+dist/
+target/
+.env
+.env.local
+logs/
+coverage/
+.vscode/
+.idea/
+*.iml
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+# Backend
+backend/target/
+backend/.env
