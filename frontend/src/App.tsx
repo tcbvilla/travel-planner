@@ -12,11 +12,17 @@ type DisplayRow = {
 }
 
 type GroupStat = {
-  分组: string
-  总战功增量: number
-  人均战功增量: number
-  出勤率: number
-  小组人数: number
+  group: string
+  totalMeritIncrease: number
+  averageMeritIncrease: number
+  attendanceRate: number
+  memberCount: number
+}
+
+type AttendanceResponse = {
+  members: DisplayRow[]
+  groups: GroupStat[]
+  filteredCount: number
 }
 
 function App() {
@@ -48,35 +54,12 @@ function App() {
         body: form,
       })
       if (!resp.ok) throw new Error(`后端错误: ${resp.status}`)
-      const data = (await resp.json()) as DisplayRow[]
-      if (Array.isArray(data) && data.length > 0) {
-        setRows(data)
-        // 计算小组统计
-        const groupMap = new Map<string, { total: number; count: number; present: number }>()
-        console.log('Debug - starting group calculation with backend data:', data.length, 'rows')
-        for (const row of data) {
-          const group = row.分组
-          console.log('Debug - processing member:', row.成员, 'group:', group, 'diff:', row.差值, 'qualified:', row.达标)
-          const existing = groupMap.get(group) || { total: 0, count: 0, present: 0 }
-          existing.total += row.差值
-          existing.count += 1
-          if (row.达标) existing.present += 1
-          groupMap.set(group, existing)
-        }
-        console.log('Debug - groupMap entries:', Array.from(groupMap.entries()))
-        const stats: GroupStat[] = []
-        for (const [group, groupData] of groupMap.entries()) {
-          stats.push({
-            分组: group,
-            总战功增量: groupData.total,
-            人均战功增量: groupData.count > 0 ? Math.round(groupData.total / groupData.count) : 0,
-            出勤率: groupData.count > 0 ? Number(((groupData.present / groupData.count) * 100).toFixed(2)) : 0,
-            小组人数: groupData.count
-          })
-        }
-        stats.sort((a, b) => b.总战功增量 - a.总战功增量)
-        setGroupStats(stats)
-        console.log('Debug - group stats from backend:', stats)
+      const data = (await resp.json()) as AttendanceResponse
+      if (data && data.members && data.members.length > 0) {
+        setRows(data.members)
+        setGroupStats(data.groups)
+        setFilteredCount(data.filteredCount)
+        console.log('Debug - received data from backend:', data)
         return
       }
       // fallback to local compute if backend returns empty
@@ -142,17 +125,17 @@ function App() {
         groupMap.set(group, existing)
       }
       console.log('Debug - groupMap entries:', Array.from(groupMap.entries()))
-      const stats: GroupStat[] = []
-      for (const [group, data] of groupMap.entries()) {
-        stats.push({
-          分组: group,
-          总战功增量: data.total,
-          人均战功增量: data.count > 0 ? Math.round(data.total / data.count) : 0,
-          出勤率: data.count > 0 ? Number(((data.present / data.count) * 100).toFixed(2)) : 0,
-          小组人数: data.count
-        })
-      }
-      stats.sort((a, b) => b.总战功增量 - a.总战功增量)
+              const stats: GroupStat[] = []
+        for (const [group, data] of groupMap.entries()) {
+          stats.push({
+            group: group,
+            totalMeritIncrease: data.total,
+            averageMeritIncrease: data.count > 0 ? Math.round(data.total / data.count) : 0,
+            attendanceRate: data.count > 0 ? Number(((data.present / data.count) * 100).toFixed(2)) : 0,
+            memberCount: data.count
+          })
+        }
+        stats.sort((a, b) => b.totalMeritIncrease - a.totalMeritIncrease)
       setGroupStats(stats)
       console.log('Debug - display rows:', display.length, display.map(r => ({ member: r.成员, group: r.分组 })))
       console.log('Debug - group stats:', stats)
@@ -269,12 +252,12 @@ function App() {
                 </thead>
                 <tbody>
                   {groupStats.map((g) => (
-                    <tr key={g.分组}>
-                      <td>{g.分组}</td>
-                      <td>{g.总战功增量}</td>
-                      <td>{g.人均战功增量}</td>
-                      <td>{g.出勤率}%</td>
-                      <td>{g.小组人数}</td>
+                    <tr key={g.group}>
+                      <td>{g.group}</td>
+                      <td>{g.totalMeritIncrease}</td>
+                      <td>{g.averageMeritIncrease}</td>
+                      <td>{g.attendanceRate}%</td>
+                      <td>{g.memberCount}</td>
                     </tr>
                   ))}
                 </tbody>
