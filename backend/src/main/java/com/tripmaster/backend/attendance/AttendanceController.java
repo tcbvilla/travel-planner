@@ -2,6 +2,10 @@ package com.tripmaster.backend.attendance;
 
 import com.opencsv.CSVReader;
 import com.opencsv.CSVReaderBuilder;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -14,6 +18,9 @@ import java.util.*;
 @RestController
 @RequestMapping("/api/v1/attendance")
 public class AttendanceController {
+
+    @Autowired
+    private AttendanceSessionRepository attendanceSessionRepository;
 
     @PostMapping(value = "/compare", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public AttendanceResponse compare(@RequestPart("start") MultipartFile start,
@@ -73,6 +80,54 @@ public class AttendanceController {
         response.setFilteredCount(filteredCount);
         
         return response;
+    }
+    
+    /**
+     * 保存考勤会话
+     */
+    @PostMapping("/save-session")
+    public AttendanceSession saveSession(@RequestParam String name,
+                                       @RequestParam BattleResult battleResult) {
+        AttendanceSession session = new AttendanceSession();
+        session.setName(name);
+        session.setBattleResult(battleResult);
+        session.setStatus(SessionStatus.ADDED);
+        return attendanceSessionRepository.save(session);
+    }
+    
+    /**
+     * 获取考勤会话列表（分页）
+     */
+    @GetMapping("/sessions")
+    public Page<AttendanceSession> getSessions(@RequestParam(defaultValue = "0") int page,
+                                             @RequestParam(defaultValue = "10") int size,
+                                             @RequestParam(required = false) String search) {
+        Pageable pageable = PageRequest.of(page, size);
+        if (search != null && !search.trim().isEmpty()) {
+            return attendanceSessionRepository.findByNameContainingIgnoreCaseOrderByCreatedAtDesc(search.trim(), pageable);
+        }
+        return attendanceSessionRepository.findAllByOrderByCreatedAtDesc(pageable);
+    }
+    
+    /**
+     * 获取考勤会话详情
+     */
+    @GetMapping("/sessions/{id}")
+    public AttendanceSession getSession(@PathVariable Long id) {
+        return attendanceSessionRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("考勤会话不存在"));
+    }
+    
+    /**
+     * 更新会话状态
+     */
+    @PutMapping("/sessions/{id}/status")
+    public AttendanceSession updateSessionStatus(@PathVariable Long id,
+                                               @RequestParam SessionStatus status) {
+        AttendanceSession session = attendanceSessionRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("考勤会话不存在"));
+        session.setStatus(status);
+        return attendanceSessionRepository.save(session);
     }
     
     private List<GroupStat> calculateGroupStats(List<DisplayRow> members) {
