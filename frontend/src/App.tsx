@@ -231,6 +231,27 @@ function App() {
     }
   }
 
+  // 删除会话
+  const deleteSession = async (sessionId: number) => {
+    if (!confirm('确定要删除这条考勤记录吗？')) {
+      return
+    }
+    
+    try {
+      const resp = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${sessionId}`, {
+        method: 'DELETE'
+      })
+      
+      if (!resp.ok) throw new Error(`删除失败: ${resp.status}`)
+      
+      setError(null)
+      // 刷新会话列表
+      loadSessions(currentPage)
+    } catch (err: any) {
+      setError(err?.message ?? '删除失败')
+    }
+  }
+
   return (
     <div style={{ padding: 16 }}>
       <h2>考勤展示（CSV 对比）</h2>
@@ -290,12 +311,20 @@ function App() {
                       {session.status === 'SETTLED' && '已结算'}
                     </td>
                     <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                      <button
-                        onClick={() => viewSession(session.id)}
-                        style={{ padding: '4px 8px', background: '#007bff', color: '#fff', border: 'none', cursor: 'pointer' }}
-                      >
-                        查看
-                      </button>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button
+                          onClick={() => viewSession(session.id)}
+                          style={{ padding: '4px 8px', background: '#007bff', color: '#fff', border: 'none', cursor: 'pointer' }}
+                        >
+                          查看
+                        </button>
+                        <button
+                          onClick={() => deleteSession(session.id)}
+                          style={{ padding: '4px 8px', background: '#dc3545', color: '#fff', border: 'none', cursor: 'pointer' }}
+                        >
+                          删除
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

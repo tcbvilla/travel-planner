@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -128,6 +129,21 @@ public class AttendanceController {
                 .orElseThrow(() -> new RuntimeException("考勤会话不存在"));
         session.setStatus(status);
         return attendanceSessionRepository.save(session);
+    }
+    
+    /**
+     * 删除考勤会话
+     */
+    @DeleteMapping("/sessions/{id}")
+    public ResponseEntity<String> deleteSession(@PathVariable Long id) {
+        try {
+            AttendanceSession session = attendanceSessionRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("考勤会话不存在"));
+            attendanceSessionRepository.delete(session);
+            return ResponseEntity.ok("删除成功");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("删除失败: " + e.getMessage());
+        }
     }
     
     private List<GroupStat> calculateGroupStats(List<DisplayRow> members) {
