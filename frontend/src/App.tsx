@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import Papa from 'papaparse'
 import './App.css'
 
 type DisplayRow = {
@@ -36,9 +37,46 @@ function App() {
         body: form,
       })
       if (!resp.ok) throw new Error(`后端错误: ${resp.status}`)
-      const data = await resp.json()
-
-      setRows(data as DisplayRow[])
+      const data = (await resp.json()) as DisplayRow[]
+      if (Array.isArray(data) && data.length > 0) {
+        setRows(data)
+        return
+      }
+      // fallback to local compute if backend returns empty
+      const parseCsv = (file: File): Promise<Record<string, unknown>[]> => new Promise((resolve, reject) => {
+        Papa.parse<Record<string, unknown>>(file, {
+          header: true,
+          skipEmptyLines: true,
+          transformHeader: (h: string) => h.trim(),
+          complete: (res) => resolve(res.data),
+          error: (err) => reject(err),
+        })
+      })
+      const numberize = (v: unknown): number => typeof v === 'number' ? v : (typeof v === 'string' ? Number(v.replace(/,/g, '').trim()) || 0 : 0)
+      const [startData, endData] = await Promise.all([parseCsv(startFile), parseCsv(endFile)])
+      const startMap = new Map<string, Record<string, unknown>>()
+      for (const r of startData) {
+        const key = (r['成员'] ?? '').toString().trim()
+        if (!key) continue
+        startMap.set(key, r)
+      }
+      const endMap = new Map<string, Record<string, unknown>>()
+      for (const r of endData) {
+        const key = (r['成员'] ?? '').toString().trim()
+        if (!key) continue
+        endMap.set(key, r)
+      }
+      const display: DisplayRow[] = []
+      for (const [member, s] of startMap.entries()) {
+        const e = endMap.get(member)
+        const group = (s['分组'] ?? '').toString()
+        const prev = numberize(s['战功总量'])
+        const next = numberize(e?.['战功总量'])
+        const diff = next - prev
+        display.push({ 成员: member, 分组: group, 前值: prev, 后值: next, 差值: diff, 达标: diff >= threshold })
+      }
+      display.sort((a, b) => b.差值 - a.差值)
+      setRows(display)
     } catch (err: any) {
       setError(err?.message ?? '解析失败')
     }
