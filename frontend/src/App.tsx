@@ -48,7 +48,7 @@ function App() {
   const [threshold, setThreshold] = useState<number>(1)
   const [rows, setRows] = useState<DisplayRow[]>([])
   const [groupStats, setGroupStats] = useState<GroupStat[]>([])
-  const [activeTab, setActiveTab] = useState<'members' | 'groups'>('members')
+  const [activeTab, setActiveTab] = useState<'members' | 'groups' | 'sessions'>('members')
   const [filteredCount, setFilteredCount] = useState<number>(0)
   const [error, setError] = useState<string | null>(null)
   
@@ -61,7 +61,7 @@ function App() {
   const [battleResult, setBattleResult] = useState<'VICTORY' | 'DEFEAT'>('VICTORY')
   const [showSessionModal, setShowSessionModal] = useState(false)
   const [selectedSession, setSelectedSession] = useState<AttendanceSession | null>(null)
-  const [showSessionList, setShowSessionList] = useState(false)
+
 
   const canCompute = useMemo(() => !!startFile && !!endFile, [startFile, endFile])
 
@@ -194,7 +194,8 @@ function App() {
       setSessionName('')
       setBattleResult('VICTORY')
       setError(null)
-      // 刷新会话列表
+      // 切换到考勤记录页面并刷新列表
+      setActiveTab('sessions')
       loadSessions()
     } catch (err: any) {
       setError(err?.message ?? '保存失败')
@@ -232,26 +233,7 @@ function App() {
 
   return (
     <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h2>考勤展示（CSV 对比）</h2>
-        <button 
-          onClick={() => {
-            setShowSessionList(!showSessionList)
-            if (!showSessionList) {
-              loadSessions()
-            }
-          }}
-          style={{
-            padding: '8px 16px',
-            border: '1px solid #ccc',
-            background: showSessionList ? '#007bff' : '#fff',
-            color: showSessionList ? '#fff' : '#000',
-            cursor: 'pointer'
-          }}
-        >
-          {showSessionList ? '返回考勤' : '查看考勤记录'}
-        </button>
-      </div>
+      <h2>考勤展示（CSV 对比）</h2>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <label>
           起始CSV：
@@ -285,37 +267,9 @@ function App() {
         </div>
       )}
 
-      {showSessionList ? (
+      {activeTab === 'sessions' && (
         <div style={{ marginTop: 16 }}>
           <h3>考勤记录列表</h3>
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-              <label>
-                考勤名称：
-                <input
-                  type="text"
-                  value={sessionName}
-                  onChange={(e) => setSessionName(e.target.value)}
-                  placeholder="请输入考勤名称"
-                  style={{ width: 200 }}
-                />
-              </label>
-              <label>
-                战役结果：
-                <select
-                  value={battleResult}
-                  onChange={(e) => setBattleResult(e.target.value as 'VICTORY' | 'DEFEAT')}
-                  style={{ width: 100 }}
-                >
-                  <option value="VICTORY">胜利</option>
-                  <option value="DEFEAT">失败</option>
-                </select>
-              </label>
-              <button onClick={saveSession} style={{ padding: '8px 16px', background: '#28a745', color: '#fff', border: 'none', cursor: 'pointer' }}>
-                保存考勤
-              </button>
-            </div>
-          </div>
           
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -372,34 +326,83 @@ function App() {
             </div>
           )}
         </div>
-      ) : rows.length > 0 && (
+      )}
+
+      {rows.length > 0 && (
         <div style={{ marginTop: 16 }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            <button
-              onClick={() => setActiveTab('members')}
-              style={{
-                padding: '8px 16px',
-                border: '1px solid #ccc',
-                background: activeTab === 'members' ? '#007bff' : '#fff',
-                color: activeTab === 'members' ? '#fff' : '#000',
-                cursor: 'pointer'
-              }}
-            >
-              成员详情
-            </button>
-            <button
-              onClick={() => setActiveTab('groups')}
-              style={{
-                padding: '8px 16px',
-                border: '1px solid #ccc',
-                background: activeTab === 'groups' ? '#007bff' : '#fff',
-                color: activeTab === 'groups' ? '#fff' : '#000',
-                cursor: 'pointer'
-              }}
-            >
-              小组统计
-            </button>
-          </div>
+            {/* 保存考勤功能 */}
+            <div style={{ marginBottom: 16, padding: '16px', border: '1px solid #dee2e6', borderRadius: '4px', background: '#f8f9fa' }}>
+              <h4 style={{ margin: '0 0 12px 0' }}>保存考勤</h4>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                <label>
+                  考勤名称：
+                  <input
+                    type="text"
+                    value={sessionName}
+                    onChange={(e) => setSessionName(e.target.value)}
+                    placeholder="请输入考勤名称"
+                    style={{ width: 200 }}
+                  />
+                </label>
+                <label>
+                  战役结果：
+                  <select
+                    value={battleResult}
+                    onChange={(e) => setBattleResult(e.target.value as 'VICTORY' | 'DEFEAT')}
+                    style={{ width: 100 }}
+                  >
+                    <option value="VICTORY">胜利</option>
+                    <option value="DEFEAT">失败</option>
+                  </select>
+                </label>
+                <button onClick={saveSession} style={{ padding: '8px 16px', background: '#28a745', color: '#fff', border: 'none', cursor: 'pointer' }}>
+                  保存考勤
+                </button>
+              </div>
+            </div>
+            
+            {/* 菜单栏 */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              <button
+                onClick={() => setActiveTab('members')}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid #ccc',
+                  background: activeTab === 'members' ? '#007bff' : '#fff',
+                  color: activeTab === 'members' ? '#fff' : '#000',
+                  cursor: 'pointer'
+                }}
+              >
+                成员详情
+              </button>
+              <button
+                onClick={() => setActiveTab('groups')}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid #ccc',
+                  background: activeTab === 'groups' ? '#007bff' : '#fff',
+                  color: activeTab === 'groups' ? '#fff' : '#000',
+                  cursor: 'pointer'
+                }}
+              >
+                小组统计
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('sessions')
+                  loadSessions()
+                }}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid #ccc',
+                  background: activeTab === 'sessions' ? '#007bff' : '#fff',
+                  color: activeTab === 'sessions' ? '#fff' : '#000',
+                  cursor: 'pointer'
+                }}
+              >
+                查看考勤记录
+              </button>
+            </div>
 
           {activeTab === 'members' && (
             <div style={{ overflowX: 'auto' }}>
