@@ -1,34 +1,157 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
+import { useMemo, useState } from 'react'
+import Papa from 'papaparse'
 import './App.css'
 
+type Row = {
+  成员: string
+  分组?: string
+  战功总量?: string | number
+  [key: string]: unknown
+}
+
+type DisplayRow = {
+  成员: string
+  分组: string
+  前值: number
+  后值: number
+  差值: number
+  达标: boolean
+}
+
+const numberize = (v: unknown): number => {
+  if (typeof v === 'number') return v
+  if (typeof v === 'string') return Number(v.toString().replace(/,/g, '').trim()) || 0
+  return 0
+}
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [startFile, setStartFile] = useState<File | null>(null)
+  const [endFile, setEndFile] = useState<File | null>(null)
+  const [threshold, setThreshold] = useState<number>(1)
+  const [rows, setRows] = useState<DisplayRow[]>([])
+  const [error, setError] = useState<string | null>(null)
+
+  const canCompute = useMemo(() => !!startFile && !!endFile, [startFile, endFile])
+
+  const parseCsv = (file: File): Promise<Row[]> => {
+    return new Promise((resolve, reject) => {
+      Papa.parse<Row>(file, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (h: string) => h.trim(),
+        complete: (result: Papa.ParseResult<Row>) => {
+          if (result.errors?.length) {
+            reject(new Error(result.errors.map((e) => e.message).join('; ')))
+            return
+          }
+          resolve(result.data)
+        },
+        error: (err: any) => reject(err),
+      })
+    })
+  }
+
+  const compute = async () => {
+    setError(null)
+    setRows([])
+    if (!startFile || !endFile) return
+    try {
+      const [startData, endData] = await Promise.all([parseCsv(startFile), parseCsv(endFile)])
+
+      // 索引起始快照（以成员为主键）
+      const startMap = new Map<string, Row>()
+      for (const r of startData) {
+        const key = (r['成员'] ?? '').toString().trim()
+        if (!key) continue
+        startMap.set(key, r)
+      }
+
+      // 生成展示行（以起始快照为准）
+      const endMap = new Map<string, Row>()
+      for (const r of endData) {
+        const key = (r['成员'] ?? '').toString().trim()
+        if (!key) continue
+        endMap.set(key, r)
+      }
+
+      const display: DisplayRow[] = []
+      for (const [member, s] of startMap.entries()) {
+        const e = endMap.get(member)
+        const group = (s['分组'] ?? '').toString()
+        const prev = numberize(s['战功总量'])
+        const next = numberize(e?.['战功总量'])
+        const diff = next - prev
+        display.push({ 成员: member, 分组: group, 前值: prev, 后值: next, 差值: diff, 达标: diff >= threshold })
+      }
+
+      // 可选：找出结束快照中新增的成员（不在起始中）
+      // 需求不要求展示，若需要可在此追加
+
+      // 简单排序：按差值降序
+      display.sort((a, b) => b.差值 - a.差值)
+      setRows(display)
+    } catch (err: any) {
+      setError(err?.message ?? '解析失败')
+    }
+  }
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
+    <div style={{ padding: 16 }}>
+      <h2>考勤展示（CSV 对比）</h2>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <label>
+          起始CSV：
+          <input type="file" accept=".csv" onChange={(e) => setStartFile(e.target.files?.[0] ?? null)} />
+        </label>
+        <label>
+          结束CSV：
+          <input type="file" accept=".csv" onChange={(e) => setEndFile(e.target.files?.[0] ?? null)} />
+        </label>
+        <label>
+          出勤标准（差值≥）：
+          <input
+            type="number"
+            value={threshold}
+            onChange={(e) => setThreshold(Number(e.target.value) || 0)}
+            style={{ width: 100 }}
+          />
+        </label>
+        <button onClick={compute} disabled={!canCompute}>
+          计算并展示
         </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
       </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+
+      {error && (
+        <div style={{ color: 'red', marginTop: 12 }}>错误：{error}</div>
+      )}
+
+      <div style={{ marginTop: 16, overflowX: 'auto' }}>
+        <table>
+          <thead>
+            <tr>
+              <th>成员</th>
+              <th>分组</th>
+              <th>战功总量（前值）</th>
+              <th>战功总量（后值）</th>
+              <th>差值</th>
+              <th>是否达标</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.成员}>
+                <td>{r.成员}</td>
+                <td>{r.分组}</td>
+                <td>{r.前值}</td>
+                <td>{r.后值}</td>
+                <td>{r.差值}</td>
+                <td>{r.达标 ? '出勤' : '未出勤'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   )
 }
 
