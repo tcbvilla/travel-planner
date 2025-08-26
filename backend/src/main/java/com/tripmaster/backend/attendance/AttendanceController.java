@@ -88,11 +88,17 @@ public class AttendanceController {
      */
     @PostMapping("/save-session")
     public AttendanceSession saveSession(@RequestParam String name,
-                                       @RequestParam BattleResult battleResult) {
+                                       @RequestParam BattleResult battleResult,
+                                       @RequestParam(required = false) String memberData,
+                                       @RequestParam(required = false) String groupData,
+                                       @RequestParam(required = false) Integer threshold) {
         AttendanceSession session = new AttendanceSession();
         session.setName(name);
         session.setBattleResult(battleResult);
         session.setStatus(SessionStatus.ADDED);
+        session.setMemberData(memberData);
+        session.setGroupData(groupData);
+        session.setThreshold(threshold);
         return attendanceSessionRepository.save(session);
     }
     

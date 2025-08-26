@@ -32,6 +32,9 @@ type AttendanceSession = {
   status: 'ADDED' | 'SAVED' | 'SETTLED'
   createdAt: string
   updatedAt: string
+  memberData?: string
+  groupData?: string
+  threshold?: number
 }
 
 type PageResponse<T> = {
@@ -183,7 +186,10 @@ function App() {
     try {
       const params = new URLSearchParams({
         name: sessionName,
-        battleResult: battleResult
+        battleResult: battleResult,
+        memberData: JSON.stringify(rows),
+        groupData: JSON.stringify(groupStats),
+        threshold: threshold.toString()
       })
       
       const resp = await fetch(`http://localhost:8080/api/v1/attendance/save-session?${params}`, {
@@ -220,14 +226,18 @@ function App() {
 
   // 查看会话详情
   const viewSession = async (sessionId: number) => {
+    console.log('查看会话:', sessionId)
     try {
       const resp = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${sessionId}`)
+      console.log('API响应状态:', resp.status)
       if (!resp.ok) throw new Error(`加载失败: ${resp.status}`)
       
       const session = await resp.json() as AttendanceSession
+      console.log('会话数据:', session)
       setSelectedSession(session)
       setShowSessionModal(true)
     } catch (err: any) {
+      console.error('查看会话错误:', err)
       setError(err?.message ?? '加载失败')
     }
   }
@@ -490,34 +500,34 @@ function App() {
             </div>
           )}
 
-                      {activeSubTab === 'groups' && (
-            <div style={{ overflowX: 'auto' }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>分组</th>
-                    <th>总战功增量</th>
-                    <th>人均战功增量</th>
-                    <th>出勤率（%）</th>
-                    <th>小组人数</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {groupStats.map((g) => (
-                    <tr key={g.group}>
-                      <td>{g.group}</td>
-                      <td>{g.totalMeritIncrease}</td>
-                      <td>{g.averageMeritIncrease}</td>
-                      <td>{g.attendanceRate}%</td>
-                      <td>{g.memberCount}</td>
+            {activeSubTab === 'groups' && (
+              <div style={{ overflowX: 'auto' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>分组</th>
+                      <th>总战功增量</th>
+                      <th>人均战功增量</th>
+                      <th>出勤率（%）</th>
+                      <th>小组人数</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+                  </thead>
+                  <tbody>
+                    {groupStats.map((g) => (
+                      <tr key={g.group}>
+                        <td>{g.group}</td>
+                        <td>{g.totalMeritIncrease}</td>
+                        <td>{g.averageMeritIncrease}</td>
+                        <td>{g.attendanceRate}%</td>
+                        <td>{g.memberCount}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
       
       {/* 会话详情弹窗 */}
       {showSessionModal && selectedSession && (
@@ -554,6 +564,7 @@ function App() {
             <div style={{ marginBottom: '16px' }}>
               <p><strong>考勤名称：</strong>{selectedSession.name}</p>
               <p><strong>战役结果：</strong>{selectedSession.battleResult === 'VICTORY' ? '胜利' : '失败'}</p>
+              <p><strong>出勤标准：</strong>{selectedSession.threshold || '未设置'}</p>
               <p><strong>状态：</strong>
                 {selectedSession.status === 'ADDED' && '已添加'}
                 {selectedSession.status === 'SAVED' && '已保存'}
@@ -562,6 +573,70 @@ function App() {
               <p><strong>创建时间：</strong>{new Date(selectedSession.createdAt).toLocaleString()}</p>
               <p><strong>更新时间：</strong>{new Date(selectedSession.updatedAt).toLocaleString()}</p>
             </div>
+            
+            {/* 成员详情 */}
+            {selectedSession.memberData && (
+              <div style={{ marginBottom: '16px' }}>
+                <h4>成员详情</h4>
+                <div style={{ overflowX: 'auto', maxHeight: '300px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#f8f9fa' }}>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>成员</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>分组</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>前值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>后值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>差值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>是否达标</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {JSON.parse(selectedSession.memberData).map((member: DisplayRow, index: number) => (
+                        <tr key={index}>
+                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.成员}</td>
+                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.分组}</td>
+                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.前值}</td>
+                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.后值}</td>
+                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.差值}</td>
+                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.达标 ? '出勤' : '未出勤'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            
+            {/* 小组统计 */}
+            {selectedSession.groupData && (
+              <div style={{ marginBottom: '16px' }}>
+                <h4>小组统计</h4>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#f8f9fa' }}>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>分组</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>总战功增量</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>人均战功增量</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>出勤率（%）</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>小组人数</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {JSON.parse(selectedSession.groupData).map((group: GroupStat, index: number) => (
+                        <tr key={index}>
+                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.group}</td>
+                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.totalMeritIncrease}</td>
+                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.averageMeritIncrease}</td>
+                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.attendanceRate}%</td>
+                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.memberCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
             
             <div style={{ textAlign: 'center' }}>
               <button

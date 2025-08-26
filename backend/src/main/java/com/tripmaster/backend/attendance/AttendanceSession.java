@@ -29,6 +29,15 @@ public class AttendanceSession {
     @Column(nullable = false)
     private LocalDateTime updatedAt;
     
+    @Column(columnDefinition = "TEXT")
+    private String memberData; // JSON格式的成员数据
+    
+    @Column(columnDefinition = "TEXT")
+    private String groupData; // JSON格式的小组数据
+    
+    @Column
+    private Integer threshold; // 出勤标准
+    
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
