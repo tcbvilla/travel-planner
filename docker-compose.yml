@@ -2,11 +2,11 @@ version: "3.9"
 services:
   postgres:
     image: postgres:15
-    container_name: travel_postgres
+    container_name: game_attendance_postgres
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-travel}
-      POSTGRES_USER: ${POSTGRES_USER:-travel}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-travel}
+      POSTGRES_DB: ${POSTGRES_DB:-game_attendance}
+      POSTGRES_USER: ${POSTGRES_USER:-game_attendance}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-game_attendance}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -19,7 +19,7 @@ services:
 
   redis:
     image: redis:7
-    container_name: travel_redis
+    container_name: game_attendance_redis
     ports:
       - "${REDIS_PORT:-6379}:6379"
     command: ["redis-server", "--appendonly", "yes"]
@@ -28,7 +28,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: travel_minio
+    container_name: game_attendance_minio
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-admin12345}
@@ -41,7 +41,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management
-    container_name: travel_rabbitmq
+    container_name: game_attendance_rabbitmq
     ports:
       - "${RABBITMQ_PORT:-5672}:5672"
       - "${RABBITMQ_MGMT_PORT:-15672}:15672"

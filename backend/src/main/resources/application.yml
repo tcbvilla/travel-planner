@@ -2,4 +2,4 @@ server:
   port: 8080
 spring:
   application:
-    name: travel-backend
+    name: game-attendance-backend

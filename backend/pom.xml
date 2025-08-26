@@ -13,8 +13,8 @@
   <groupId>com.tripmaster</groupId>
   <artifactId>backend</artifactId>
   <version>0.0.1-SNAPSHOT</version>
-  <name>travel-backend</name>
-  <description>Travel Planner Backend</description>
+  <name>game-attendance-backend</name>
+  <description>Game Attendance Statistics Backend</description>
   <properties>
     <java.version>17</java.version>
   </properties>
