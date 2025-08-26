@@ -11,11 +11,21 @@ type DisplayRow = {
   达标: boolean
 }
 
+type GroupStat = {
+  分组: string
+  总战功增量: number
+  人均战功增量: number
+  出勤率: number
+  小组人数: number
+}
+
 function App() {
   const [startFile, setStartFile] = useState<File | null>(null)
   const [endFile, setEndFile] = useState<File | null>(null)
   const [threshold, setThreshold] = useState<number>(1)
   const [rows, setRows] = useState<DisplayRow[]>([])
+  const [groupStats, setGroupStats] = useState<GroupStat[]>([])
+  const [activeTab, setActiveTab] = useState<'members' | 'groups'>('members')
   const [error, setError] = useState<string | null>(null)
 
   const canCompute = useMemo(() => !!startFile && !!endFile, [startFile, endFile])
@@ -77,6 +87,28 @@ function App() {
       }
       display.sort((a, b) => b.差值 - a.差值)
       setRows(display)
+      // 计算小组统计
+      const groupMap = new Map<string, { total: number; count: number; present: number }>()
+      for (const row of display) {
+        const group = row.分组
+        const existing = groupMap.get(group) || { total: 0, count: 0, present: 0 }
+        existing.total += row.差值
+        existing.count += 1
+        if (row.达标) existing.present += 1
+        groupMap.set(group, existing)
+      }
+      const stats: GroupStat[] = []
+      for (const [group, data] of groupMap.entries()) {
+        stats.push({
+          分组: group,
+          总战功增量: data.total,
+          人均战功增量: data.count > 0 ? Math.round(data.total / data.count) : 0,
+          出勤率: data.count > 0 ? Number(((data.present / data.count) * 100).toFixed(2)) : 0,
+          小组人数: data.count
+        })
+      }
+      stats.sort((a, b) => b.总战功增量 - a.总战功增量)
+      setGroupStats(stats)
     } catch (err: any) {
       setError(err?.message ?? '解析失败')
     }
@@ -112,32 +144,92 @@ function App() {
         <div style={{ color: 'red', marginTop: 12 }}>错误：{error}</div>
       )}
 
-      <div style={{ marginTop: 16, overflowX: 'auto' }}>
-        <table>
-          <thead>
-            <tr>
-              <th>成员</th>
-              <th>分组</th>
-              <th>战功总量（前值）</th>
-              <th>战功总量（后值）</th>
-              <th>差值</th>
-              <th>是否达标</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.成员}>
-                <td>{r.成员}</td>
-                <td>{r.分组}</td>
-                <td>{r.前值}</td>
-                <td>{r.后值}</td>
-                <td>{r.差值}</td>
-                <td>{r.达标 ? '出勤' : '未出勤'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {rows.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+            <button
+              onClick={() => setActiveTab('members')}
+              style={{
+                padding: '8px 16px',
+                border: '1px solid #ccc',
+                background: activeTab === 'members' ? '#007bff' : '#fff',
+                color: activeTab === 'members' ? '#fff' : '#000',
+                cursor: 'pointer'
+              }}
+            >
+              成员详情
+            </button>
+            <button
+              onClick={() => setActiveTab('groups')}
+              style={{
+                padding: '8px 16px',
+                border: '1px solid #ccc',
+                background: activeTab === 'groups' ? '#007bff' : '#fff',
+                color: activeTab === 'groups' ? '#fff' : '#000',
+                cursor: 'pointer'
+              }}
+            >
+              小组统计
+            </button>
+          </div>
+
+          {activeTab === 'members' && (
+            <div style={{ overflowX: 'auto' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>成员</th>
+                    <th>分组</th>
+                    <th>战功总量（前值）</th>
+                    <th>战功总量（后值）</th>
+                    <th>差值</th>
+                    <th>是否达标</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.成员}>
+                      <td>{r.成员}</td>
+                      <td>{r.分组}</td>
+                      <td>{r.前值}</td>
+                      <td>{r.后值}</td>
+                      <td>{r.差值}</td>
+                      <td>{r.达标 ? '出勤' : '未出勤'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {activeTab === 'groups' && (
+            <div style={{ overflowX: 'auto' }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>分组</th>
+                    <th>总战功增量</th>
+                    <th>人均战功增量</th>
+                    <th>出勤率（%）</th>
+                    <th>小组人数</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groupStats.map((g) => (
+                    <tr key={g.分组}>
+                      <td>{g.分组}</td>
+                      <td>{g.总战功增量}</td>
+                      <td>{g.人均战功增量}</td>
+                      <td>{g.出勤率}%</td>
+                      <td>{g.小组人数}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
