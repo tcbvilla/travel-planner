@@ -414,7 +414,7 @@ function App() {
         </div>
       )}
 
-      {rows.length > 0 && (
+      {activeTab === 'add' && rows.length > 0 && (
         <div style={{ marginTop: 16 }}>
             {/* 保存考勤功能 */}
             <div style={{ marginBottom: 16, padding: '16px', border: '1px solid #dee2e6', borderRadius: '4px', background: '#f8f9fa' }}>
@@ -475,34 +475,34 @@ function App() {
               </button>
             </div>
 
-                      {activeSubTab === 'members' && (
-            <div style={{ overflowX: 'auto' }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>成员</th>
-                    <th>分组</th>
-                    <th>战功总量（前值）</th>
-                    <th>战功总量（后值）</th>
-                    <th>差值</th>
-                    <th>是否达标</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((r) => (
-                    <tr key={r.成员}>
-                      <td>{r.成员}</td>
-                      <td>{r.分组}</td>
-                      <td>{r.前值}</td>
-                      <td>{r.后值}</td>
-                      <td>{r.差值}</td>
-                      <td>{r.达标 ? '出勤' : '未出勤'}</td>
+            {activeSubTab === 'members' && (
+              <div style={{ overflowX: 'auto' }}>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>成员</th>
+                      <th>分组</th>
+                      <th>战功总量（前值）</th>
+                      <th>战功总量（后值）</th>
+                      <th>差值</th>
+                      <th>是否达标</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={r.成员}>
+                        <td>{r.成员}</td>
+                        <td>{r.分组}</td>
+                        <td>{r.前值}</td>
+                        <td>{r.后值}</td>
+                        <td>{r.差值}</td>
+                        <td>{r.达标 ? '出勤' : '未出勤'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             {activeSubTab === 'groups' && (
               <div style={{ overflowX: 'auto' }}>
@@ -579,7 +579,7 @@ function App() {
             </div>
             
             {/* 成员详情 */}
-            {selectedSession.memberData && (
+            {selectedSession.memberData && selectedSession.memberData !== '[]' && (
               <div style={{ marginBottom: '16px' }}>
                 <h4>成员详情</h4>
                 <div style={{ overflowX: 'auto', maxHeight: '300px' }}>
@@ -595,16 +595,24 @@ function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {JSON.parse(selectedSession.memberData).map((member: DisplayRow, index: number) => (
-                        <tr key={index}>
-                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.成员}</td>
-                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.分组}</td>
-                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.前值}</td>
-                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.后值}</td>
-                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.差值}</td>
-                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.达标 ? '出勤' : '未出勤'}</td>
-                        </tr>
-                      ))}
+                      {(() => {
+                        try {
+                          const memberData = JSON.parse(selectedSession.memberData);
+                          return memberData.map((member: DisplayRow, index: number) => (
+                            <tr key={index}>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.成员}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.分组}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.前值}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.后值}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.差值}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.达标 ? '出勤' : '未出勤'}</td>
+                            </tr>
+                          ));
+                        } catch (error) {
+                          console.error('解析成员数据失败:', error);
+                          return <tr><td colSpan={6} style={{ padding: '8px', border: '1px solid #dee2e6', color: 'red' }}>解析成员数据失败</td></tr>;
+                        }
+                      })()}
                     </tbody>
                   </table>
                 </div>
@@ -612,7 +620,7 @@ function App() {
             )}
             
             {/* 小组统计 */}
-            {selectedSession.groupData && (
+            {selectedSession.groupData && selectedSession.groupData !== '[]' && (
               <div style={{ marginBottom: '16px' }}>
                 <h4>小组统计</h4>
                 <div style={{ overflowX: 'auto' }}>
@@ -627,15 +635,23 @@ function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {JSON.parse(selectedSession.groupData).map((group: GroupStat, index: number) => (
-                        <tr key={index}>
-                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.group}</td>
-                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.totalMeritIncrease}</td>
-                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.averageMeritIncrease}</td>
-                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.attendanceRate}%</td>
-                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.memberCount}</td>
-                        </tr>
-                      ))}
+                      {(() => {
+                        try {
+                          const groupData = JSON.parse(selectedSession.groupData);
+                          return groupData.map((group: GroupStat, index: number) => (
+                            <tr key={index}>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.group}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.totalMeritIncrease}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.averageMeritIncrease}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.attendanceRate}%</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.memberCount}</td>
+                            </tr>
+                          ));
+                        } catch (error) {
+                          console.error('解析小组数据失败:', error);
+                          return <tr><td colSpan={5} style={{ padding: '8px', border: '1px solid #dee2e6', color: 'red' }}>解析小组数据失败</td></tr>;
+                        }
+                      })()}
                     </tbody>
                   </table>
                 </div>
