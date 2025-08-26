@@ -601,13 +601,13 @@ function App() {
                           const memberData = JSON.parse(selectedSession.memberData);
                           console.log('解析后的成员数据:', memberData);
                           return memberData.map((member: DisplayRow, index: number) => (
-                            <tr key={index}>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.成员}</td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.分组}</td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.前值}</td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.后值}</td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.差值}</td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.达标 ? '出勤' : '未出勤'}</td>
+                            <tr key={index} style={{ background: member.达标 ? '#d4edda' : '#f8d7da' }}>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.成员}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.分组}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.前值}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.后值}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.差值}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.达标 ? '出勤' : '未出勤'}</td>
                             </tr>
                           ));
                         } catch (error) {
@@ -641,12 +641,12 @@ function App() {
                         try {
                           const groupData = JSON.parse(selectedSession.groupData);
                           return groupData.map((group: GroupStat, index: number) => (
-                            <tr key={index}>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.group}</td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.totalMeritIncrease}</td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.averageMeritIncrease}</td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.attendanceRate}%</td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{group.memberCount}</td>
+                            <tr key={index} style={{ background: '#fff' }}>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{group.group}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{group.totalMeritIncrease}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{group.averageMeritIncrease}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{group.attendanceRate}%</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{group.memberCount}</td>
                             </tr>
                           ));
                         } catch (error) {
