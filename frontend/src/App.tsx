@@ -125,6 +125,8 @@ function App() {
       }
       stats.sort((a, b) => b.总战功增量 - a.总战功增量)
       setGroupStats(stats)
+      console.log('Debug - display rows:', display.length, display.map(r => ({ member: r.成员, group: r.分组 })))
+      console.log('Debug - group stats:', stats)
     } catch (err: any) {
       setError(err?.message ?? '解析失败')
     }
