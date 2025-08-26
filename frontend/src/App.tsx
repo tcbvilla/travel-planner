@@ -26,6 +26,7 @@ function App() {
   const [rows, setRows] = useState<DisplayRow[]>([])
   const [groupStats, setGroupStats] = useState<GroupStat[]>([])
   const [activeTab, setActiveTab] = useState<'members' | 'groups'>('members')
+  const [filteredCount, setFilteredCount] = useState<number>(0)
   const [error, setError] = useState<string | null>(null)
 
   const canCompute = useMemo(() => !!startFile && !!endFile, [startFile, endFile])
@@ -77,14 +78,29 @@ function App() {
         endMap.set(key, r)
       }
       const display: DisplayRow[] = []
+      let filtered = 0
       for (const [member, s] of startMap.entries()) {
         const e = endMap.get(member)
-        const group = (s['分组'] ?? '').toString()
+        // 边界值处理：只出现在一次CSV中的成员不加入统计
+        if (!e) {
+          filtered++
+          continue
+        }
+        
+        const startGroup = (s['分组'] ?? '').toString()
+        const endGroup = (e['分组'] ?? '').toString()
+        // 边界值处理：分组不一致的成员不加入统计
+        if (startGroup !== endGroup) {
+          filtered++
+          continue
+        }
+        
         const prev = numberize(s['战功总量'])
-        const next = numberize(e?.['战功总量'])
+        const next = numberize(e['战功总量'])
         const diff = next - prev
-        display.push({ 成员: member, 分组: group, 前值: prev, 后值: next, 差值: diff, 达标: diff >= threshold })
+        display.push({ 成员: member, 分组: startGroup, 前值: prev, 后值: next, 差值: diff, 达标: diff >= threshold })
       }
+      setFilteredCount(filtered)
       display.sort((a, b) => b.差值 - a.差值)
       setRows(display)
       // 计算小组统计
@@ -142,6 +158,12 @@ function App() {
 
       {error && (
         <div style={{ color: 'red', marginTop: 12 }}>错误：{error}</div>
+      )}
+
+      {filteredCount > 0 && (
+        <div style={{ color: 'orange', marginTop: 12 }}>
+          提示：已过滤 {filteredCount} 个成员（只出现一次或分组不一致）
+        </div>
       )}
 
       {rows.length > 0 && (
