@@ -48,7 +48,8 @@ function App() {
   const [threshold, setThreshold] = useState<number>(1)
   const [rows, setRows] = useState<DisplayRow[]>([])
   const [groupStats, setGroupStats] = useState<GroupStat[]>([])
-  const [activeTab, setActiveTab] = useState<'members' | 'groups' | 'sessions'>('members')
+  const [activeTab, setActiveTab] = useState<'add' | 'view'>('add')
+  const [activeSubTab, setActiveSubTab] = useState<'members' | 'groups'>('members')
   const [filteredCount, setFilteredCount] = useState<number>(0)
   const [error, setError] = useState<string | null>(null)
   
@@ -194,8 +195,8 @@ function App() {
       setSessionName('')
       setBattleResult('VICTORY')
       setError(null)
-      // 切换到考勤记录页面并刷新列表
-      setActiveTab('sessions')
+      // 切换到查看考勤记录页面并刷新列表
+      setActiveTab('view')
       loadSessions()
     } catch (err: any) {
       setError(err?.message ?? '保存失败')
@@ -254,7 +255,46 @@ function App() {
 
   return (
     <div style={{ padding: 16 }}>
-      <h2>考勤展示（CSV 对比）</h2>
+      {/* 主导航菜单 */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '2px solid #dee2e6', paddingBottom: 16 }}>
+        <button
+          onClick={() => setActiveTab('add')}
+          style={{
+            padding: '12px 24px',
+            border: 'none',
+            background: activeTab === 'add' ? '#007bff' : '#f8f9fa',
+            color: activeTab === 'add' ? '#fff' : '#000',
+            cursor: 'pointer',
+            fontSize: '16px',
+            fontWeight: activeTab === 'add' ? 'bold' : 'normal',
+            borderRadius: '4px 4px 0 0'
+          }}
+        >
+          添加考勤
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab('view')
+            loadSessions()
+          }}
+          style={{
+            padding: '12px 24px',
+            border: 'none',
+            background: activeTab === 'view' ? '#007bff' : '#f8f9fa',
+            color: activeTab === 'view' ? '#fff' : '#000',
+            cursor: 'pointer',
+            fontSize: '16px',
+            fontWeight: activeTab === 'view' ? 'bold' : 'normal',
+            borderRadius: '4px 4px 0 0'
+          }}
+        >
+          查看考勤记录
+        </button>
+      </div>
+
+      {activeTab === 'add' && (
+        <div>
+          <h2>添加考勤</h2>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <label>
           起始CSV：
@@ -288,9 +328,12 @@ function App() {
         </div>
       )}
 
-      {activeTab === 'sessions' && (
-        <div style={{ marginTop: 16 }}>
-          <h3>考勤记录列表</h3>
+        </div>
+      )}
+
+      {activeTab === 'view' && (
+        <div>
+          <h2>查看考勤记录</h2>
           
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -390,50 +433,35 @@ function App() {
               </div>
             </div>
             
-            {/* 菜单栏 */}
+            {/* 子标签栏 */}
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
               <button
-                onClick={() => setActiveTab('members')}
+                onClick={() => setActiveSubTab('members')}
                 style={{
                   padding: '8px 16px',
                   border: '1px solid #ccc',
-                  background: activeTab === 'members' ? '#007bff' : '#fff',
-                  color: activeTab === 'members' ? '#fff' : '#000',
+                  background: activeSubTab === 'members' ? '#007bff' : '#fff',
+                  color: activeSubTab === 'members' ? '#fff' : '#000',
                   cursor: 'pointer'
                 }}
               >
                 成员详情
               </button>
               <button
-                onClick={() => setActiveTab('groups')}
+                onClick={() => setActiveSubTab('groups')}
                 style={{
                   padding: '8px 16px',
                   border: '1px solid #ccc',
-                  background: activeTab === 'groups' ? '#007bff' : '#fff',
-                  color: activeTab === 'groups' ? '#fff' : '#000',
+                  background: activeSubTab === 'groups' ? '#007bff' : '#fff',
+                  color: activeSubTab === 'groups' ? '#fff' : '#000',
                   cursor: 'pointer'
                 }}
               >
                 小组统计
               </button>
-              <button
-                onClick={() => {
-                  setActiveTab('sessions')
-                  loadSessions()
-                }}
-                style={{
-                  padding: '8px 16px',
-                  border: '1px solid #ccc',
-                  background: activeTab === 'sessions' ? '#007bff' : '#fff',
-                  color: activeTab === 'sessions' ? '#fff' : '#000',
-                  cursor: 'pointer'
-                }}
-              >
-                查看考勤记录
-              </button>
             </div>
 
-          {activeTab === 'members' && (
+                      {activeSubTab === 'members' && (
             <div style={{ overflowX: 'auto' }}>
               <table>
                 <thead>
@@ -462,7 +490,7 @@ function App() {
             </div>
           )}
 
-          {activeTab === 'groups' && (
+                      {activeSubTab === 'groups' && (
             <div style={{ overflowX: 'auto' }}>
               <table>
                 <thead>
