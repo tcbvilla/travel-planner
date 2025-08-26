@@ -477,26 +477,26 @@ function App() {
 
             {activeSubTab === 'members' && (
               <div style={{ overflowX: 'auto' }}>
-                <table>
+                <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #dee2e6' }}>
                   <thead>
-                    <tr>
-                      <th>成员</th>
-                      <th>分组</th>
-                      <th>战功总量（前值）</th>
-                      <th>战功总量（后值）</th>
-                      <th>差值</th>
-                      <th>是否达标</th>
+                    <tr style={{ background: '#f8f9fa' }}>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>成员</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>分组</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>战功总量（前值）</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>战功总量（后值）</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>差值</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>是否达标</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((r) => (
-                      <tr key={r.成员}>
-                        <td>{r.成员}</td>
-                        <td>{r.分组}</td>
-                        <td>{r.前值}</td>
-                        <td>{r.后值}</td>
-                        <td>{r.差值}</td>
-                        <td>{r.达标 ? '出勤' : '未出勤'}</td>
+                      <tr key={r.成员} style={{ background: r.达标 ? '#d4edda' : '#f8d7da' }}>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.成员}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.分组}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.前值}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.后值}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.差值}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.达标 ? '出勤' : '未出勤'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -506,24 +506,24 @@ function App() {
 
             {activeSubTab === 'groups' && (
               <div style={{ overflowX: 'auto' }}>
-                <table>
+                <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #dee2e6' }}>
                   <thead>
-                    <tr>
-                      <th>分组</th>
-                      <th>总战功增量</th>
-                      <th>人均战功增量</th>
-                      <th>出勤率（%）</th>
-                      <th>小组人数</th>
+                    <tr style={{ background: '#f8f9fa' }}>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>分组</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>总战功增量</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>人均战功增量</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>出勤率（%）</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>小组人数</th>
                     </tr>
                   </thead>
                   <tbody>
                     {groupStats.map((g) => (
-                      <tr key={g.group}>
-                        <td>{g.group}</td>
-                        <td>{g.totalMeritIncrease}</td>
-                        <td>{g.averageMeritIncrease}</td>
-                        <td>{g.attendanceRate}%</td>
-                        <td>{g.memberCount}</td>
+                      <tr key={g.group} style={{ background: '#fff' }}>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{g.group}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{g.totalMeritIncrease}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{g.averageMeritIncrease}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{g.attendanceRate}%</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{g.memberCount}</td>
                       </tr>
                     ))}
                   </tbody>
