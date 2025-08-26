@@ -492,12 +492,12 @@ function App() {
                   <tbody>
                     {rows.map((r) => (
                       <tr key={r.成员} style={{ background: r.达标 ? '#d4edda' : '#f8d7da' }}>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.成员}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.分组}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.前值}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.后值}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.差值}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.达标 ? '出勤' : '未出勤'}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.成员}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.分组}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.前值}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.后值}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.差值}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.达标 ? '出勤' : '未出勤'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -520,11 +520,11 @@ function App() {
                   <tbody>
                     {groupStats.map((g) => (
                       <tr key={g.group} style={{ background: '#fff' }}>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{g.group}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{g.totalMeritIncrease}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{g.averageMeritIncrease}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{g.attendanceRate}%</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{g.memberCount}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{g.group}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{g.totalMeritIncrease}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{g.averageMeritIncrease}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{g.attendanceRate}%</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{g.memberCount}</td>
                       </tr>
                     ))}
                   </tbody>
