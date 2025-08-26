@@ -1,13 +1,5 @@
 import { useMemo, useState } from 'react'
-import Papa from 'papaparse'
 import './App.css'
-
-type Row = {
-  成员: string
-  分组?: string
-  战功总量?: string | number
-  [key: string]: unknown
-}
 
 type DisplayRow = {
   成员: string
@@ -16,12 +8,6 @@ type DisplayRow = {
   后值: number
   差值: number
   达标: boolean
-}
-
-const numberize = (v: unknown): number => {
-  if (typeof v === 'number') return v
-  if (typeof v === 'string') return Number(v.toString().replace(/,/g, '').trim()) || 0
-  return 0
 }
 
 function App() {
@@ -33,63 +19,26 @@ function App() {
 
   const canCompute = useMemo(() => !!startFile && !!endFile, [startFile, endFile])
 
-  const parseCsv = (file: File): Promise<Row[]> => {
-    return new Promise((resolve, reject) => {
-      Papa.parse<Row>(file, {
-        header: true,
-        skipEmptyLines: true,
-        transformHeader: (h: string) => h.trim(),
-        complete: (result: Papa.ParseResult<Row>) => {
-          if (result.errors?.length) {
-            reject(new Error(result.errors.map((e) => e.message).join('; ')))
-            return
-          }
-          resolve(result.data)
-        },
-        error: (err: any) => reject(err),
-      })
-    })
-  }
 
   const compute = async () => {
     setError(null)
     setRows([])
     if (!startFile || !endFile) return
     try {
-      const [startData, endData] = await Promise.all([parseCsv(startFile), parseCsv(endFile)])
+      // 调用后端统一计算接口
+      const form = new FormData()
+      form.append('start', startFile)
+      form.append('end', endFile)
+      form.append('threshold', String(threshold))
 
-      // 索引起始快照（以成员为主键）
-      const startMap = new Map<string, Row>()
-      for (const r of startData) {
-        const key = (r['成员'] ?? '').toString().trim()
-        if (!key) continue
-        startMap.set(key, r)
-      }
+      const resp = await fetch('http://localhost:8080/api/v1/attendance/compare', {
+        method: 'POST',
+        body: form,
+      })
+      if (!resp.ok) throw new Error(`后端错误: ${resp.status}`)
+      const data = await resp.json()
 
-      // 生成展示行（以起始快照为准）
-      const endMap = new Map<string, Row>()
-      for (const r of endData) {
-        const key = (r['成员'] ?? '').toString().trim()
-        if (!key) continue
-        endMap.set(key, r)
-      }
-
-      const display: DisplayRow[] = []
-      for (const [member, s] of startMap.entries()) {
-        const e = endMap.get(member)
-        const group = (s['分组'] ?? '').toString()
-        const prev = numberize(s['战功总量'])
-        const next = numberize(e?.['战功总量'])
-        const diff = next - prev
-        display.push({ 成员: member, 分组: group, 前值: prev, 后值: next, 差值: diff, 达标: diff >= threshold })
-      }
-
-      // 可选：找出结束快照中新增的成员（不在起始中）
-      // 需求不要求展示，若需要可在此追加
-
-      // 简单排序：按差值降序
-      display.sort((a, b) => b.差值 - a.差值)
-      setRows(display)
+      setRows(data as DisplayRow[])
     } catch (err: any) {
       setError(err?.message ?? '解析失败')
     }
