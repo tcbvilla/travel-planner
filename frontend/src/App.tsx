@@ -105,14 +105,17 @@ function App() {
       setRows(display)
       // 计算小组统计
       const groupMap = new Map<string, { total: number; count: number; present: number }>()
+      console.log('Debug - starting group calculation with', display.length, 'rows')
       for (const row of display) {
         const group = row.分组
+        console.log('Debug - processing member:', row.成员, 'group:', group, 'diff:', row.差值, 'qualified:', row.达标)
         const existing = groupMap.get(group) || { total: 0, count: 0, present: 0 }
         existing.total += row.差值
         existing.count += 1
         if (row.达标) existing.present += 1
         groupMap.set(group, existing)
       }
+      console.log('Debug - groupMap entries:', Array.from(groupMap.entries()))
       const stats: GroupStat[] = []
       for (const [group, data] of groupMap.entries()) {
         stats.push({
