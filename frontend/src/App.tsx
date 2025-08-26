@@ -184,16 +184,20 @@ function App() {
     }
     
     try {
-      const params = new URLSearchParams({
+      const requestBody = {
         name: sessionName,
         battleResult: battleResult,
         memberData: JSON.stringify(rows),
         groupData: JSON.stringify(groupStats),
-        threshold: threshold.toString()
-      })
+        threshold: threshold
+      }
       
-      const resp = await fetch(`http://localhost:8080/api/v1/attendance/save-session?${params}`, {
-        method: 'POST'
+      const resp = await fetch(`http://localhost:8080/api/v1/attendance/save-session`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
       })
       
       if (!resp.ok) throw new Error(`保存失败: ${resp.status}`)
