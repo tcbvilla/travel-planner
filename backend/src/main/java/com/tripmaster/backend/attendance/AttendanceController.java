@@ -160,25 +160,24 @@ public class AttendanceController {
                 gs.setAverageMeritIncrease(0);
                 gs.setAttendanceRate(0.0);
                 gs.setMemberCount(0);
+                gs.setAttendedCount(0); // 新增：达标人数
                 return gs;
             });
             
             stat.setTotalMeritIncrease(stat.getTotalMeritIncrease() + member.get差值());
             stat.setMemberCount(stat.getMemberCount() + 1);
             if (member.is达标()) {
-                // 计算出勤率
-                double currentRate = stat.getAttendanceRate();
-                int currentCount = stat.getMemberCount();
-                stat.setAttendanceRate(((currentRate * (currentCount - 1)) + 100.0) / currentCount);
+                stat.setAttendedCount(stat.getAttendedCount() + 1);
             }
         }
         
-        // 计算人均战功增量
+        // 计算人均战功增量和出勤率
         for (GroupStat stat : groupMap.values()) {
             if (stat.getMemberCount() > 0) {
                 stat.setAverageMeritIncrease(stat.getTotalMeritIncrease() / stat.getMemberCount());
-                // 保留2位小数
-                stat.setAttendanceRate(Math.round(stat.getAttendanceRate() * 100.0) / 100.0);
+                // 计算出勤率：达标人数 / 总人数 * 100%
+                double attendanceRate = (double) stat.getAttendedCount() / stat.getMemberCount() * 100.0;
+                stat.setAttendanceRate(Math.round(attendanceRate * 100.0) / 100.0);
             }
         }
         

@@ -9,4 +9,5 @@ public class GroupStat {
     private long averageMeritIncrease;
     private double attendanceRate;
     private int memberCount;
+    private int attendedCount; // 达标人数
 }

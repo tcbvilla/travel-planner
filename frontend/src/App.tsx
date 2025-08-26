@@ -65,6 +65,7 @@ function App() {
   const [battleResult, setBattleResult] = useState<'VICTORY' | 'DEFEAT'>('VICTORY')
   const [showSessionModal, setShowSessionModal] = useState(false)
   const [selectedSession, setSelectedSession] = useState<AttendanceSession | null>(null)
+  const [modalActiveTab, setModalActiveTab] = useState<'members' | 'groups'>('members')
 
 
   const canCompute = useMemo(() => !!startFile && !!endFile, [startFile, endFile])
@@ -578,20 +579,47 @@ function App() {
               <p><strong>更新时间：</strong>{new Date(selectedSession.updatedAt).toLocaleString()}</p>
             </div>
             
+            {/* 页签栏 */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              <button
+                onClick={() => setModalActiveTab('members')}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid #ccc',
+                  background: modalActiveTab === 'members' ? '#007bff' : '#fff',
+                  color: modalActiveTab === 'members' ? '#fff' : '#000',
+                  cursor: 'pointer'
+                }}
+              >
+                成员详情
+              </button>
+              <button
+                onClick={() => setModalActiveTab('groups')}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid #ccc',
+                  background: modalActiveTab === 'groups' ? '#007bff' : '#fff',
+                  color: modalActiveTab === 'groups' ? '#fff' : '#000',
+                  cursor: 'pointer'
+                }}
+              >
+                小组统计
+              </button>
+            </div>
+            
             {/* 成员详情 */}
-            {selectedSession.memberData && selectedSession.memberData !== '[]' && (
+            {modalActiveTab === 'members' && selectedSession.memberData && selectedSession.memberData !== '[]' && (
               <div style={{ marginBottom: '16px' }}>
-                <h4>成员详情</h4>
                 <div style={{ overflowX: 'auto', maxHeight: '300px' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr style={{ background: '#f8f9fa' }}>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>成员</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>分组</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>前值</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>后值</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>差值</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>是否达标</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>成员</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>分组</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>前值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>后值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>差值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>是否达标</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -622,18 +650,17 @@ function App() {
             )}
             
             {/* 小组统计 */}
-            {selectedSession.groupData && selectedSession.groupData !== '[]' && (
+            {modalActiveTab === 'groups' && selectedSession.groupData && selectedSession.groupData !== '[]' && (
               <div style={{ marginBottom: '16px' }}>
-                <h4>小组统计</h4>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr style={{ background: '#f8f9fa' }}>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>分组</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>总战功增量</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>人均战功增量</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>出勤率（%）</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>小组人数</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>分组</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>总战功增量</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>人均战功增量</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>出勤率（%）</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>小组人数</th>
                       </tr>
                     </thead>
                     <tbody>
