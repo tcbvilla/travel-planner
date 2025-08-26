@@ -597,7 +597,9 @@ function App() {
                     <tbody>
                       {(() => {
                         try {
+                          console.log('解析成员数据:', selectedSession.memberData);
                           const memberData = JSON.parse(selectedSession.memberData);
+                          console.log('解析后的成员数据:', memberData);
                           return memberData.map((member: DisplayRow, index: number) => (
                             <tr key={index}>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{member.成员}</td>
@@ -610,7 +612,7 @@ function App() {
                           ));
                         } catch (error) {
                           console.error('解析成员数据失败:', error);
-                          return <tr><td colSpan={6} style={{ padding: '8px', border: '1px solid #dee2e6', color: 'red' }}>解析成员数据失败</td></tr>;
+                          return <tr><td colSpan={6} style={{ padding: '8px', border: '1px solid #dee2e6', color: 'red' }}>解析成员数据失败: {error instanceof Error ? error.message : String(error)}</td></tr>;
                         }
                       })()}
                     </tbody>
@@ -649,7 +651,7 @@ function App() {
                           ));
                         } catch (error) {
                           console.error('解析小组数据失败:', error);
-                          return <tr><td colSpan={5} style={{ padding: '8px', border: '1px solid #dee2e6', color: 'red' }}>解析小组数据失败</td></tr>;
+                          return <tr><td colSpan={5} style={{ padding: '8px', border: '1px solid #dee2e6', color: 'red' }}>解析小组数据失败: {error instanceof Error ? error.message : String(error)}</td></tr>;
                         }
                       })()}
                     </tbody>
