@@ -15,6 +15,7 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @RestController
 @RequestMapping("/api/v1/attendance")
@@ -101,7 +102,7 @@ public class AttendanceController {
         session.setBattleResult(request.getBattleResult());
         session.setStatus(SessionStatus.ADDED);
         session.setMemberData(request.getMemberData());
-        session.setGroupData(request.getGroupData());
+        // 移除小组统计数据的保存，改为实时计算
         session.setThreshold(request.getThreshold());
         return attendanceSessionRepository.save(session);
     }
@@ -124,9 +125,29 @@ public class AttendanceController {
      * 获取考勤会话详情
      */
     @GetMapping("/sessions/{id}")
-    public AttendanceSession getSession(@PathVariable Long id) {
-        return attendanceSessionRepository.findById(id)
+    public Map<String, Object> getSession(@PathVariable Long id) {
+        AttendanceSession session = attendanceSessionRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("考勤会话不存在"));
+        
+        // 实时计算小组统计
+        List<GroupStat> groupStats = new ArrayList<>();
+        if (session.getMemberData() != null && !session.getMemberData().isEmpty()) {
+            try {
+                ObjectMapper mapper = new ObjectMapper();
+                List<DisplayRow> members = mapper.readValue(session.getMemberData(), 
+                    mapper.getTypeFactory().constructCollectionType(List.class, DisplayRow.class));
+                groupStats = calculateGroupStats(members);
+            } catch (Exception e) {
+                // 如果解析失败，返回空的小组统计
+                groupStats = new ArrayList<>();
+            }
+        }
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("session", session);
+        response.put("groupStats", groupStats);
+        
+        return response;
     }
     
     /**

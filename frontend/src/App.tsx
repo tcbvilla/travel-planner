@@ -213,7 +213,7 @@ function App() {
         name: sessionName,
         battleResult: battleResult,
         memberData: JSON.stringify(rows),
-        groupData: JSON.stringify(groupStats),
+        // 移除小组统计数据的保存，改为实时计算
         threshold: threshold
       }
       
@@ -261,9 +261,20 @@ function App() {
       console.log('API响应状态:', resp.status)
       if (!resp.ok) throw new Error(`加载失败: ${resp.status}`)
       
-      const session = await resp.json() as AttendanceSession
-      console.log('会话数据:', session)
-      setSelectedSession(session)
+      const data = await resp.json()
+      console.log('会话数据:', data)
+      
+      // 处理新的API响应格式
+      const session = data.session as AttendanceSession
+      const groupStats = data.groupStats as GroupStat[]
+      
+      // 将小组统计数据添加到会话对象中，用于弹窗显示
+      const sessionWithGroupStats = {
+        ...session,
+        groupData: JSON.stringify(groupStats)
+      }
+      
+      setSelectedSession(sessionWithGroupStats)
       setShowSessionModal(true)
     } catch (err: any) {
       console.error('查看会话错误:', err)
