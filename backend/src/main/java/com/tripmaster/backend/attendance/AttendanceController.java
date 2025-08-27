@@ -141,9 +141,40 @@ public class AttendanceController {
         
         session.setBattleResult(request.getBattleResult());
         session.setStatus(SessionStatus.ADDED);
-        session.setMemberData(request.getMemberData());
-        // 移除小组统计数据的保存，改为实时计算
         session.setThreshold(request.getThreshold());
+        
+        // 处理成员数据：将DisplayRow转换为MemberData，只保存基础字段
+        if (request.getMemberData() != null && !request.getMemberData().isEmpty()) {
+            try {
+                ObjectMapper mapper = new ObjectMapper();
+                // 解析为DisplayRow
+                List<DisplayRow> displayRows = mapper.readValue(request.getMemberData(), 
+                    mapper.getTypeFactory().constructCollectionType(List.class, DisplayRow.class));
+                
+                // 转换为MemberData，只保存基础字段
+                List<MemberData> memberDataList = new ArrayList<>();
+                for (DisplayRow row : displayRows) {
+                    MemberData memberData = new MemberData();
+                    memberData.set成员(row.get成员());
+                    memberData.set分组(row.get分组());
+                    memberData.set前值(row.get前值());
+                    memberData.set后值(row.get后值());
+                    memberData.set助攻前值(row.get助攻前值());
+                    memberData.set助攻后值(row.get助攻后值());
+                    memberData.set参加考勤(row.is参加考勤());
+                    memberDataList.add(memberData);
+                }
+                
+                // 保存为JSON字符串
+                session.setMemberData(mapper.writeValueAsString(memberDataList));
+                
+            } catch (Exception e) {
+                // 如果转换失败，直接保存原始数据
+                session.setMemberData(request.getMemberData());
+            }
+        } else {
+            session.setMemberData(request.getMemberData());
+        }
         
         return attendanceSessionRepository.save(session);
     }
@@ -175,16 +206,56 @@ public class AttendanceController {
         if (session.getMemberData() != null && !session.getMemberData().isEmpty()) {
             try {
                 ObjectMapper mapper = new ObjectMapper();
-                // 直接解析为DisplayRow，因为数据库中存储的数据包含计算字段
-                List<DisplayRow> members = mapper.readValue(session.getMemberData(), 
-                    mapper.getTypeFactory().constructCollectionType(List.class, DisplayRow.class));
                 
-                // 重新计算达标状态，确保使用当前的threshold
-                for (DisplayRow member : members) {
-                    member.set达标((member.get后值() - member.get前值()) >= session.getThreshold());
+                // 尝试解析为MemberData（新保存的数据格式）
+                List<MemberData> memberDataList = null;
+                try {
+                    memberDataList = mapper.readValue(session.getMemberData(), 
+                        mapper.getTypeFactory().constructCollectionType(List.class, MemberData.class));
+                } catch (Exception e) {
+                    // 如果解析MemberData失败，尝试解析为DisplayRow（旧数据格式）
+                    List<DisplayRow> displayRows = mapper.readValue(session.getMemberData(), 
+                        mapper.getTypeFactory().constructCollectionType(List.class, DisplayRow.class));
+                    
+                    // 转换为MemberData
+                    memberDataList = new ArrayList<>();
+                    for (DisplayRow row : displayRows) {
+                        MemberData memberData = new MemberData();
+                        memberData.set成员(row.get成员());
+                        memberData.set分组(row.get分组());
+                        memberData.set前值(row.get前值());
+                        memberData.set后值(row.get后值());
+                        memberData.set助攻前值(row.get助攻前值());
+                        memberData.set助攻后值(row.get助攻后值());
+                        memberData.set参加考勤(row.is参加考勤());
+                        memberDataList.add(memberData);
+                    }
+                }
+                
+                // 将MemberData转换为DisplayRow，计算所有派生字段
+                List<DisplayRow> members = new ArrayList<>();
+                for (MemberData memberData : memberDataList) {
+                    DisplayRow row = new DisplayRow();
+                    row.set成员(memberData.get成员());
+                    row.set分组(memberData.get分组());
+                    row.set前值(memberData.get前值());
+                    row.set后值(memberData.get后值());
+                    row.set助攻前值(memberData.get助攻前值());
+                    row.set助攻后值(memberData.get助攻后值());
+                    row.set参加考勤(memberData.is参加考勤());
+                    
+                    // 计算派生字段
+                    row.set差值(memberData.get后值() - memberData.get前值());
+                    row.set助攻差值(memberData.get助攻后值() - memberData.get助攻前值());
+                    row.set达标((memberData.get后值() - memberData.get前值()) >= session.getThreshold());
+                    
+                    members.add(row);
                 }
                 
                 groupStats = calculateGroupStats(members);
+                
+                // 将重新计算后的成员数据也返回给前端
+                session.setMemberData(mapper.writeValueAsString(members));
                 
             } catch (Exception e) {
                 // 如果解析失败，返回空的小组统计

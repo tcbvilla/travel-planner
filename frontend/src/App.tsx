@@ -249,7 +249,7 @@ function App() {
     if (!selectedSession) return
     
     try {
-      // 重新获取会话数据（包含重新计算的小组统计）
+      // 重新获取会话数据（包含重新计算的小组统计和成员数据）
       const response = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${selectedSession.id}`)
       if (response.ok) {
         const data = await response.json()
@@ -508,8 +508,20 @@ function App() {
         loadSessions(currentPage)
         // 如果当前查看的是这个会话，也更新selectedSession
         if (selectedSession && selectedSession.id === sessionId) {
-          const updatedSession = await response.json()
-          setSelectedSession(updatedSession)
+          // 重新获取完整的会话数据（包括小组统计）
+          const sessionResponse = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${sessionId}`)
+          if (sessionResponse.ok) {
+            const data = await sessionResponse.json()
+            const session = data.session as AttendanceSession
+            const groupStats = data.groupStats as GroupStat[]
+            
+            // 更新会话数据，包含重新计算的小组统计
+            const updatedSession = {
+              ...session,
+              groupData: JSON.stringify(groupStats)
+            }
+            setSelectedSession(updatedSession)
+          }
         }
       }
     } catch (error) {
