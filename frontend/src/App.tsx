@@ -40,6 +40,8 @@ type AttendanceSession = {
   memberData?: string
   groupData?: string
   threshold?: number
+  startTime?: string
+  endTime?: string
 }
 
 type PageResponse<T> = {
@@ -464,7 +466,9 @@ function App() {
         battleResult: battleResult,
         memberData: JSON.stringify(rows),
         // 移除小组统计数据的保存，改为实时计算
-        threshold: threshold
+        threshold: threshold,
+        startTime: startFile?.name || '',
+        endTime: endFile?.name || ''
       }
       
       const resp = await fetch(`http://localhost:8080/api/v1/attendance/save-session`, {
@@ -657,6 +661,8 @@ function App() {
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>考勤名称</th>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>战役结果</th>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>出勤标准</th>
+                  <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>起始时间</th>
+                  <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>结束时间</th>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>状态</th>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>创建时间</th>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>操作</th>
@@ -671,6 +677,12 @@ function App() {
                     </td>
                     <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                       {session.threshold || '未设置'}
+                    </td>
+                    <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                      {session.startTime ? new Date(session.startTime).toLocaleString() : '未设置'}
+                    </td>
+                    <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                      {session.endTime ? new Date(session.endTime).toLocaleString() : '未设置'}
                     </td>
                     <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                       {session.status === 'ADDED' && '已添加'}

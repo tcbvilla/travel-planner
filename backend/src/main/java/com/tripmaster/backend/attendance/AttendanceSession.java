@@ -38,6 +38,12 @@ public class AttendanceSession {
     @Column
     private Integer threshold; // 出勤标准
     
+    @Column
+    private LocalDateTime startTime; // 起始时间
+    
+    @Column
+    private LocalDateTime endTime; // 结束时间
+    
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

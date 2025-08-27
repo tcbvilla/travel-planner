@@ -16,6 +16,8 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 @RestController
 @RequestMapping("/api/v1/attendance")
@@ -107,6 +109,15 @@ public class AttendanceController {
         session.setMemberData(request.getMemberData());
         // 移除小组统计数据的保存，改为实时计算
         session.setThreshold(request.getThreshold());
+        
+        // 解析并设置时间
+        if (request.getStartTime() != null && !request.getStartTime().isEmpty()) {
+            session.setStartTime(parseTimeFromFileName(request.getStartTime()));
+        }
+        if (request.getEndTime() != null && !request.getEndTime().isEmpty()) {
+            session.setEndTime(parseTimeFromFileName(request.getEndTime()));
+        }
+        
         return attendanceSessionRepository.save(session);
     }
     
@@ -230,6 +241,38 @@ public class AttendanceController {
         result.sort((a, b) -> Long.compare(b.getTotalMeritIncrease(), a.getTotalMeritIncrease()));
         
         return result;
+    }
+
+    /**
+     * 从文件名解析时间
+     * 文件名格式：同盟统计2025年07月28日00时00分00秒.csv
+     */
+    private LocalDateTime parseTimeFromFileName(String fileName) {
+        try {
+            // 移除.csv扩展名
+            String nameWithoutExt = fileName.replace(".csv", "");
+            
+            // 使用正则表达式提取时间部分
+            // 匹配格式：2025年07月28日00时00分00秒
+            String timePattern = "(\\d{4})年(\\d{2})月(\\d{2})日(\\d{2})时(\\d{2})分(\\d{2})秒";
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(timePattern);
+            java.util.regex.Matcher matcher = pattern.matcher(nameWithoutExt);
+            
+            if (matcher.find()) {
+                int year = Integer.parseInt(matcher.group(1));
+                int month = Integer.parseInt(matcher.group(2));
+                int day = Integer.parseInt(matcher.group(3));
+                int hour = Integer.parseInt(matcher.group(4));
+                int minute = Integer.parseInt(matcher.group(5));
+                int second = Integer.parseInt(matcher.group(6));
+                
+                return LocalDateTime.of(year, month, day, hour, minute, second);
+            } else {
+                throw new IllegalArgumentException("文件名格式不正确，无法解析时间");
+            }
+        } catch (Exception e) {
+            throw new IllegalArgumentException("解析文件名时间失败: " + e.getMessage());
+        }
     }
 
     private List<Map<String, String>> readCsv(InputStreamReader isr) throws Exception {
