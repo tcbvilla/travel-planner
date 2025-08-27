@@ -6,8 +6,8 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/game_attendance
     driver-class-name: org.postgresql.Driver
-    username: ${USER}
-    password: 
+    username: postgres
+    password: postgres 
   jpa:
     hibernate:
       ddl-auto: update

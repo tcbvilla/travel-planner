@@ -106,16 +106,59 @@ function App() {
     }
   }
 
+  // 新增函数：验证表单数据
+  const validateForm = () => {
+    if (taskStatus === '成功') {
+      // 成功情况：必须填写出勤率阈值，出勤率排名和战功增量排名只能选择一个
+      if (!attendanceRateSuccess) {
+        alert('请填写出勤率阈值')
+        return false
+      }
+      if (!attendanceRankSuccess && !meritRankSuccess) {
+        alert('请至少选择一个排名条件（出勤率排名或战功增量排名）')
+        return false
+      }
+      if (attendanceRankSuccess && meritRankSuccess) {
+        alert('出勤率排名和战功增量排名只能选择一个')
+        return false
+      }
+      if (!rewardTypeSuccess) {
+        alert('请选择奖励类型')
+        return false
+      }
+    } else {
+      // 失败情况：必须填写出勤率阈值和排名
+      if (!attendanceRateFailure) {
+        alert('请填写出勤率阈值')
+        return false
+      }
+      if (!attendanceRankFailure) {
+        alert('请选择出勤率排名')
+        return false
+      }
+      if (!penaltyTypeFailure) {
+        alert('请选择处罚类型')
+        return false
+      }
+    }
+    return true
+  }
+
   // 新增函数：保存奖惩条件
   const saveRewardCondition = async () => {
     if (!selectedSession) return
+    
+    // 验证表单
+    if (!validateForm()) {
+      return
+    }
     
     const requestData = {
       attendanceSessionId: selectedSession.id,
       taskStatus: taskStatus,
       attendanceRateThreshold: taskStatus === '成功' ? attendanceRateSuccess : attendanceRateFailure,
-      attendanceRateRank: taskStatus === '成功' ? attendanceRankSuccess : attendanceRankFailure,
-      meritIncreaseRank: taskStatus === '成功' ? meritRankSuccess : null,
+      attendanceRateRank: taskStatus === '成功' ? (attendanceRankSuccess || null) : attendanceRankFailure,
+      meritIncreaseRank: taskStatus === '成功' ? (meritRankSuccess || null) : null,
       rewardType: taskStatus === '成功' ? rewardTypeSuccess : null,
       penaltyType: taskStatus === '失败' ? penaltyTypeFailure : null
     }
@@ -160,8 +203,8 @@ function App() {
     
     if (condition.taskStatus === '成功') {
       setAttendanceRateSuccess(condition.attendanceRateThreshold || '')
-      setAttendanceRankSuccess(String(condition.attendanceRateRank || '1'))
-      setMeritRankSuccess(String(condition.meritIncreaseRank || '1'))
+      setAttendanceRankSuccess(condition.attendanceRateRank ? String(condition.attendanceRateRank) : '')
+      setMeritRankSuccess(condition.meritIncreaseRank ? String(condition.meritIncreaseRank) : '')
       setRewardTypeSuccess(condition.rewardType || '648')
     } else {
       setAttendanceRateFailure(condition.attendanceRateThreshold || '')
@@ -174,12 +217,17 @@ function App() {
   const updateRewardCondition = async () => {
     if (!editingCondition) return
     
+    // 验证表单
+    if (!validateForm()) {
+      return
+    }
+    
     const requestData = {
       attendanceSessionId: selectedSession?.id,
       taskStatus: taskStatus,
       attendanceRateThreshold: taskStatus === '成功' ? attendanceRateSuccess : attendanceRateFailure,
-      attendanceRateRank: taskStatus === '成功' ? attendanceRankSuccess : attendanceRankFailure,
-      meritIncreaseRank: taskStatus === '成功' ? meritRankSuccess : null,
+      attendanceRateRank: taskStatus === '成功' ? (attendanceRankSuccess || null) : attendanceRankFailure,
+      meritIncreaseRank: taskStatus === '成功' ? (meritRankSuccess || null) : null,
       rewardType: taskStatus === '成功' ? rewardTypeSuccess : null,
       penaltyType: taskStatus === '失败' ? penaltyTypeFailure : null
     }
@@ -220,8 +268,8 @@ function App() {
   const resetRewardForm = () => {
     setTaskStatus('成功')
     setAttendanceRateSuccess('')
-    setAttendanceRankSuccess('1')
-    setMeritRankSuccess('1')
+    setAttendanceRankSuccess('')
+    setMeritRankSuccess('')
     setRewardTypeSuccess('648')
     setAttendanceRateFailure('')
     setAttendanceRankFailure('1')
@@ -995,7 +1043,12 @@ function App() {
                           <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>出勤率第</label>
                           <select 
                             value={attendanceRankSuccess}
-                            onChange={(e) => setAttendanceRankSuccess(e.target.value)}
+                            onChange={(e) => {
+                              setAttendanceRankSuccess(e.target.value)
+                              if (e.target.value) {
+                                setMeritRankSuccess('') // 清空战功增量排名
+                              }
+                            }}
                             style={{ 
                               padding: '8px 12px', 
                               border: '2px solid #007bff', 
@@ -1005,6 +1058,7 @@ function App() {
                               minWidth: '150px'
                             }}
                           >
+                            <option value="">请选择</option>
                             <option value="1">1</option>
                             <option value="2">2</option>
                             <option value="3">3</option>
@@ -1019,7 +1073,12 @@ function App() {
                           <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>战功增量第</label>
                           <select 
                             value={meritRankSuccess}
-                            onChange={(e) => setMeritRankSuccess(e.target.value)}
+                            onChange={(e) => {
+                              setMeritRankSuccess(e.target.value)
+                              if (e.target.value) {
+                                setAttendanceRankSuccess('') // 清空出勤率排名
+                              }
+                            }}
                             style={{ 
                               padding: '8px 12px', 
                               border: '2px solid #007bff', 
@@ -1029,6 +1088,7 @@ function App() {
                               minWidth: '150px'
                             }}
                           >
+                            <option value="">请选择</option>
                             <option value="1">1</option>
                             <option value="2">2</option>
                             <option value="3">3</option>
@@ -1193,7 +1253,7 @@ function App() {
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>
                                 {condition.taskStatus === '成功' ? '出勤率第' : '出勤率倒数第'}{condition.attendanceRateRank}名
-                                {condition.taskStatus === '成功' && condition.meritIncreaseRank && (
+                                {condition.taskStatus === '成功' && condition.meritIncreaseRank && condition.meritIncreaseRank !== '' && (
                                   <>, 战功增量第{condition.meritIncreaseRank}名</>
                                 )}
                               </td>
