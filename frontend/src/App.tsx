@@ -780,6 +780,111 @@ function App() {
                     </p>
                   </div>
                 </div>
+                
+                {/* 奖励规则表单 */}
+                <div style={{ marginTop: '16px', padding: '16px', border: '2px solid #007bff', borderRadius: '4px', background: '#fff' }}>
+                  <h4 style={{ margin: '0 0 16px 0', color: '#495057' }}>奖励规则设置</h4>
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {/* 第一行：若任务 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>若任务</label>
+                      <select 
+                        style={{ 
+                          padding: '8px 12px', 
+                          border: '2px solid #007bff', 
+                          borderRadius: '4px', 
+                          color: '#dc3545', 
+                          background: '#fff',
+                          minWidth: '120px'
+                        }}
+                      >
+                        <option value="success">成功</option>
+                        <option value="failure">失败</option>
+                      </select>
+                    </div>
+                    
+                    {/* 第二行：出勤率大于 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>出勤率大于</label>
+                      <input 
+                        type="number" 
+                        placeholder="填写数字百分比" 
+                        style={{ 
+                          padding: '8px 12px', 
+                          border: '2px solid #007bff', 
+                          borderRadius: '4px', 
+                          color: '#dc3545', 
+                          background: '#fff',
+                          minWidth: '120px'
+                        }}
+                      />
+                    </div>
+                    
+                    {/* 第三行：出勤率第 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>出勤率第</label>
+                      <select 
+                        style={{ 
+                          padding: '8px 12px', 
+                          border: '2px solid #007bff', 
+                          borderRadius: '4px', 
+                          color: '#dc3545', 
+                          background: '#fff',
+                          minWidth: '120px'
+                        }}
+                      >
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                      </select>
+                      <span style={{ color: '#000' }}>名</span>
+                    </div>
+                    
+                    {/* 第四行：战功增量第 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>战功增量第</label>
+                      <select 
+                        style={{ 
+                          padding: '8px 12px', 
+                          border: '2px solid #007bff', 
+                          borderRadius: '4px', 
+                          color: '#dc3545', 
+                          background: '#fff',
+                          minWidth: '120px'
+                        }}
+                      >
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                      </select>
+                      <span style={{ color: '#000' }}>名</span>
+                    </div>
+                    
+                    {/* 第五行：奖励 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>奖励</label>
+                      <select 
+                        style={{ 
+                          padding: '8px 12px', 
+                          border: '2px solid #007bff', 
+                          borderRadius: '4px', 
+                          color: '#dc3545', 
+                          background: '#fff',
+                          minWidth: '120px'
+                        }}
+                      >
+                        <option value="648">648</option>
+                        <option value="flower">花</option>
+                        <option value="doubleFlower">双花</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
             
