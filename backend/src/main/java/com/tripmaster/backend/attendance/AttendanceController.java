@@ -103,20 +103,31 @@ public class AttendanceController {
     @PostMapping("/save-session")
     public AttendanceSession saveSession(@RequestBody SaveSessionRequest request) {
         AttendanceSession session = new AttendanceSession();
-        session.setName(request.getName());
+        
+        // 解析时间
+        LocalDateTime startTime = null;
+        LocalDateTime endTime = null;
+        if (request.getStartTime() != null && !request.getStartTime().isEmpty()) {
+            startTime = parseTimeFromFileName(request.getStartTime());
+            session.setStartTime(startTime);
+        }
+        if (request.getEndTime() != null && !request.getEndTime().isEmpty()) {
+            endTime = parseTimeFromFileName(request.getEndTime());
+            session.setEndTime(endTime);
+        }
+        
+        // 设置考勤名称：如果为空则使用默认名称
+        String sessionName = request.getName();
+        if (sessionName == null || sessionName.trim().isEmpty()) {
+            sessionName = generateDefaultSessionName(startTime, endTime);
+        }
+        session.setName(sessionName);
+        
         session.setBattleResult(request.getBattleResult());
         session.setStatus(SessionStatus.ADDED);
         session.setMemberData(request.getMemberData());
         // 移除小组统计数据的保存，改为实时计算
         session.setThreshold(request.getThreshold());
-        
-        // 解析并设置时间
-        if (request.getStartTime() != null && !request.getStartTime().isEmpty()) {
-            session.setStartTime(parseTimeFromFileName(request.getStartTime()));
-        }
-        if (request.getEndTime() != null && !request.getEndTime().isEmpty()) {
-            session.setEndTime(parseTimeFromFileName(request.getEndTime()));
-        }
         
         return attendanceSessionRepository.save(session);
     }
@@ -273,6 +284,22 @@ public class AttendanceController {
         } catch (Exception e) {
             throw new IllegalArgumentException("解析文件名时间失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 生成默认考勤名称
+     * 格式：起始时间 至 结束时间 考勤
+     */
+    private String generateDefaultSessionName(LocalDateTime startTime, LocalDateTime endTime) {
+        if (startTime == null || endTime == null) {
+            return "考勤记录";
+        }
+        
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy年MM月dd日HH时mm分");
+        String startStr = startTime.format(formatter);
+        String endStr = endTime.format(formatter);
+        
+        return startStr + " 至 " + endStr + " 考勤";
     }
 
     private List<Map<String, String>> readCsv(InputStreamReader isr) throws Exception {

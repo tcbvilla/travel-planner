@@ -108,6 +108,53 @@ function App() {
     }
   }
 
+  // 新增函数：生成默认考勤名称
+  const generateDefaultSessionName = () => {
+    if (!startFile || !endFile) {
+      return '';
+    }
+    
+    // 从文件名解析时间
+    const parseTimeFromFileName = (fileName: string) => {
+      try {
+        // 移除.csv扩展名
+        const nameWithoutExt = fileName.replace('.csv', '');
+        
+        // 使用正则表达式提取时间部分
+        // 匹配格式：2025年07月28日00时00分00秒
+        const timePattern = /(\d{4})年(\d{2})月(\d{2})日(\d{2})时(\d{2})分(\d{2})秒/;
+        const match = nameWithoutExt.match(timePattern);
+        
+        if (match) {
+          const year = parseInt(match[1]);
+          const month = parseInt(match[2]);
+          const day = parseInt(match[3]);
+          const hour = parseInt(match[4]);
+          const minute = parseInt(match[5]);
+          
+          // 格式化时间
+          const formatTime = (y: number, m: number, d: number, h: number, min: number) => {
+            return `${y}年${m.toString().padStart(2, '0')}月${d.toString().padStart(2, '0')}日${h.toString().padStart(2, '0')}时${min.toString().padStart(2, '0')}分`;
+          };
+          
+          return formatTime(year, month, day, hour, minute);
+        }
+      } catch (error) {
+        console.error('解析文件名时间失败:', error);
+      }
+      return '';
+    };
+    
+    const startTime = parseTimeFromFileName(startFile.name);
+    const endTime = parseTimeFromFileName(endFile.name);
+    
+    if (startTime && endTime) {
+      return `${startTime} 至 ${endTime} 考勤`;
+    }
+    
+    return '';
+  };
+
   // 新增函数：验证表单数据
   const validateForm = () => {
     if (taskStatus === '成功') {
@@ -350,6 +397,13 @@ function App() {
         setGroupStats(data.groups)
         setFilteredCount(data.filteredCount)
         console.log('Debug - received data from backend:', data)
+        
+        // 自动生成默认考勤名称
+        const defaultName = generateDefaultSessionName();
+        if (defaultName && !sessionName.trim()) {
+          setSessionName(defaultName);
+        }
+        
         return
       }
       // fallback to local compute if backend returns empty
@@ -448,6 +502,12 @@ function App() {
       setGroupStats(stats)
       console.log('Debug - display rows:', display.length, display.map(r => ({ member: r.成员, group: r.分组 })))
       console.log('Debug - group stats:', stats)
+      
+      // 自动生成默认考勤名称
+      const defaultName = generateDefaultSessionName();
+      if (defaultName && !sessionName.trim()) {
+        setSessionName(defaultName);
+      }
     } catch (err: any) {
       setError(err?.message ?? '解析失败')
     }
@@ -455,14 +515,20 @@ function App() {
 
   // 保存考勤会话
   const saveSession = async () => {
-    if (!sessionName.trim()) {
-      setError('请输入考勤名称')
-      return
+    let finalSessionName = sessionName.trim();
+    
+    // 如果考勤名称为空，使用默认名称
+    if (!finalSessionName) {
+      finalSessionName = generateDefaultSessionName();
+      if (!finalSessionName) {
+        setError('请输入考勤名称或上传包含时间信息的CSV文件')
+        return
+      }
     }
     
     try {
       const requestBody = {
-        name: sessionName,
+        name: finalSessionName,
         battleResult: battleResult,
         memberData: JSON.stringify(rows),
         // 移除小组统计数据的保存，改为实时计算
@@ -617,11 +683,31 @@ function App() {
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <label>
           起始CSV：
-          <input type="file" accept=".csv" onChange={(e) => setStartFile(e.target.files?.[0] ?? null)} />
+                          <input type="file" accept=".csv" onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  setStartFile(file);
+                  // 如果两个文件都已上传，自动生成默认考勤名称
+                  if (file && endFile && !sessionName.trim()) {
+                    const defaultName = generateDefaultSessionName();
+                    if (defaultName) {
+                      setSessionName(defaultName);
+                    }
+                  }
+                }} />
         </label>
         <label>
           结束CSV：
-          <input type="file" accept=".csv" onChange={(e) => setEndFile(e.target.files?.[0] ?? null)} />
+                          <input type="file" accept=".csv" onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  setEndFile(file);
+                  // 如果两个文件都已上传，自动生成默认考勤名称
+                  if (file && startFile && !sessionName.trim()) {
+                    const defaultName = generateDefaultSessionName();
+                    if (defaultName) {
+                      setSessionName(defaultName);
+                    }
+                  }
+                }} />
         </label>
         <label>
           出勤标准（差值≥）：
