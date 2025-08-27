@@ -72,6 +72,36 @@ function App() {
   const [selectedSession, setSelectedSession] = useState<AttendanceSession | null>(null)
   const [modalActiveTab, setModalActiveTab] = useState<'members' | 'groups' | 'rewards'>('members')
 
+  // 新增状态：用于控制"若任务"的选择
+  const [taskStatus, setTaskStatus] = useState<'成功' | '失败'>('成功')
+
+  // 新增状态：用于"成功"情况下的表单字段
+  const [attendanceRateSuccess, setAttendanceRateSuccess] = useState<number | ''>('')
+  const [attendanceRankSuccess, setAttendanceRankSuccess] = useState<string>('1')
+  const [meritRankSuccess, setMeritRankSuccess] = useState<string>('1')
+  const [rewardTypeSuccess, setRewardTypeSuccess] = useState<string>('648')
+
+  // 新增状态：用于"失败"情况下的表单字段
+  const [attendanceRateFailure, setAttendanceRateFailure] = useState<number | ''>('')
+  const [attendanceRankFailure, setAttendanceRankFailure] = useState<string>('1')
+  const [penaltyTypeFailure, setPenaltyTypeFailure] = useState<string>('-648') // 默认值
+
+  // 新增函数：处理"若任务"状态变化
+  const handleTaskStatusChange = (status: '成功' | '失败') => {
+    setTaskStatus(status)
+    // 当任务状态改变时，清空或重置不显示的表单字段
+    if (status === '成功') {
+      setAttendanceRateFailure('')
+      setAttendanceRankFailure('1')
+      setPenaltyTypeFailure('-648')
+    } else { // status === '失败'
+      setAttendanceRateSuccess('')
+      setAttendanceRankSuccess('1')
+      setMeritRankSuccess('1')
+      setRewardTypeSuccess('648')
+    }
+  }
+
 
   const canCompute = useMemo(() => !!startFile && !!endFile, [startFile, endFile])
 
@@ -790,6 +820,8 @@ function App() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>若任务</label>
                       <select 
+                        value={taskStatus}
+                        onChange={(e) => handleTaskStatusChange(e.target.value as '成功' | '失败')}
                         style={{ 
                           padding: '8px 12px', 
                           border: '2px solid #007bff', 
@@ -799,90 +831,172 @@ function App() {
                           minWidth: '120px'
                         }}
                       >
-                        <option value="success">成功</option>
-                        <option value="failure">失败</option>
+                        <option value="成功">成功</option>
+                        <option value="失败">失败</option>
                       </select>
                     </div>
                     
-                    {/* 第二行：出勤率大于 */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>出勤率大于</label>
-                      <input 
-                        type="number" 
-                        placeholder="填写数字百分比" 
-                        style={{ 
-                          padding: '8px 12px', 
-                          border: '2px solid #007bff', 
-                          borderRadius: '4px', 
-                          color: '#dc3545', 
-                          background: '#fff',
-                          minWidth: '120px'
-                        }}
-                      />
-                    </div>
+                    {/* 成功情况下的表单字段 */}
+                    {taskStatus === '成功' && (
+                      <>
+                        {/* 第二行：出勤率大于 */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>出勤率大于</label>
+                          <input 
+                            type="number" 
+                            value={attendanceRateSuccess}
+                            onChange={(e) => setAttendanceRateSuccess(e.target.value === '' ? '' : Number(e.target.value))}
+                            placeholder="填写数字百分比" 
+                            style={{ 
+                              padding: '8px 12px', 
+                              border: '2px solid #007bff', 
+                              borderRadius: '4px', 
+                              color: '#dc3545', 
+                              background: '#fff',
+                              minWidth: '120px'
+                            }}
+                          />
+                        </div>
+                        
+                        {/* 第三行：出勤率第 */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>出勤率第</label>
+                          <select 
+                            value={attendanceRankSuccess}
+                            onChange={(e) => setAttendanceRankSuccess(e.target.value)}
+                            style={{ 
+                              padding: '8px 12px', 
+                              border: '2px solid #007bff', 
+                              borderRadius: '4px', 
+                              color: '#dc3545', 
+                              background: '#fff',
+                              minWidth: '120px'
+                            }}
+                          >
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                          </select>
+                          <span style={{ color: '#000' }}>名</span>
+                        </div>
+                        
+                        {/* 第四行：战功增量第 */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>战功增量第</label>
+                          <select 
+                            value={meritRankSuccess}
+                            onChange={(e) => setMeritRankSuccess(e.target.value)}
+                            style={{ 
+                              padding: '8px 12px', 
+                              border: '2px solid #007bff', 
+                              borderRadius: '4px', 
+                              color: '#dc3545', 
+                              background: '#fff',
+                              minWidth: '120px'
+                            }}
+                          >
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                          </select>
+                          <span style={{ color: '#000' }}>名</span>
+                        </div>
+                        
+                        {/* 第五行：奖励 */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>奖励</label>
+                          <select 
+                            value={rewardTypeSuccess}
+                            onChange={(e) => setRewardTypeSuccess(e.target.value)}
+                            style={{ 
+                              padding: '8px 12px', 
+                              border: '2px solid #007bff', 
+                              borderRadius: '4px', 
+                              color: '#dc3545', 
+                              background: '#fff',
+                              minWidth: '120px'
+                            }}
+                          >
+                            <option value="648">648</option>
+                            <option value="花">花</option>
+                            <option value="双花">双花</option>
+                          </select>
+                        </div>
+                      </>
+                    )}
                     
-                    {/* 第三行：出勤率第 */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>出勤率第</label>
-                      <select 
-                        style={{ 
-                          padding: '8px 12px', 
-                          border: '2px solid #007bff', 
-                          borderRadius: '4px', 
-                          color: '#dc3545', 
-                          background: '#fff',
-                          minWidth: '120px'
-                        }}
-                      >
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                      </select>
-                      <span style={{ color: '#000' }}>名</span>
-                    </div>
-                    
-                    {/* 第四行：战功增量第 */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>战功增量第</label>
-                      <select 
-                        style={{ 
-                          padding: '8px 12px', 
-                          border: '2px solid #007bff', 
-                          borderRadius: '4px', 
-                          color: '#dc3545', 
-                          background: '#fff',
-                          minWidth: '120px'
-                        }}
-                      >
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                      </select>
-                      <span style={{ color: '#000' }}>名</span>
-                    </div>
-                    
-                    {/* 第五行：奖励 */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>奖励</label>
-                      <select 
-                        style={{ 
-                          padding: '8px 12px', 
-                          border: '2px solid #007bff', 
-                          borderRadius: '4px', 
-                          color: '#dc3545', 
-                          background: '#fff',
-                          minWidth: '120px'
-                        }}
-                      >
-                        <option value="648">648</option>
-                        <option value="flower">花</option>
-                        <option value="doubleFlower">双花</option>
-                      </select>
-                    </div>
+                    {/* 失败情况下的表单字段 */}
+                    {taskStatus === '失败' && (
+                      <>
+                        {/* 第二行：出勤率小于 */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>出勤率小于</label>
+                          <input 
+                            type="number" 
+                            value={attendanceRateFailure}
+                            onChange={(e) => setAttendanceRateFailure(e.target.value === '' ? '' : Number(e.target.value))}
+                            placeholder="填写数字百分比" 
+                            style={{ 
+                              padding: '8px 12px', 
+                              border: '2px solid #007bff', 
+                              borderRadius: '4px', 
+                              color: '#dc3545', 
+                              background: '#fff',
+                              minWidth: '120px'
+                            }}
+                          />
+                        </div>
+                        
+                        {/* 第三行：出勤率第 */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>出勤率第</label>
+                          <select 
+                            value={attendanceRankFailure}
+                            onChange={(e) => setAttendanceRankFailure(e.target.value)}
+                            style={{ 
+                              padding: '8px 12px', 
+                              border: '2px solid #007bff', 
+                              borderRadius: '4px', 
+                              color: '#dc3545', 
+                              background: '#fff',
+                              minWidth: '120px'
+                            }}
+                          >
+                            <option value="1">1</option>
+                            <option value="2">2</option>
+                            <option value="3">3</option>
+                            <option value="4">4</option>
+                            <option value="5">5</option>
+                          </select>
+                          <span style={{ color: '#000' }}>名</span>
+                        </div>
+                        
+                        {/* 第四行：处罚 */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>处罚</label>
+                          <select 
+                            value={penaltyTypeFailure}
+                            onChange={(e) => setPenaltyTypeFailure(e.target.value)}
+                            style={{ 
+                              padding: '8px 12px', 
+                              border: '2px solid #007bff', 
+                              borderRadius: '4px', 
+                              color: '#dc3545', 
+                              background: '#fff',
+                              minWidth: '120px'
+                            }}
+                          >
+                            <option value="-648">-648</option>
+                            <option value="屎">屎</option>
+                            <option value="双屎">双屎</option>
+                          </select>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
