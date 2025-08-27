@@ -390,7 +390,10 @@ function App() {
               <thead>
                 <tr style={{ background: '#f8f9fa' }}>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>考勤名称</th>
+                  <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>战役结果</th>
+                  <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>出勤标准</th>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>状态</th>
+                  <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>创建时间</th>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>操作</th>
                 </tr>
               </thead>
@@ -399,9 +402,18 @@ function App() {
                   <tr key={session.id}>
                     <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>{session.name}</td>
                     <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                      {session.battleResult === 'VICTORY' ? '胜利' : '失败'}
+                    </td>
+                    <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                      {session.threshold || '未设置'}
+                    </td>
+                    <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                       {session.status === 'ADDED' && '已添加'}
                       {session.status === 'SAVED' && '已保存'}
                       {session.status === 'SETTLED' && '已结算'}
+                    </td>
+                    <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                      {new Date(session.createdAt).toLocaleString()}
                     </td>
                     <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                       <div style={{ display: 'flex', gap: '8px' }}>
