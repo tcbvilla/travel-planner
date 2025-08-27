@@ -146,10 +146,15 @@ function App() {
 
   // 新增函数：保存奖惩条件
   const saveRewardCondition = async () => {
-    if (!selectedSession) return
+    console.log('开始保存奖惩条件...')
+    if (!selectedSession) {
+      console.error('没有选中的会话')
+      return
+    }
     
     // 验证表单
     if (!validateForm()) {
+      console.log('表单验证失败')
       return
     }
     
@@ -163,6 +168,8 @@ function App() {
       penaltyType: taskStatus === '失败' ? penaltyTypeFailure : null
     }
 
+    console.log('请求数据:', requestData)
+
     try {
       const response = await fetch('http://localhost:8080/api/v1/attendance/save-reward-condition', {
         method: 'POST',
@@ -170,14 +177,22 @@ function App() {
         body: JSON.stringify(requestData)
       })
       
+      console.log('响应状态:', response.status)
+      
       if (response.ok) {
+        console.log('保存成功')
         // 重新加载奖惩条件列表
         loadRewardConditions()
         // 重置表单
         resetRewardForm()
+      } else {
+        const errorText = await response.text()
+        console.error('保存失败:', errorText)
+        alert('保存失败: ' + errorText)
       }
     } catch (error) {
       console.error('保存奖惩条件失败:', error)
+      alert('网络错误: ' + error)
     }
   }
 
