@@ -86,6 +86,10 @@ function App() {
   const [attendanceRankFailure, setAttendanceRankFailure] = useState<string>('1')
   const [penaltyTypeFailure, setPenaltyTypeFailure] = useState<string>('-648') // 默认值
 
+  // 新增状态：奖惩条件管理
+  const [rewardConditions, setRewardConditions] = useState<any[]>([])
+  const [editingCondition, setEditingCondition] = useState<any>(null)
+
   // 新增函数：处理"若任务"状态变化
   const handleTaskStatusChange = (status: '成功' | '失败') => {
     setTaskStatus(status)
@@ -100,6 +104,129 @@ function App() {
       setMeritRankSuccess('1')
       setRewardTypeSuccess('648')
     }
+  }
+
+  // 新增函数：保存奖惩条件
+  const saveRewardCondition = async () => {
+    if (!selectedSession) return
+    
+    const requestData = {
+      attendanceSessionId: selectedSession.id,
+      taskStatus: taskStatus,
+      attendanceRateThreshold: taskStatus === '成功' ? attendanceRateSuccess : attendanceRateFailure,
+      attendanceRateRank: taskStatus === '成功' ? attendanceRankSuccess : attendanceRankFailure,
+      meritIncreaseRank: taskStatus === '成功' ? meritRankSuccess : null,
+      rewardType: taskStatus === '成功' ? rewardTypeSuccess : null,
+      penaltyType: taskStatus === '失败' ? penaltyTypeFailure : null
+    }
+
+    try {
+      const response = await fetch('http://localhost:8080/api/v1/attendance/save-reward-condition', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestData)
+      })
+      
+      if (response.ok) {
+        // 重新加载奖惩条件列表
+        loadRewardConditions()
+        // 重置表单
+        resetRewardForm()
+      }
+    } catch (error) {
+      console.error('保存奖惩条件失败:', error)
+    }
+  }
+
+  // 新增函数：加载奖惩条件列表
+  const loadRewardConditions = async () => {
+    if (!selectedSession) return
+    
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/reward-conditions/${selectedSession.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        setRewardConditions(data)
+      }
+    } catch (error) {
+      console.error('加载奖惩条件失败:', error)
+    }
+  }
+
+  // 新增函数：编辑奖惩条件
+  const editRewardCondition = (condition: any) => {
+    setEditingCondition(condition)
+    setTaskStatus(condition.taskStatus)
+    
+    if (condition.taskStatus === '成功') {
+      setAttendanceRateSuccess(condition.attendanceRateThreshold || '')
+      setAttendanceRankSuccess(String(condition.attendanceRateRank || '1'))
+      setMeritRankSuccess(String(condition.meritIncreaseRank || '1'))
+      setRewardTypeSuccess(condition.rewardType || '648')
+    } else {
+      setAttendanceRateFailure(condition.attendanceRateThreshold || '')
+      setAttendanceRankFailure(String(condition.attendanceRateRank || '1'))
+      setPenaltyTypeFailure(condition.penaltyType || '-648')
+    }
+  }
+
+  // 新增函数：更新奖惩条件
+  const updateRewardCondition = async () => {
+    if (!editingCondition) return
+    
+    const requestData = {
+      attendanceSessionId: selectedSession?.id,
+      taskStatus: taskStatus,
+      attendanceRateThreshold: taskStatus === '成功' ? attendanceRateSuccess : attendanceRateFailure,
+      attendanceRateRank: taskStatus === '成功' ? attendanceRankSuccess : attendanceRankFailure,
+      meritIncreaseRank: taskStatus === '成功' ? meritRankSuccess : null,
+      rewardType: taskStatus === '成功' ? rewardTypeSuccess : null,
+      penaltyType: taskStatus === '失败' ? penaltyTypeFailure : null
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/reward-conditions/${editingCondition.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestData)
+      })
+      
+      if (response.ok) {
+        loadRewardConditions()
+        resetRewardForm()
+        setEditingCondition(null)
+      }
+    } catch (error) {
+      console.error('更新奖惩条件失败:', error)
+    }
+  }
+
+  // 新增函数：删除奖惩条件
+  const deleteRewardCondition = async (id: number) => {
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/reward-conditions/${id}`, {
+        method: 'DELETE'
+      })
+      
+      if (response.ok) {
+        loadRewardConditions()
+      }
+    } catch (error) {
+      console.error('删除奖惩条件失败:', error)
+    }
+  }
+
+  // 新增函数：重置奖惩表单
+  const resetRewardForm = () => {
+    setTaskStatus('成功')
+    setAttendanceRateSuccess('')
+    setAttendanceRankSuccess('1')
+    setMeritRankSuccess('1')
+    setRewardTypeSuccess('648')
+    setAttendanceRateFailure('')
+    setAttendanceRankFailure('1')
+    setPenaltyTypeFailure('-648')
+    setEditingCondition(null)
   }
 
 
@@ -306,6 +433,9 @@ function App() {
       
       setSelectedSession(sessionWithGroupStats)
       setShowSessionModal(true)
+      
+      // 加载奖惩条件列表
+      loadRewardConditions()
     } catch (err: any) {
       console.error('查看会话错误:', err)
       setError(err?.message ?? '加载失败')
@@ -639,7 +769,7 @@ function App() {
             background: '#fff',
             padding: '24px',
             borderRadius: '8px',
-            maxWidth: '800px',
+            maxWidth: modalActiveTab === 'rewards' ? '1200px' : '800px',
             maxHeight: '80vh',
             overflow: 'auto'
           }}>
@@ -798,7 +928,7 @@ function App() {
             
             {/* 考勤奖惩 */}
             {modalActiveTab === 'rewards' && (
-              <div style={{ marginBottom: '16px' }}>
+              <div style={{ marginBottom: '16px', width: '100%' }}>
                 <div style={{ padding: '16px', border: '1px solid #dee2e6', borderRadius: '4px', background: '#f8f9fa' }}>
                   <h4 style={{ margin: '0 0 12px 0', color: '#495057' }}>考勤奖惩规则</h4>
                   <div style={{ marginBottom: '16px' }}>
@@ -811,14 +941,16 @@ function App() {
                   </div>
                 </div>
                 
-                {/* 奖励规则表单 */}
+                {/* 奖惩条件表单 */}
                 <div style={{ marginTop: '16px', padding: '16px', border: '2px solid #007bff', borderRadius: '4px', background: '#fff' }}>
-                  <h4 style={{ margin: '0 0 16px 0', color: '#495057' }}>奖励规则设置</h4>
+                  <h4 style={{ margin: '0 0 16px 0', color: '#495057' }}>
+                    {editingCondition ? '编辑奖惩条件' : '新增奖惩条件'}
+                  </h4>
                   
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {/* 第一行：若任务 */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>若任务</label>
+                      <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>若任务</label>
                       <select 
                         value={taskStatus}
                         onChange={(e) => handleTaskStatusChange(e.target.value as '成功' | '失败')}
@@ -828,7 +960,7 @@ function App() {
                           borderRadius: '4px', 
                           color: '#dc3545', 
                           background: '#fff',
-                          minWidth: '120px'
+                          minWidth: '150px'
                         }}
                       >
                         <option value="成功">成功</option>
@@ -841,7 +973,7 @@ function App() {
                       <>
                         {/* 第二行：出勤率大于 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>出勤率大于</label>
+                          <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>出勤率大于</label>
                           <input 
                             type="number" 
                             value={attendanceRateSuccess}
@@ -853,14 +985,14 @@ function App() {
                               borderRadius: '4px', 
                               color: '#dc3545', 
                               background: '#fff',
-                              minWidth: '120px'
+                              minWidth: '150px'
                             }}
                           />
                         </div>
                         
                         {/* 第三行：出勤率第 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>出勤率第</label>
+                          <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>出勤率第</label>
                           <select 
                             value={attendanceRankSuccess}
                             onChange={(e) => setAttendanceRankSuccess(e.target.value)}
@@ -870,7 +1002,7 @@ function App() {
                               borderRadius: '4px', 
                               color: '#dc3545', 
                               background: '#fff',
-                              minWidth: '120px'
+                              minWidth: '150px'
                             }}
                           >
                             <option value="1">1</option>
@@ -884,7 +1016,7 @@ function App() {
                         
                         {/* 第四行：战功增量第 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>战功增量第</label>
+                          <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>战功增量第</label>
                           <select 
                             value={meritRankSuccess}
                             onChange={(e) => setMeritRankSuccess(e.target.value)}
@@ -894,7 +1026,7 @@ function App() {
                               borderRadius: '4px', 
                               color: '#dc3545', 
                               background: '#fff',
-                              minWidth: '120px'
+                              minWidth: '150px'
                             }}
                           >
                             <option value="1">1</option>
@@ -908,7 +1040,7 @@ function App() {
                         
                         {/* 第五行：奖励 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>奖励</label>
+                          <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>奖励</label>
                           <select 
                             value={rewardTypeSuccess}
                             onChange={(e) => setRewardTypeSuccess(e.target.value)}
@@ -918,7 +1050,7 @@ function App() {
                               borderRadius: '4px', 
                               color: '#dc3545', 
                               background: '#fff',
-                              minWidth: '120px'
+                              minWidth: '150px'
                             }}
                           >
                             <option value="648">648</option>
@@ -934,7 +1066,7 @@ function App() {
                       <>
                         {/* 第二行：出勤率小于 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>出勤率小于</label>
+                          <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>出勤率小于</label>
                           <input 
                             type="number" 
                             value={attendanceRateFailure}
@@ -946,14 +1078,14 @@ function App() {
                               borderRadius: '4px', 
                               color: '#dc3545', 
                               background: '#fff',
-                              minWidth: '120px'
+                              minWidth: '150px'
                             }}
                           />
                         </div>
                         
                         {/* 第三行：出勤率倒数第 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>出勤率倒数第</label>
+                          <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>出勤率倒数第</label>
                           <select 
                             value={attendanceRankFailure}
                             onChange={(e) => setAttendanceRankFailure(e.target.value)}
@@ -963,7 +1095,7 @@ function App() {
                               borderRadius: '4px', 
                               color: '#dc3545', 
                               background: '#fff',
-                              minWidth: '120px'
+                              minWidth: '150px'
                             }}
                           >
                             <option value="1">1</option>
@@ -977,7 +1109,7 @@ function App() {
                         
                         {/* 第四行：处罚 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>处罚</label>
+                          <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>处罚</label>
                           <select 
                             value={penaltyTypeFailure}
                             onChange={(e) => setPenaltyTypeFailure(e.target.value)}
@@ -987,7 +1119,7 @@ function App() {
                               borderRadius: '4px', 
                               color: '#dc3545', 
                               background: '#fff',
-                              minWidth: '120px'
+                              minWidth: '150px'
                             }}
                           >
                             <option value="-648">-648</option>
@@ -997,7 +1129,112 @@ function App() {
                         </div>
                       </>
                     )}
+                    
+                    {/* 操作按钮 */}
+                    <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
+                      <button
+                        onClick={editingCondition ? updateRewardCondition : saveRewardCondition}
+                        style={{
+                          padding: '8px 16px',
+                          background: '#28a745',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {editingCondition ? '更新' : '新增'}
+                      </button>
+                      {editingCondition && (
+                        <button
+                          onClick={resetRewardForm}
+                          style={{
+                            padding: '8px 16px',
+                            background: '#6c757d',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          取消编辑
+                        </button>
+                      )}
+                    </div>
                   </div>
+                </div>
+                
+                {/* 奖惩条件列表 */}
+                <div style={{ marginTop: '16px', padding: '16px', border: '1px solid #dee2e6', borderRadius: '4px', background: '#fff' }}>
+                  <h4 style={{ margin: '0 0 16px 0', color: '#495057' }}>已保存的奖惩条件</h4>
+                  
+                  {rewardConditions.length === 0 ? (
+                    <p style={{ color: '#6c757d', fontStyle: 'italic' }}>暂无奖惩条件</p>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: '#f8f9fa' }}>
+                            <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>任务状态</th>
+                            <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>出勤率条件</th>
+                            <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>排名条件</th>
+                            <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>奖惩</th>
+                            <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>操作</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rewardConditions.map((condition, index) => (
+                            <tr key={condition.id} style={{ background: index % 2 === 0 ? '#fff' : '#f8f9fa' }}>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>
+                                {condition.taskStatus}
+                              </td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>
+                                {condition.taskStatus === '成功' ? '大于' : '小于'} {condition.attendanceRateThreshold}%
+                              </td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>
+                                {condition.taskStatus === '成功' ? '出勤率第' : '出勤率倒数第'}{condition.attendanceRateRank}名
+                                {condition.taskStatus === '成功' && condition.meritIncreaseRank && (
+                                  <>, 战功增量第{condition.meritIncreaseRank}名</>
+                                )}
+                              </td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>
+                                {condition.taskStatus === '成功' ? condition.rewardType : condition.penaltyType}
+                              </td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>
+                                <button
+                                  onClick={() => editRewardCondition(condition)}
+                                  style={{
+                                    padding: '4px 8px',
+                                    background: '#007bff',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '2px',
+                                    cursor: 'pointer',
+                                    marginRight: '4px'
+                                  }}
+                                >
+                                  编辑
+                                </button>
+                                <button
+                                  onClick={() => deleteRewardCondition(condition.id)}
+                                  style={{
+                                    padding: '4px 8px',
+                                    background: '#dc3545',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '2px',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  删除
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

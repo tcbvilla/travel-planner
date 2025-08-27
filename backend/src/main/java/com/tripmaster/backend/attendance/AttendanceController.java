@@ -23,6 +23,9 @@ public class AttendanceController {
 
     @Autowired
     private AttendanceSessionRepository attendanceSessionRepository;
+    
+    @Autowired
+    private RewardConditionRepository rewardConditionRepository;
 
     @PostMapping(value = "/compare", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public AttendanceResponse compare(@RequestPart("start") MultipartFile start,
@@ -337,6 +340,56 @@ public class AttendanceController {
         }
         // last resort: first key
         return keys.iterator().next();
+    }
+    
+    /**
+     * 保存奖惩条件
+     */
+    @PostMapping("/save-reward-condition")
+    public RewardCondition saveRewardCondition(@RequestBody SaveRewardConditionRequest request) {
+        RewardCondition condition = new RewardCondition();
+        condition.setAttendanceSessionId(request.getAttendanceSessionId());
+        condition.setTaskStatus(request.getTaskStatus());
+        condition.setAttendanceRateThreshold(request.getAttendanceRateThreshold());
+        condition.setAttendanceRateRank(request.getAttendanceRateRank());
+        condition.setMeritIncreaseRank(request.getMeritIncreaseRank());
+        condition.setRewardType(request.getRewardType());
+        condition.setPenaltyType(request.getPenaltyType());
+        return rewardConditionRepository.save(condition);
+    }
+    
+    /**
+     * 获取考勤记录的奖惩条件列表
+     */
+    @GetMapping("/reward-conditions/{sessionId}")
+    public List<RewardCondition> getRewardConditions(@PathVariable Long sessionId) {
+        return rewardConditionRepository.findByAttendanceSessionIdOrderByCreatedAtDesc(sessionId);
+    }
+    
+    /**
+     * 更新奖惩条件
+     */
+    @PutMapping("/reward-conditions/{id}")
+    public RewardCondition updateRewardCondition(@PathVariable Long id, @RequestBody SaveRewardConditionRequest request) {
+        RewardCondition condition = rewardConditionRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("奖惩条件不存在"));
+        
+        condition.setTaskStatus(request.getTaskStatus());
+        condition.setAttendanceRateThreshold(request.getAttendanceRateThreshold());
+        condition.setAttendanceRateRank(request.getAttendanceRateRank());
+        condition.setMeritIncreaseRank(request.getMeritIncreaseRank());
+        condition.setRewardType(request.getRewardType());
+        condition.setPenaltyType(request.getPenaltyType());
+        
+        return rewardConditionRepository.save(condition);
+    }
+    
+    /**
+     * 删除奖惩条件
+     */
+    @DeleteMapping("/reward-conditions/{id}")
+    public void deleteRewardCondition(@PathVariable Long id) {
+        rewardConditionRepository.deleteById(id);
     }
 }
 
