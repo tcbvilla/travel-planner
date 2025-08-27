@@ -70,7 +70,7 @@ function App() {
   const [battleResult, setBattleResult] = useState<'VICTORY' | 'DEFEAT'>('VICTORY')
   const [showSessionModal, setShowSessionModal] = useState(false)
   const [selectedSession, setSelectedSession] = useState<AttendanceSession | null>(null)
-  const [modalActiveTab, setModalActiveTab] = useState<'members' | 'groups'>('members')
+  const [modalActiveTab, setModalActiveTab] = useState<'members' | 'groups' | 'rewards'>('members')
 
 
   const canCompute = useMemo(() => !!startFile && !!endFile, [startFile, endFile])
@@ -662,6 +662,18 @@ function App() {
               >
                 小组统计
               </button>
+              <button
+                onClick={() => setModalActiveTab('rewards')}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid #ccc',
+                  background: modalActiveTab === 'rewards' ? '#007bff' : '#fff',
+                  color: modalActiveTab === 'rewards' ? '#fff' : '#000',
+                  cursor: 'pointer'
+                }}
+              >
+                考勤奖惩
+              </button>
             </div>
             
             {/* 成员详情 */}
@@ -750,6 +762,96 @@ function App() {
                       })()}
                     </tbody>
                   </table>
+                </div>
+              </div>
+            )}
+            
+            {/* 考勤奖惩 */}
+            {modalActiveTab === 'rewards' && (
+              <div style={{ marginBottom: '16px' }}>
+                <div style={{ padding: '16px', border: '1px solid #dee2e6', borderRadius: '4px', background: '#f8f9fa' }}>
+                  <h4 style={{ margin: '0 0 12px 0', color: '#495057' }}>考勤奖惩规则</h4>
+                  <div style={{ marginBottom: '16px' }}>
+                    <p style={{ margin: '8px 0', color: '#6c757d' }}>
+                      <strong>出勤标准：</strong>战功差值 ≥ {selectedSession.threshold || '未设置'}
+                    </p>
+                    <p style={{ margin: '8px 0', color: '#6c757d' }}>
+                      <strong>战役结果：</strong>{selectedSession.battleResult === 'VICTORY' ? '胜利' : '失败'}
+                    </p>
+                  </div>
+                  
+                  <div style={{ marginBottom: '16px' }}>
+                    <h5 style={{ margin: '0 0 8px 0', color: '#495057' }}>奖惩说明</h5>
+                    <ul style={{ margin: '8px 0', paddingLeft: '20px', color: '#6c757d' }}>
+                      <li>战功差值达到标准：<span style={{ color: '#28a745', fontWeight: 'bold' }}>出勤</span></li>
+                      <li>战功差值未达标准：<span style={{ color: '#dc3545', fontWeight: 'bold' }}>未出勤</span></li>
+                      <li>助攻数据：<span style={{ color: '#17a2b8', fontWeight: 'bold' }}>辅助参考指标</span></li>
+                    </ul>
+                  </div>
+                  
+                  <div style={{ marginBottom: '16px' }}>
+                    <h5 style={{ margin: '0 0 8px 0', color: '#495057' }}>统计信息</h5>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+                      <div style={{ padding: '8px', background: '#fff', border: '1px solid #dee2e6', borderRadius: '4px' }}>
+                        <div style={{ fontSize: '14px', color: '#6c757d' }}>总成员数</div>
+                        <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#495057' }}>
+                          {(() => {
+                            try {
+                              const memberData = JSON.parse(selectedSession.memberData || '[]');
+                              return memberData.length;
+                            } catch {
+                              return 0;
+                            }
+                          })()}
+                        </div>
+                      </div>
+                      <div style={{ padding: '8px', background: '#fff', border: '1px solid #dee2e6', borderRadius: '4px' }}>
+                        <div style={{ fontSize: '14px', color: '#6c757d' }}>出勤人数</div>
+                        <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#28a745' }}>
+                          {(() => {
+                            try {
+                              const memberData = JSON.parse(selectedSession.memberData || '[]');
+                              return memberData.filter((m: DisplayRow) => m.达标).length;
+                            } catch {
+                              return 0;
+                            }
+                          })()}
+                        </div>
+                      </div>
+                      <div style={{ padding: '8px', background: '#fff', border: '1px solid #dee2e6', borderRadius: '4px' }}>
+                        <div style={{ fontSize: '14px', color: '#6c757d' }}>未出勤人数</div>
+                        <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#dc3545' }}>
+                          {(() => {
+                            try {
+                              const memberData = JSON.parse(selectedSession.memberData || '[]');
+                              return memberData.filter((m: DisplayRow) => !m.达标).length;
+                            } catch {
+                              return 0;
+                            }
+                          })()}
+                        </div>
+                      </div>
+                      <div style={{ padding: '8px', background: '#fff', border: '1px solid #dee2e6', borderRadius: '4px' }}>
+                        <div style={{ fontSize: '14px', color: '#6c757d' }}>出勤率</div>
+                        <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#17a2b8' }}>
+                          {(() => {
+                            try {
+                              const memberData = JSON.parse(selectedSession.memberData || '[]');
+                              const total = memberData.length;
+                              const attended = memberData.filter((m: DisplayRow) => m.达标).length;
+                              return total > 0 ? `${((attended / total) * 100).toFixed(1)}%` : '0%';
+                            } catch {
+                              return '0%';
+                            }
+                          })()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div style={{ fontSize: '12px', color: '#6c757d', fontStyle: 'italic' }}>
+                    * 考勤奖惩基于战功差值计算，助攻数据仅供参考
+                  </div>
                 </div>
               </div>
             )}
