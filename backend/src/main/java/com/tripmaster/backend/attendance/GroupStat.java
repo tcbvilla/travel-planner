@@ -7,6 +7,8 @@ public class GroupStat {
     private String group;
     private long totalMeritIncrease;
     private long averageMeritIncrease;
+    private long totalAssistIncrease; // 总助攻增量
+    private long averageAssistIncrease; // 人均助攻增量
     private double attendanceRate;
     private int memberCount;
     private int attendedCount; // 达标人数

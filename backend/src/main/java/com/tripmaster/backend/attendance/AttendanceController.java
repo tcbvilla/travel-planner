@@ -166,6 +166,8 @@ public class AttendanceController {
                 gs.setGroup(group);
                 gs.setTotalMeritIncrease(0);
                 gs.setAverageMeritIncrease(0);
+                gs.setTotalAssistIncrease(0); // 总助攻增量
+                gs.setAverageAssistIncrease(0); // 人均助攻增量
                 gs.setAttendanceRate(0.0);
                 gs.setMemberCount(0);
                 gs.setAttendedCount(0); // 新增：达标人数
@@ -173,16 +175,18 @@ public class AttendanceController {
             });
             
             stat.setTotalMeritIncrease(stat.getTotalMeritIncrease() + member.get差值());
+            stat.setTotalAssistIncrease(stat.getTotalAssistIncrease() + member.get助攻差值());
             stat.setMemberCount(stat.getMemberCount() + 1);
             if (member.is达标()) {
                 stat.setAttendedCount(stat.getAttendedCount() + 1);
             }
         }
         
-        // 计算人均战功增量和出勤率
+        // 计算人均战功增量、人均助攻增量和出勤率
         for (GroupStat stat : groupMap.values()) {
             if (stat.getMemberCount() > 0) {
                 stat.setAverageMeritIncrease(stat.getTotalMeritIncrease() / stat.getMemberCount());
+                stat.setAverageAssistIncrease(stat.getTotalAssistIncrease() / stat.getMemberCount());
                 // 计算出勤率：达标人数 / 总人数 * 100%
                 double attendanceRate = (double) stat.getAttendedCount() / stat.getMemberCount() * 100.0;
                 stat.setAttendanceRate(Math.round(attendanceRate * 100.0) / 100.0);
@@ -192,7 +196,9 @@ public class AttendanceController {
                     ", 总人数: " + stat.getMemberCount() + 
                     ", 达标人数: " + stat.getAttendedCount() + 
                     ", 出勤率: " + attendanceRate + 
-                    ", 最终出勤率: " + stat.getAttendanceRate());
+                    ", 最终出勤率: " + stat.getAttendanceRate() +
+                    ", 总助攻增量: " + stat.getTotalAssistIncrease() +
+                    ", 人均助攻增量: " + stat.getAverageAssistIncrease());
             }
         }
         
