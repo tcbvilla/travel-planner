@@ -198,13 +198,21 @@ function App() {
 
   // 新增函数：加载奖惩条件列表
   const loadRewardConditions = async () => {
-    if (!selectedSession) return
+    console.log('loadRewardConditions called, selectedSession:', selectedSession)
+    if (!selectedSession) {
+      console.log('selectedSession is null, skipping loadRewardConditions')
+      return
+    }
     
     try {
+      console.log('Fetching reward conditions for session ID:', selectedSession.id)
       const response = await fetch(`http://localhost:8080/api/v1/attendance/reward-conditions/${selectedSession.id}`)
       if (response.ok) {
         const data = await response.json()
+        console.log('Received reward conditions:', data)
         setRewardConditions(data)
+      } else {
+        console.error('Failed to load reward conditions, status:', response.status)
       }
     } catch (error) {
       console.error('加载奖惩条件失败:', error)
@@ -519,8 +527,20 @@ function App() {
       setSelectedSession(sessionWithGroupStats)
       setShowSessionModal(true)
       
-      // 加载奖惩条件列表
-      loadRewardConditions()
+      // 加载奖惩条件列表 - 使用sessionWithGroupStats而不是依赖selectedSession状态
+      try {
+        console.log('Fetching reward conditions for session ID:', sessionWithGroupStats.id)
+        const response = await fetch(`http://localhost:8080/api/v1/attendance/reward-conditions/${sessionWithGroupStats.id}`)
+        if (response.ok) {
+          const data = await response.json()
+          console.log('Received reward conditions:', data)
+          setRewardConditions(data)
+        } else {
+          console.error('Failed to load reward conditions, status:', response.status)
+        }
+      } catch (error) {
+        console.error('加载奖惩条件失败:', error)
+      }
     } catch (err: any) {
       console.error('查看会话错误:', err)
       setError(err?.message ?? '加载失败')
