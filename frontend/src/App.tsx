@@ -279,6 +279,28 @@ function App() {
     }
   }
 
+  // 新增函数：更新考勤记录状态
+  const updateSessionStatus = async (sessionId: number, newStatus: string) => {
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${sessionId}/status?status=${newStatus}`, {
+        method: 'PUT'
+      })
+      
+      if (response.ok) {
+        // 重新加载会话列表
+        loadSessions(currentPage)
+        // 如果当前查看的是这个会话，也更新selectedSession
+        if (selectedSession && selectedSession.id === sessionId) {
+          const updatedSession = await response.json()
+          setSelectedSession(updatedSession)
+        }
+      }
+    } catch (error) {
+      console.error('更新状态失败:', error)
+      alert('更新状态失败: ' + error)
+    }
+  }
+
   // 新增函数：重置奖惩表单
   const resetRewardForm = () => {
     setTaskStatus('成功')
@@ -1010,6 +1032,13 @@ function App() {
                     {editingCondition ? '编辑奖惩条件' : '新增奖惩条件'}
                   </h4>
                   
+                  {/* 状态提示 */}
+                  {selectedSession.status === 'SAVED' && (
+                    <div style={{ marginBottom: '16px', padding: '8px 12px', background: '#fff3cd', border: '1px solid #ffeaa7', borderRadius: '4px', color: '#856404' }}>
+                      <strong>提示：</strong>当前考勤记录已保存，无法修改奖惩条件。请先取消保存状态。
+                    </div>
+                  )}
+                  
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {/* 第一行：若任务 */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1017,13 +1046,15 @@ function App() {
                       <select 
                         value={taskStatus}
                         onChange={(e) => handleTaskStatusChange(e.target.value as '成功' | '失败')}
+                        disabled={selectedSession.status === 'SAVED'}
                         style={{ 
                           padding: '8px 12px', 
                           border: '2px solid #007bff', 
                           borderRadius: '4px', 
                           color: '#dc3545', 
-                          background: '#fff',
-                          minWidth: '150px'
+                          background: selectedSession.status === 'SAVED' ? '#f8f9fa' : '#fff',
+                          minWidth: '150px',
+                          opacity: selectedSession.status === 'SAVED' ? 0.6 : 1
                         }}
                       >
                         <option value="成功">成功</option>
@@ -1209,13 +1240,15 @@ function App() {
                     <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
                       <button
                         onClick={editingCondition ? updateRewardCondition : saveRewardCondition}
+                        disabled={selectedSession.status === 'SAVED'}
                         style={{
                           padding: '8px 16px',
-                          background: '#28a745',
+                          background: selectedSession.status === 'SAVED' ? '#6c757d' : '#28a745',
                           color: '#fff',
                           border: 'none',
                           borderRadius: '4px',
-                          cursor: 'pointer'
+                          cursor: selectedSession.status === 'SAVED' ? 'not-allowed' : 'pointer',
+                          opacity: selectedSession.status === 'SAVED' ? 0.6 : 1
                         }}
                       >
                         {editingCondition ? '更新' : '新增'}
@@ -1223,13 +1256,15 @@ function App() {
                       {editingCondition && (
                         <button
                           onClick={resetRewardForm}
+                          disabled={selectedSession.status === 'SAVED'}
                           style={{
                             padding: '8px 16px',
-                            background: '#6c757d',
+                            background: selectedSession.status === 'SAVED' ? '#6c757d' : '#6c757d',
                             color: '#fff',
                             border: 'none',
                             borderRadius: '4px',
-                            cursor: 'pointer'
+                            cursor: selectedSession.status === 'SAVED' ? 'not-allowed' : 'pointer',
+                            opacity: selectedSession.status === 'SAVED' ? 0.6 : 1
                           }}
                         >
                           取消编辑
@@ -1267,9 +1302,14 @@ function App() {
                                 {condition.taskStatus === '成功' ? '大于' : '小于'} {condition.attendanceRateThreshold}%
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>
-                                {condition.taskStatus === '成功' ? '出勤率第' : '出勤率倒数第'}{condition.attendanceRateRank}名
-                                {condition.taskStatus === '成功' && condition.meritIncreaseRank && condition.meritIncreaseRank !== '' && (
-                                  <>, 战功增量第{condition.meritIncreaseRank}名</>
+                                {condition.taskStatus === '成功' ? (
+                                  condition.meritIncreaseRank && condition.meritIncreaseRank !== '' ? (
+                                    <>战功增量第{condition.meritIncreaseRank}名</>
+                                  ) : (
+                                    <>出勤率第{condition.attendanceRateRank}名</>
+                                  )
+                                ) : (
+                                  <>出勤率倒数第{condition.attendanceRateRank}名</>
                                 )}
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>
@@ -1278,27 +1318,31 @@ function App() {
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>
                                 <button
                                   onClick={() => editRewardCondition(condition)}
+                                  disabled={selectedSession.status === 'SAVED'}
                                   style={{
                                     padding: '4px 8px',
-                                    background: '#007bff',
+                                    background: selectedSession.status === 'SAVED' ? '#6c757d' : '#007bff',
                                     color: '#fff',
                                     border: 'none',
                                     borderRadius: '2px',
-                                    cursor: 'pointer',
-                                    marginRight: '4px'
+                                    cursor: selectedSession.status === 'SAVED' ? 'not-allowed' : 'pointer',
+                                    marginRight: '4px',
+                                    opacity: selectedSession.status === 'SAVED' ? 0.6 : 1
                                   }}
                                 >
                                   编辑
                                 </button>
                                 <button
                                   onClick={() => deleteRewardCondition(condition.id)}
+                                  disabled={selectedSession.status === 'SAVED'}
                                   style={{
                                     padding: '4px 8px',
-                                    background: '#dc3545',
+                                    background: selectedSession.status === 'SAVED' ? '#6c757d' : '#dc3545',
                                     color: '#fff',
                                     border: 'none',
                                     borderRadius: '2px',
-                                    cursor: 'pointer'
+                                    cursor: selectedSession.status === 'SAVED' ? 'not-allowed' : 'pointer',
+                                    opacity: selectedSession.status === 'SAVED' ? 0.6 : 1
                                   }}
                                 >
                                   删除
@@ -1309,6 +1353,43 @@ function App() {
                         </tbody>
                       </table>
                     </div>
+                  )}
+                </div>
+                
+                {/* 保存/取消保存按钮 */}
+                <div style={{ marginTop: '16px', textAlign: 'center' }}>
+                  {selectedSession.status === 'ADDED' ? (
+                    <button
+                      onClick={() => updateSessionStatus(selectedSession.id, 'SAVED')}
+                      style={{
+                        padding: '12px 24px',
+                        background: '#28a745',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '16px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      保存考勤记录
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => updateSessionStatus(selectedSession.id, 'ADDED')}
+                      style={{
+                        padding: '12px 24px',
+                        background: '#ffc107',
+                        color: '#000',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '16px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      取消保存
+                    </button>
                   )}
                 </div>
               </div>
