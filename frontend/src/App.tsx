@@ -53,6 +53,18 @@ type PageResponse<T> = {
 }
 
 function App() {
+  // 计算加成后出勤率的函数
+  const calculateBonusAttendanceRate = (attendanceRate: number, memberCount: number): number => {
+    let bonus = 0
+    if (memberCount >= 40 && memberCount <= 45) {
+      bonus = 3
+    } else if (memberCount >= 46 && memberCount <= 50) {
+      bonus = 5
+    }
+    const result = attendanceRate + bonus
+    return result > 100 ? 100 : result
+  }
+
   const [startFile, setStartFile] = useState<File | null>(null)
   const [endFile, setEndFile] = useState<File | null>(null)
   const [threshold, setThreshold] = useState<number>(1)
@@ -79,18 +91,32 @@ function App() {
 
   // 新增状态：用于"成功"情况下的表单字段
   const [attendanceRateSuccess, setAttendanceRateSuccess] = useState<number | ''>('')
-  const [attendanceRankSuccess, setAttendanceRankSuccess] = useState<string>('1')
-  const [meritRankSuccess, setMeritRankSuccess] = useState<string>('1')
+  const [attendanceRankSuccess, setAttendanceRankSuccess] = useState<string>('')
+  const [meritRankSuccess, setMeritRankSuccess] = useState<string>('')
   const [rewardTypeSuccess, setRewardTypeSuccess] = useState<string>('648')
 
   // 新增状态：用于"失败"情况下的表单字段
   const [attendanceRateFailure, setAttendanceRateFailure] = useState<number | ''>('')
-  const [attendanceRankFailure, setAttendanceRankFailure] = useState<string>('1')
+  const [attendanceRankFailure, setAttendanceRankFailure] = useState<string>('')
   const [penaltyTypeFailure, setPenaltyTypeFailure] = useState<string>('-648') // 默认值
 
   // 新增状态：奖惩条件管理
   const [rewardConditions, setRewardConditions] = useState<any[]>([])
   const [editingCondition, setEditingCondition] = useState<any>(null)
+
+
+
+
+
+  // 新增状态：编辑阈值（现在统一在编辑会话信息中处理）
+  const [editingThresholdValue, setEditingThresholdValue] = useState<number>(0)
+
+  // 新增状态：编辑会话基本信息
+  const [editingSession, setEditingSession] = useState<boolean>(false)
+  const [editingSessionName, setEditingSessionName] = useState<string>('')
+  const [editingBattleResult, setEditingBattleResult] = useState<'VICTORY' | 'DEFEAT'>('VICTORY')
+  const [editingStartTime, setEditingStartTime] = useState<string>('')
+  const [editingEndTime, setEditingEndTime] = useState<string>('')
 
   // 新增函数：处理"若任务"状态变化
   const handleTaskStatusChange = (status: '成功' | '失败') => {
@@ -98,13 +124,147 @@ function App() {
     // 当任务状态改变时，清空或重置不显示的表单字段
     if (status === '成功') {
       setAttendanceRateFailure('')
-      setAttendanceRankFailure('1')
+      setAttendanceRankFailure('')
       setPenaltyTypeFailure('-648')
     } else { // status === '失败'
       setAttendanceRateSuccess('')
-      setAttendanceRankSuccess('1')
-      setMeritRankSuccess('1')
+      setAttendanceRankSuccess('')
+      setMeritRankSuccess('')
       setRewardTypeSuccess('648')
+    }
+  }
+
+  // 新增函数：开始编辑会话信息
+  const startEditSession = () => {
+    if (!selectedSession) return
+    
+    setEditingSessionName(selectedSession.name || '')
+    setEditingBattleResult(selectedSession.battleResult || 'VICTORY')
+    
+    // 处理时间，转换为本地时间（UTC+8）
+    const formatLocalDateTime = (dateString: string) => {
+      if (!dateString) return ''
+      const date = new Date(dateString)
+      // 转换为本地时间字符串，格式为 YYYY-MM-DDTHH:mm
+      const year = date.getFullYear()
+      const month = String(date.getMonth() + 1).padStart(2, '0')
+      const day = String(date.getDate()).padStart(2, '0')
+      const hours = String(date.getHours()).padStart(2, '0')
+      const minutes = String(date.getMinutes()).padStart(2, '0')
+      return `${year}-${month}-${day}T${hours}:${minutes}`
+    }
+    
+    setEditingStartTime(formatLocalDateTime(selectedSession.startTime || ''))
+    setEditingEndTime(formatLocalDateTime(selectedSession.endTime || ''))
+    setEditingThresholdValue(selectedSession.threshold || 0)
+    setEditingSession(true)
+  }
+
+  // 新增函数：保存会话信息
+  const saveSessionInfo = async () => {
+    if (!selectedSession) return
+    
+    try {
+      const updateData: any = {}
+      
+      if (editingSessionName !== selectedSession.name) {
+        updateData.name = editingSessionName
+      }
+      if (editingBattleResult !== selectedSession.battleResult) {
+        updateData.battleResult = editingBattleResult
+      }
+      // 处理时间比较和转换
+      const formatLocalDateTime = (dateString: string) => {
+        if (!dateString) return ''
+        const date = new Date(dateString)
+        const year = date.getFullYear()
+        const month = String(date.getMonth() + 1).padStart(2, '0')
+        const day = String(date.getDate()).padStart(2, '0')
+        const hours = String(date.getHours()).padStart(2, '0')
+        const minutes = String(date.getMinutes()).padStart(2, '0')
+        return `${year}-${month}-${day}T${hours}:${minutes}`
+      }
+      
+      const currentStartTime = formatLocalDateTime(selectedSession.startTime || '')
+      const currentEndTime = formatLocalDateTime(selectedSession.endTime || '')
+      
+      if (editingStartTime !== currentStartTime) {
+        // 发送本地时间格式给后端
+        if (editingStartTime) {
+          updateData.startTime = editingStartTime + ':00'
+        } else {
+          updateData.startTime = null
+        }
+      }
+      if (editingEndTime !== currentEndTime) {
+        // 发送本地时间格式给后端
+        if (editingEndTime) {
+          updateData.endTime = editingEndTime + ':00'
+        } else {
+          updateData.endTime = null
+        }
+      }
+      if (editingThresholdValue !== selectedSession.threshold) {
+        updateData.threshold = editingThresholdValue
+      }
+      
+      // 只有当有数据需要更新时才发送请求
+      if (Object.keys(updateData).length > 0) {
+        console.log('发送的更新数据:', updateData)
+        const response = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${selectedSession.id}/update`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(updateData)
+        })
+        
+        if (response.ok) {
+          const updatedSession = await response.json()
+          setSelectedSession(updatedSession)
+          setEditingSession(false)
+          
+          // 重新获取数据以刷新界面
+          await recalculateSessionData()
+          
+          alert('会话信息更新成功')
+        } else {
+          alert('会话信息更新失败')
+        }
+      } else {
+        setEditingSession(false)
+        alert('没有需要更新的信息')
+      }
+    } catch (error) {
+      console.error('更新会话信息失败:', error)
+      alert('更新会话信息失败: ' + error)
+    }
+  }
+
+  // 新增函数：取消编辑会话信息
+  const cancelEditSession = () => {
+    setEditingSession(false)
+  }
+
+  // 新增函数：重新计算会话数据
+  const recalculateSessionData = async () => {
+    if (!selectedSession) return
+    
+    try {
+      // 重新获取会话数据（包含重新计算的小组统计）
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${selectedSession.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        const session = data.session as AttendanceSession
+        const groupStats = data.groupStats as GroupStat[]
+        
+        // 更新会话数据，包含重新计算的小组统计
+        const updatedSession = {
+          ...session,
+          groupData: JSON.stringify(groupStats)
+        }
+        setSelectedSession(updatedSession)
+      }
+    } catch (error) {
+      console.error('重新计算数据失败:', error)
     }
   }
 
@@ -168,7 +328,7 @@ function App() {
         return false
       }
       if (attendanceRankSuccess && meritRankSuccess) {
-        alert('出勤率排名和战功增量排名只能选择一个')
+        alert('出勤率排名和战功增量排名只能选择一个，不能同时选择两个排名')
         return false
       }
       if (!rewardTypeSuccess) {
@@ -280,7 +440,7 @@ function App() {
       setRewardTypeSuccess(condition.rewardType || '648')
     } else {
       setAttendanceRateFailure(condition.attendanceRateThreshold || '')
-      setAttendanceRankFailure(String(condition.attendanceRateRank || '1'))
+      setAttendanceRankFailure(condition.attendanceRateRank ? String(condition.attendanceRateRank) : '')
       setPenaltyTypeFailure(condition.penaltyType || '-648')
     }
   }
@@ -366,7 +526,7 @@ function App() {
     setMeritRankSuccess('')
     setRewardTypeSuccess('648')
     setAttendanceRateFailure('')
-    setAttendanceRankFailure('1')
+    setAttendanceRankFailure('')
     setPenaltyTypeFailure('-648')
     setEditingCondition(null)
   }
@@ -466,7 +626,7 @@ function App() {
           助攻前值: assistPrev,
           助攻后值: assistNext,
           助攻差值: assistDiff,
-          达标: diff >= threshold 
+          达标: diff >= threshold
         })
       }
       setFilteredCount(filtered)
@@ -589,13 +749,18 @@ function App() {
       const groupStats = data.groupStats as GroupStat[]
       
       // 将小组统计数据添加到会话对象中，用于弹窗显示
+      console.log('小组统计数据:', groupStats)
       const sessionWithGroupStats = {
         ...session,
         groupData: JSON.stringify(groupStats)
       }
+      console.log('设置到selectedSession的groupData:', sessionWithGroupStats.groupData)
       
       setSelectedSession(sessionWithGroupStats)
       setShowSessionModal(true)
+      
+      // 初始化编辑阈值状态
+      setEditingThresholdValue(session.threshold || 0)
       
       // 加载奖惩条件列表 - 使用sessionWithGroupStats而不是依赖selectedSession状态
       try {
@@ -647,8 +812,8 @@ function App() {
           style={{
             padding: '12px 24px',
             border: 'none',
-            background: activeTab === 'add' ? '#007bff' : '#f8f9fa',
-            color: activeTab === 'add' ? '#fff' : '#000',
+            background: activeTab === 'add' ? '#007bff' : '#555555',
+            color: '#fff',
             cursor: 'pointer',
             fontSize: '16px',
             fontWeight: activeTab === 'add' ? 'bold' : 'normal',
@@ -665,8 +830,8 @@ function App() {
           style={{
             padding: '12px 24px',
             border: 'none',
-            background: activeTab === 'view' ? '#007bff' : '#f8f9fa',
-            color: activeTab === 'view' ? '#fff' : '#000',
+            background: activeTab === 'view' ? '#007bff' : '#555555',
+            color: '#fff',
             cursor: 'pointer',
             fontSize: '16px',
             fontWeight: activeTab === 'view' ? 'bold' : 'normal',
@@ -678,10 +843,10 @@ function App() {
       </div>
 
       {activeTab === 'add' && (
-        <div>
-          <h2>添加考勤</h2>
+        <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px' }}>
+          <h2 style={{ color: '#fff' }}>添加考勤</h2>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-        <label>
+        <label style={{ color: '#fff' }}>
           起始CSV：
                           <input type="file" accept=".csv" onChange={(e) => {
                   const file = e.target.files?.[0] ?? null;
@@ -695,7 +860,7 @@ function App() {
                   }
                 }} />
         </label>
-        <label>
+        <label style={{ color: '#fff' }}>
           结束CSV：
                           <input type="file" accept=".csv" onChange={(e) => {
                   const file = e.target.files?.[0] ?? null;
@@ -709,7 +874,7 @@ function App() {
                   }
                 }} />
         </label>
-        <label>
+        <label style={{ color: '#fff' }}>
           出勤标准（差值≥）：
           <input
             type="number"
@@ -718,7 +883,19 @@ function App() {
             style={{ width: 100 }}
           />
         </label>
-        <button onClick={compute} disabled={!canCompute}>
+        <button 
+          onClick={compute} 
+          disabled={!canCompute}
+          style={{
+            padding: '8px 16px',
+            background: '#28a745',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 'bold'
+          }}
+        >
           计算并展示
         </button>
       </div>
@@ -828,10 +1005,10 @@ function App() {
       {activeTab === 'add' && rows.length > 0 && (
         <div style={{ marginTop: 16 }}>
             {/* 保存考勤功能 */}
-            <div style={{ marginBottom: 16, padding: '16px', border: '1px solid #dee2e6', borderRadius: '4px', background: '#f8f9fa' }}>
-              <h4 style={{ margin: '0 0 12px 0' }}>保存考勤</h4>
+            <div style={{ marginBottom: 16, padding: '16px', border: '1px solid #dee2e6', borderRadius: '4px', background: '#2d2d2d' }}>
+              <h4 style={{ margin: '0 0 12px 0', color: '#fff' }}>保存考勤</h4>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                <label>
+                <label style={{ color: '#fff' }}>
                   考勤名称：
                   <input
                     type="text"
@@ -841,7 +1018,7 @@ function App() {
                     style={{ width: 200 }}
                   />
                 </label>
-                <label>
+                <label style={{ color: '#fff' }}>
                   战役结果：
                   <select
                     value={battleResult}
@@ -865,8 +1042,8 @@ function App() {
                 style={{
                   padding: '8px 16px',
                   border: '1px solid #ccc',
-                  background: activeSubTab === 'members' ? '#007bff' : '#fff',
-                  color: activeSubTab === 'members' ? '#fff' : '#000',
+                  background: activeSubTab === 'members' ? '#007bff' : '#555555',
+                  color: '#fff',
                   cursor: 'pointer'
                 }}
               >
@@ -877,8 +1054,8 @@ function App() {
                 style={{
                   padding: '8px 16px',
                   border: '1px solid #ccc',
-                  background: activeSubTab === 'groups' ? '#007bff' : '#fff',
-                  color: activeSubTab === 'groups' ? '#fff' : '#000',
+                  background: activeSubTab === 'groups' ? '#007bff' : '#555555',
+                  color: '#fff',
                   cursor: 'pointer'
                 }}
               >
@@ -890,16 +1067,16 @@ function App() {
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #dee2e6' }}>
                   <thead>
-                    <tr style={{ background: '#f8f9fa' }}>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>成员</th>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>分组</th>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>战功总量（前值）</th>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>战功总量（后值）</th>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>战功差值</th>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>助攻总量（前值）</th>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>助攻总量（后值）</th>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>助攻差值</th>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>是否达标</th>
+                    <tr style={{ background: '#404040' }}>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>成员</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>分组</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>战功总量（前值）</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>战功总量（后值）</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>战功差值</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>助攻总量（前值）</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>助攻总量（后值）</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>助攻差值</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>是否达标</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -913,7 +1090,7 @@ function App() {
                         <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.助攻前值 || 0}</td>
                         <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.助攻后值 || 0}</td>
                         <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.助攻差值 || 0}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.达标 ? '出勤' : '未出勤'}</td>
+                                                 <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.达标 ? '出勤' : '未出勤'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -925,26 +1102,28 @@ function App() {
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #dee2e6' }}>
                   <thead>
-                    <tr style={{ background: '#f8f9fa' }}>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>分组</th>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>总战功增量</th>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>人均战功增量</th>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>总助攻增量</th>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>人均助攻增量</th>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>出勤率（%）</th>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>小组人数</th>
+                    <tr style={{ background: '#404040' }}>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>分组</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>总战功增量</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>人均战功增量</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>总助攻增量</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>人均助攻增量</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>出勤率（%）</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>出勤率（加成后）</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>小组人数</th>
                     </tr>
                   </thead>
                   <tbody>
                     {groupStats.map((g) => (
-                      <tr key={g.group} style={{ background: '#fff' }}>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{g.group}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{g.totalMeritIncrease}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{g.averageMeritIncrease}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{g.totalAssistIncrease || 0}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{g.averageAssistIncrease || 0}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{g.attendanceRate}%</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{g.memberCount}</td>
+                      <tr key={g.group} style={{ background: '#2d2d2d' }}>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{g.group}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{g.totalMeritIncrease}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{g.averageMeritIncrease}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{g.totalAssistIncrease || 0}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{g.averageAssistIncrease || 0}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{g.attendanceRate}%</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{calculateBonusAttendanceRate(g.attendanceRate, g.memberCount)}%</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{g.memberCount}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -969,7 +1148,7 @@ function App() {
           zIndex: 1000
         }}>
           <div style={{
-            background: '#fff',
+            background: '#2d2d2d',
             padding: '24px',
             borderRadius: '8px',
             maxWidth: modalActiveTab === 'rewards' ? '1200px' : '800px',
@@ -977,26 +1156,169 @@ function App() {
             overflow: 'auto'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3>考勤详情 - {selectedSession.name}</h3>
+              <h3 style={{ color: '#fff' }}>考勤详情 - {selectedSession.name}</h3>
               <button
                 onClick={() => setShowSessionModal(false)}
-                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#fff' }}
               >
                 ×
               </button>
             </div>
             
             <div style={{ marginBottom: '16px' }}>
-              <p><strong>考勤名称：</strong>{selectedSession.name}</p>
-              <p><strong>战役结果：</strong>{selectedSession.battleResult === 'VICTORY' ? '胜利' : '失败'}</p>
-              <p><strong>出勤标准：</strong>{selectedSession.threshold || '未设置'}</p>
-              <p><strong>状态：</strong>
-                {selectedSession.status === 'ADDED' && '已添加'}
-                {selectedSession.status === 'SAVED' && '已保存'}
-                {selectedSession.status === 'SETTLED' && '已结算'}
-              </p>
-              <p><strong>创建时间：</strong>{new Date(selectedSession.createdAt).toLocaleString()}</p>
-              <p><strong>更新时间：</strong>{new Date(selectedSession.updatedAt).toLocaleString()}</p>
+              {editingSession ? (
+                // 编辑模式
+                <div style={{ background: '#404040', padding: '16px', borderRadius: '8px', marginBottom: '16px' }}>
+                  <h4 style={{ margin: '0 0 16px 0', color: '#fff' }}>编辑会话信息</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '4px', color: '#fff' }}>考勤名称：</label>
+                      <input
+                        type="text"
+                        value={editingSessionName}
+                        onChange={(e) => setEditingSessionName(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          border: '1px solid #007bff',
+                          borderRadius: '4px',
+                          background: '#2d2d2d',
+                          color: '#fff'
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '4px', color: '#fff' }}>战役结果：</label>
+                      <select
+                        value={editingBattleResult}
+                        onChange={(e) => setEditingBattleResult(e.target.value as 'VICTORY' | 'DEFEAT')}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          border: '1px solid #007bff',
+                          borderRadius: '4px',
+                          background: '#2d2d2d',
+                          color: '#fff'
+                        }}
+                      >
+                        <option value="VICTORY">胜利</option>
+                        <option value="DEFEAT">失败</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '4px', color: '#fff' }}>起始时间：</label>
+                      <input
+                        type="datetime-local"
+                        value={editingStartTime}
+                        onChange={(e) => setEditingStartTime(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          border: '1px solid #007bff',
+                          borderRadius: '4px',
+                          background: '#2d2d2d',
+                          color: '#fff'
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '4px', color: '#fff' }}>结束时间：</label>
+                      <input
+                        type="datetime-local"
+                        value={editingEndTime}
+                        onChange={(e) => setEditingEndTime(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          border: '1px solid #007bff',
+                          borderRadius: '4px',
+                          background: '#2d2d2d',
+                          color: '#fff'
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '4px', color: '#fff' }}>战功阈值：</label>
+                      <input
+                        type="number"
+                        value={editingThresholdValue}
+                        onChange={(e) => setEditingThresholdValue(Number(e.target.value) || 0)}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          border: '1px solid #007bff',
+                          borderRadius: '4px',
+                          background: '#2d2d2d',
+                          color: '#fff'
+                        }}
+                      />
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
+                    <button
+                      onClick={saveSessionInfo}
+                      style={{
+                        padding: '8px 16px',
+                        background: '#28a745',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      保存
+                    </button>
+                    <button
+                      onClick={cancelEditSession}
+                      style={{
+                        padding: '8px 16px',
+                        background: '#6c757d',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      取消
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                // 显示模式
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px', fontSize: '14px', color: '#fff' }}>
+                  <div><strong>考勤名称：</strong>{selectedSession.name}</div>
+                  <div><strong>战役结果：</strong>{selectedSession.battleResult === 'VICTORY' ? '胜利' : '失败'}</div>
+                  <div><strong>起始时间：</strong>{selectedSession.startTime ? new Date(selectedSession.startTime).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '未设置'}</div>
+                  <div><strong>结束时间：</strong>{selectedSession.endTime ? new Date(selectedSession.endTime).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '未设置'}</div>
+                  <div><strong>战功阈值：</strong>{selectedSession.threshold || '未设置'}</div>
+                  <div><strong>状态：</strong>
+                    {selectedSession.status === 'ADDED' && '已添加'}
+                    {selectedSession.status === 'SAVED' && '已保存'}
+                    {selectedSession.status === 'SETTLED' && '已结算'}
+                  </div>
+                  <div><strong>创建时间：</strong>{new Date(selectedSession.createdAt).toLocaleString()}</div>
+                  <div><strong>更新时间：</strong>{new Date(selectedSession.updatedAt).toLocaleString()}</div>
+                </div>
+              )}
+              
+              {!editingSession && selectedSession.status === 'ADDED' && (
+                <div style={{ marginTop: '8px' }}>
+                  <button
+                    onClick={startEditSession}
+                    style={{
+                      padding: '6px 12px',
+                      background: '#007bff',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '12px'
+                    }}
+                  >
+                    编辑
+                  </button>
+                </div>
+              )}
             </div>
             
             {/* 页签栏 */}
@@ -1006,8 +1328,8 @@ function App() {
                 style={{
                   padding: '8px 16px',
                   border: '1px solid #ccc',
-                  background: modalActiveTab === 'members' ? '#007bff' : '#fff',
-                  color: modalActiveTab === 'members' ? '#fff' : '#000',
+                  background: modalActiveTab === 'members' ? '#007bff' : '#555555',
+                  color: '#fff',
                   cursor: 'pointer'
                 }}
               >
@@ -1018,8 +1340,8 @@ function App() {
                 style={{
                   padding: '8px 16px',
                   border: '1px solid #ccc',
-                  background: modalActiveTab === 'groups' ? '#007bff' : '#fff',
-                  color: modalActiveTab === 'groups' ? '#fff' : '#000',
+                  background: modalActiveTab === 'groups' ? '#007bff' : '#555555',
+                  color: '#fff',
                   cursor: 'pointer'
                 }}
               >
@@ -1030,8 +1352,8 @@ function App() {
                 style={{
                   padding: '8px 16px',
                   border: '1px solid #ccc',
-                  background: modalActiveTab === 'rewards' ? '#007bff' : '#fff',
-                  color: modalActiveTab === 'rewards' ? '#fff' : '#000',
+                  background: modalActiveTab === 'rewards' ? '#007bff' : '#555555',
+                  color: '#fff',
                   cursor: 'pointer'
                 }}
               >
@@ -1045,16 +1367,17 @@ function App() {
                 <div style={{ overflowX: 'auto', maxHeight: '300px' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
-                      <tr style={{ background: '#f8f9fa' }}>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>成员</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>分组</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>战功前值</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>战功后值</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>战功差值</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>助攻前值</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>助攻后值</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>助攻差值</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>是否达标</th>
+                      <tr style={{ background: '#404040' }}>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>成员</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>分组</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>战功前值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>战功后值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>战功差值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>助攻前值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>助攻后值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>助攻差值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>是否达标</th>
+
                       </tr>
                     </thead>
                     <tbody>
@@ -1074,6 +1397,7 @@ function App() {
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.助攻后值 || 0}</td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.助攻差值 || 0}</td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.达标 ? '出勤' : '未出勤'}</td>
+
                             </tr>
                           ));
                         } catch (error) {
@@ -1088,39 +1412,46 @@ function App() {
             )}
             
             {/* 小组统计 */}
-            {modalActiveTab === 'groups' && selectedSession.groupData && selectedSession.groupData !== '[]' && (
+            {modalActiveTab === 'groups' && (
               <div style={{ marginBottom: '16px' }}>
                 <div style={{ overflowX: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
-                      <tr style={{ background: '#f8f9fa' }}>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>分组</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>总战功增量</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>人均战功增量</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>总助攻增量</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>人均助攻增量</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>出勤率（%）</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>小组人数</th>
+                      <tr style={{ background: '#404040' }}>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>分组</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>总战功增量</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>人均战功增量</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>总助攻增量</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>人均助攻增量</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>出勤率（%）</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>出勤率（加成后）</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>小组人数</th>
                       </tr>
                     </thead>
                     <tbody>
                       {(() => {
                         try {
+                          console.log('渲染小组统计，selectedSession.groupData:', selectedSession.groupData)
+                          if (!selectedSession.groupData || selectedSession.groupData === '[]') {
+                            return <tr><td colSpan={8} style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff', textAlign: 'center' }}>暂无小组统计数据</td></tr>;
+                          }
                           const groupData = JSON.parse(selectedSession.groupData);
+                          console.log('解析后的groupData:', groupData)
                           return groupData.map((group: GroupStat, index: number) => (
-                            <tr key={index} style={{ background: '#fff' }}>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{group.group}</td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{group.totalMeritIncrease}</td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{group.averageMeritIncrease}</td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{group.totalAssistIncrease || 0}</td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{group.averageAssistIncrease || 0}</td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{group.attendanceRate}%</td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{group.memberCount}</td>
+                            <tr key={index} style={{ background: '#2d2d2d' }}>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.group}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.totalMeritIncrease}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.averageMeritIncrease}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.totalAssistIncrease || 0}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.averageAssistIncrease || 0}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.attendanceRate}%</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{calculateBonusAttendanceRate(group.attendanceRate, group.memberCount)}%</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.memberCount}</td>
                             </tr>
                           ));
                         } catch (error) {
                           console.error('解析小组数据失败:', error);
-                          return <tr><td colSpan={7} style={{ padding: '1px solid #dee2e6', color: 'red' }}>解析小组数据失败: {error instanceof Error ? error.message : String(error)}</td></tr>;
+                          return <tr><td colSpan={8} style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff', textAlign: 'center' }}>解析小组数据失败: {error instanceof Error ? error.message : String(error)}</td></tr>;
                         }
                       })()}
                     </tbody>
@@ -1132,27 +1463,27 @@ function App() {
             {/* 考勤奖惩 */}
             {modalActiveTab === 'rewards' && (
               <div style={{ marginBottom: '16px', width: '100%' }}>
-                <div style={{ padding: '16px', border: '1px solid #dee2e6', borderRadius: '4px', background: '#f8f9fa' }}>
-                  <h4 style={{ margin: '0 0 12px 0', color: '#495057' }}>考勤奖惩规则</h4>
+                <div style={{ padding: '16px', border: '1px solid #dee2e6', borderRadius: '4px', background: '#2d2d2d' }}>
+                  <h4 style={{ margin: '0 0 12px 0', color: '#fff' }}>考勤奖惩规则</h4>
                   <div style={{ marginBottom: '16px' }}>
-                    <p style={{ margin: '8px 0', color: '#6c757d' }}>
+                    <p style={{ margin: '8px 0', color: '#fff' }}>
                       <strong>出勤标准：</strong>战功差值 ≥ {selectedSession.threshold || '未设置'}
                     </p>
-                    <p style={{ margin: '8px 0', color: '#6c757d' }}>
+                    <p style={{ margin: '8px 0', color: '#fff' }}>
                       <strong>战役结果：</strong>{selectedSession.battleResult === 'VICTORY' ? '胜利' : '失败'}
                     </p>
                   </div>
                 </div>
                 
                 {/* 奖惩条件表单 */}
-                <div style={{ marginTop: '16px', padding: '16px', border: '2px solid #007bff', borderRadius: '4px', background: '#fff' }}>
-                  <h4 style={{ margin: '0 0 16px 0', color: '#495057' }}>
+                <div style={{ marginTop: '16px', padding: '16px', border: '2px solid #007bff', borderRadius: '4px', background: '#2d2d2d' }}>
+                  <h4 style={{ margin: '0 0 16px 0', color: '#fff' }}>
                     {editingCondition ? '编辑奖惩条件' : '新增奖惩条件'}
                   </h4>
                   
                   {/* 状态提示 */}
                   {selectedSession.status === 'SAVED' && (
-                    <div style={{ marginBottom: '16px', padding: '8px 12px', background: '#fff3cd', border: '1px solid #ffeaa7', borderRadius: '4px', color: '#856404' }}>
+                    <div style={{ marginBottom: '16px', padding: '8px 12px', background: '#2d2d2d', border: '1px solid #ffc107', borderRadius: '4px', color: '#ffc107' }}>
                       <strong>提示：</strong>当前考勤记录已保存，无法修改奖惩条件。请先取消保存状态。
                     </div>
                   )}
@@ -1322,6 +1653,7 @@ function App() {
                               minWidth: '150px'
                             }}
                           >
+                            <option value="">请选择</option>
                             <option value="1">1</option>
                             <option value="2">2</option>
                             <option value="3">3</option>

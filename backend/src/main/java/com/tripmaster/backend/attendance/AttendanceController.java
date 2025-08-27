@@ -175,24 +175,13 @@ public class AttendanceController {
         if (session.getMemberData() != null && !session.getMemberData().isEmpty()) {
             try {
                 ObjectMapper mapper = new ObjectMapper();
-                List<MemberData> memberDataList = mapper.readValue(session.getMemberData(), 
-                    mapper.getTypeFactory().constructCollectionType(List.class, MemberData.class));
+                // 直接解析为DisplayRow，因为数据库中存储的数据包含计算字段
+                List<DisplayRow> members = mapper.readValue(session.getMemberData(), 
+                    mapper.getTypeFactory().constructCollectionType(List.class, DisplayRow.class));
                 
-                // 将基础数据转换为DisplayRow（包含计算字段）
-                List<DisplayRow> members = new ArrayList<>();
-                for (MemberData data : memberDataList) {
-                    DisplayRow row = new DisplayRow();
-                    row.set成员(data.get成员());
-                    row.set分组(data.get分组());
-                    row.set前值(data.get前值());
-                    row.set后值(data.get后值());
-                    row.set差值(data.get后值() - data.get前值());
-                    row.set助攻前值(data.get助攻前值());
-                    row.set助攻后值(data.get助攻后值());
-                    row.set助攻差值(data.get助攻后值() - data.get助攻前值());
-                    row.set达标((data.get后值() - data.get前值()) >= session.getThreshold());
-                    row.set参加考勤(data.is参加考勤());
-                    members.add(row);
+                // 重新计算达标状态，确保使用当前的threshold
+                for (DisplayRow member : members) {
+                    member.set达标((member.get后值() - member.get前值()) >= session.getThreshold());
                 }
                 
                 groupStats = calculateGroupStats(members);

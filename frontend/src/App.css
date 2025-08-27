@@ -5,6 +5,132 @@
   text-align: center;
 }
 
+/* 全局文字颜色自适应 */
+* {
+  color: inherit;
+}
+
+body {
+  color: #fff;
+  background-color: #1a1a1a;
+}
+
+/* 确保所有文字都有合适的颜色 */
+th, td, div, span, p, h1, h2, h3, h4, h5, h6, label, input, select, textarea, button {
+  color: #fff !important;
+}
+
+/* 表格样式优化 */
+table {
+  background-color: #2d2d2d;
+}
+
+th {
+  background-color: #404040 !important;
+  color: #fff !important;
+  font-weight: bold;
+}
+
+td {
+  background-color: #2d2d2d !important;
+  color: #fff !important;
+}
+
+/* 按钮文字颜色 */
+button {
+  color: #fff !important;
+}
+
+button:disabled {
+  color: #fff !important;
+}
+
+/* 计算并展示按钮样式 */
+.compute-button {
+  color: #fff !important;
+}
+
+.compute-button:disabled {
+  color: #fff !important;
+}
+
+/* 输入框文字颜色 */
+input, select, textarea {
+  color: #fff !important;
+  background-color: #2d2d2d !important;
+}
+
+/* 错误和警告信息 */
+.error-message {
+  color: #dc3545 !important;
+}
+
+.warning-message {
+  color: #ffc107 !important;
+}
+
+.success-message {
+  color: #28a745 !important;
+}
+
+/* 模态框样式 */
+.modal {
+  background-color: #2d2d2d;
+  color: #fff;
+}
+
+.modal-header {
+  background-color: #404040;
+  color: #fff;
+}
+
+.modal-body {
+  background-color: #2d2d2d;
+  color: #fff;
+}
+
+/* 标签页样式 */
+.tab-button {
+  background-color: #333333;
+  color: #fff !important;
+  border: 1px solid #dee2e6;
+}
+
+.tab-button.active {
+  background-color: #007bff;
+  color: #fff !important;
+}
+
+/* 未选中的页签按钮 */
+.tab-button:not(.active) {
+  background-color: #555555 !important;
+  color: #fff !important;
+}
+
+/* 卡片样式 */
+.card {
+  background-color: #2d2d2d;
+  color: #fff;
+  border: 1px solid #dee2e6;
+}
+
+/* 表格行样式 - 高优先级覆盖默认样式 */
+tr[style*="background: #d4edda"] {
+  background-color: #d4edda !important;
+}
+
+tr[style*="background: #f8d7da"] {
+  background-color: #f8d7da !important;
+}
+
+tr[style*="background: #d4edda"] td {
+  color: #155724 !important;
+}
+
+tr[style*="background: #f8d7da"] td {
+  color: #721c24 !important;
+}
+
 .logo {
   height: 6em;
   padding: 1.5em;
