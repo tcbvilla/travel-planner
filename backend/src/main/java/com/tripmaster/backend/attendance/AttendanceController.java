@@ -18,6 +18,7 @@ import java.util.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import com.tripmaster.backend.attendance.BattleResult;
 
 @RestController
 @RequestMapping("/api/v1/attendance")
@@ -39,7 +40,7 @@ public class AttendanceController {
         Map<String, Map<String, String>> startMap = indexByMember(startRows);
         Map<String, Map<String, String>> endMap = indexByMember(endRows);
 
-        List<DisplayRow> result = new ArrayList<>();
+        List<MemberData> result = new ArrayList<>();
         int filteredCount = 0;
         
         for (Map.Entry<String, Map<String, String>> e : startMap.entrySet()) {
@@ -71,26 +72,41 @@ public class AttendanceController {
             long assistNext = parseLong(t.getOrDefault("助攻总量", "0"));
             long assistDiff = assistNext - assistPrev;
 
-            DisplayRow row = new DisplayRow();
-            row.set成员(member);
-            row.set分组(startGroup);
-            row.set前值(prev);
-            row.set后值(next);
-            row.set差值(diff);
-            row.set助攻前值(assistPrev);
-            row.set助攻后值(assistNext);
-            row.set助攻差值(assistDiff);
-            row.set达标(diff >= threshold);
-            result.add(row);
+            MemberData memberData = new MemberData();
+            memberData.set成员(member);
+            memberData.set分组(startGroup);
+            memberData.set前值(prev);
+            memberData.set后值(next);
+            memberData.set助攻前值(assistPrev);
+            memberData.set助攻后值(assistNext);
+            memberData.set参加考勤(true); // 默认参加考勤
+            result.add(memberData);
         }
 
-        result.sort((a, b) -> Long.compare(b.get差值(), a.get差值()));
+        // 将基础数据转换为DisplayRow（包含计算字段）用于返回
+        List<DisplayRow> displayRows = new ArrayList<>();
+        for (MemberData data : result) {
+            DisplayRow row = new DisplayRow();
+            row.set成员(data.get成员());
+            row.set分组(data.get分组());
+            row.set前值(data.get前值());
+            row.set后值(data.get后值());
+            row.set差值(data.get后值() - data.get前值());
+            row.set助攻前值(data.get助攻前值());
+            row.set助攻后值(data.get助攻后值());
+            row.set助攻差值(data.get助攻后值() - data.get助攻前值());
+            row.set达标((data.get后值() - data.get前值()) >= threshold);
+            row.set参加考勤(data.is参加考勤());
+            displayRows.add(row);
+        }
+        
+        displayRows.sort((a, b) -> Long.compare(b.get差值(), a.get差值()));
         
         // 计算小组统计
-        List<GroupStat> groupStats = calculateGroupStats(result);
+        List<GroupStat> groupStats = calculateGroupStats(displayRows);
         
         AttendanceResponse response = new AttendanceResponse();
-        response.setMembers(result);
+        response.setMembers(displayRows);
         response.setGroups(groupStats);
         response.setFilteredCount(filteredCount);
         
@@ -159,9 +175,28 @@ public class AttendanceController {
         if (session.getMemberData() != null && !session.getMemberData().isEmpty()) {
             try {
                 ObjectMapper mapper = new ObjectMapper();
-                List<DisplayRow> members = mapper.readValue(session.getMemberData(), 
-                    mapper.getTypeFactory().constructCollectionType(List.class, DisplayRow.class));
+                List<MemberData> memberDataList = mapper.readValue(session.getMemberData(), 
+                    mapper.getTypeFactory().constructCollectionType(List.class, MemberData.class));
+                
+                // 将基础数据转换为DisplayRow（包含计算字段）
+                List<DisplayRow> members = new ArrayList<>();
+                for (MemberData data : memberDataList) {
+                    DisplayRow row = new DisplayRow();
+                    row.set成员(data.get成员());
+                    row.set分组(data.get分组());
+                    row.set前值(data.get前值());
+                    row.set后值(data.get后值());
+                    row.set差值(data.get后值() - data.get前值());
+                    row.set助攻前值(data.get助攻前值());
+                    row.set助攻后值(data.get助攻后值());
+                    row.set助攻差值(data.get助攻后值() - data.get助攻前值());
+                    row.set达标((data.get后值() - data.get前值()) >= session.getThreshold());
+                    row.set参加考勤(data.is参加考勤());
+                    members.add(row);
+                }
+                
                 groupStats = calculateGroupStats(members);
+                
             } catch (Exception e) {
                 // 如果解析失败，返回空的小组统计
                 groupStats = new ArrayList<>();
@@ -206,7 +241,13 @@ public class AttendanceController {
         Map<String, GroupStat> groupMap = new HashMap<>();
         
         for (DisplayRow member : members) {
+            // 只统计参加考勤的成员
+            if (!member.is参加考勤()) {
+                continue;
+            }
+            
             String group = member.get分组();
+            
             GroupStat stat = groupMap.computeIfAbsent(group, k -> {
                 GroupStat gs = new GroupStat();
                 gs.setGroup(group);
@@ -236,15 +277,6 @@ public class AttendanceController {
                 // 计算出勤率：达标人数 / 总人数 * 100%
                 double attendanceRate = (double) stat.getAttendedCount() / stat.getMemberCount() * 100.0;
                 stat.setAttendanceRate(Math.round(attendanceRate * 100.0) / 100.0);
-                
-                // 调试日志
-                System.out.println("小组: " + stat.getGroup() + 
-                    ", 总人数: " + stat.getMemberCount() + 
-                    ", 达标人数: " + stat.getAttendedCount() + 
-                    ", 出勤率: " + attendanceRate + 
-                    ", 最终出勤率: " + stat.getAttendanceRate() +
-                    ", 总助攻增量: " + stat.getTotalAssistIncrease() +
-                    ", 人均助攻增量: " + stat.getAverageAssistIncrease());
             }
         }
         
@@ -460,6 +492,161 @@ public class AttendanceController {
     @DeleteMapping("/reward-conditions/{id}")
     public void deleteRewardCondition(@PathVariable Long id) {
         rewardConditionRepository.deleteById(id);
+    }
+    
+    /**
+     * 更新考勤记录的基本信息
+     */
+    @PutMapping("/sessions/{sessionId}/update")
+    public AttendanceSession updateSession(@PathVariable Long sessionId, @RequestBody Map<String, Object> request) {
+        AttendanceSession session = attendanceSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("考勤记录不存在"));
+        
+        // 更新阈值
+        if (request.containsKey("threshold")) {
+            Object thresholdObj = request.get("threshold");
+            if (thresholdObj instanceof Integer) {
+                session.setThreshold((Integer) thresholdObj);
+            } else if (thresholdObj instanceof String) {
+                try {
+                    session.setThreshold(Integer.parseInt((String) thresholdObj));
+                } catch (NumberFormatException e) {
+                    throw new RuntimeException("阈值格式不正确");
+                }
+            }
+        }
+        
+        // 更新考勤名称
+        if (request.containsKey("name")) {
+            Object nameObj = request.get("name");
+            if (nameObj instanceof String) {
+                session.setName((String) nameObj);
+            }
+        }
+        
+        // 更新战役结果
+        if (request.containsKey("battleResult")) {
+            Object battleResultObj = request.get("battleResult");
+            if (battleResultObj instanceof String) {
+                String battleResult = (String) battleResultObj;
+                try {
+                    session.setBattleResult(BattleResult.valueOf(battleResult));
+                } catch (IllegalArgumentException e) {
+                    throw new RuntimeException("战役结果只能是 VICTORY 或 DEFEAT");
+                }
+            }
+        }
+        
+        // 更新起始时间
+        if (request.containsKey("startTime")) {
+            Object startTimeObj = request.get("startTime");
+            if (startTimeObj instanceof String) {
+                try {
+                    String timeStr = (String) startTimeObj;
+                    LocalDateTime startTime;
+                    
+                    // 处理带时区的ISO格式 (如: 2025-08-27T23:30:00.000Z)
+                    if (timeStr.endsWith("Z")) {
+                        // 移除Z后缀并解析为本地时间
+                        timeStr = timeStr.substring(0, timeStr.length() - 1);
+                        startTime = LocalDateTime.parse(timeStr);
+                    } else {
+                        // 处理本地时间格式 (如: 2025-08-27T23:30:00)
+                        startTime = LocalDateTime.parse(timeStr);
+                    }
+                    session.setStartTime(startTime);
+                } catch (Exception e) {
+                    throw new RuntimeException("起始时间格式不正确，应为 ISO 8601 格式: " + e.getMessage());
+                }
+            }
+        }
+        
+        // 更新结束时间
+        if (request.containsKey("endTime")) {
+            Object endTimeObj = request.get("endTime");
+            if (endTimeObj instanceof String) {
+                try {
+                    String timeStr = (String) endTimeObj;
+                    LocalDateTime endTime;
+                    
+                    // 处理带时区的ISO格式 (如: 2025-08-27T23:30:00.000Z)
+                    if (timeStr.endsWith("Z")) {
+                        // 移除Z后缀并解析为本地时间
+                        timeStr = timeStr.substring(0, timeStr.length() - 1);
+                        endTime = LocalDateTime.parse(timeStr);
+                    } else {
+                        // 处理本地时间格式 (如: 2025-08-27T23:30:00)
+                        endTime = LocalDateTime.parse(timeStr);
+                    }
+                    session.setEndTime(endTime);
+                } catch (Exception e) {
+                    throw new RuntimeException("结束时间格式不正确，应为 ISO 8601 格式: " + e.getMessage());
+                }
+            }
+        }
+        
+        return attendanceSessionRepository.save(session);
+    }
+    
+    /**
+     * 更新考勤记录的阈值（保持向后兼容）
+     */
+    @PutMapping("/sessions/{sessionId}/threshold")
+    public AttendanceSession updateThreshold(@PathVariable Long sessionId, @RequestBody Map<String, Integer> request) {
+        AttendanceSession session = attendanceSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("考勤记录不存在"));
+        
+        Integer newThreshold = request.get("threshold");
+        if (newThreshold == null) {
+            throw new RuntimeException("阈值不能为空");
+        }
+        
+        session.setThreshold(newThreshold);
+        return attendanceSessionRepository.save(session);
+    }
+
+    /**
+     * 更新成员的参加考勤状态
+     */
+    @PutMapping("/sessions/{sessionId}/member-attendance")
+    public AttendanceSession updateMemberAttendance(@PathVariable Long sessionId, @RequestBody Map<String, Object> request) {
+        AttendanceSession session = attendanceSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("考勤记录不存在"));
+        
+        String memberName = (String) request.get("memberName");
+        Boolean isAttending = (Boolean) request.get("isAttending");
+        
+        if (memberName == null || isAttending == null) {
+            throw new RuntimeException("成员名称和参加状态不能为空");
+        }
+        
+        try {
+            // 解析现有的memberData
+            ObjectMapper mapper = new ObjectMapper();
+            List<MemberData> memberDataList = mapper.readValue(session.getMemberData(), 
+                    mapper.getTypeFactory().constructCollectionType(List.class, MemberData.class));
+            
+            // 更新指定成员的参加考勤状态
+            boolean found = false;
+            for (MemberData member : memberDataList) {
+                if (member.get成员().equals(memberName)) {
+                    member.set参加考勤(isAttending);
+                    found = true;
+                    break;
+                }
+            }
+            
+            if (!found) {
+                throw new RuntimeException("未找到指定成员: " + memberName);
+            }
+            
+            // 保存更新后的memberData
+            session.setMemberData(mapper.writeValueAsString(memberDataList));
+            return attendanceSessionRepository.save(session);
+            
+        } catch (Exception e) {
+            throw new RuntimeException("更新成员参加状态失败: " + e.getMessage());
+        }
     }
 }
 
