@@ -8,6 +8,9 @@ type DisplayRow = {
   前值: number
   后值: number
   差值: number
+  助攻前值: number
+  助攻后值: number
+  助攻差值: number
   达标: boolean
 }
 
@@ -140,7 +143,23 @@ function App() {
         const prev = numberize(s['战功总量'])
         const next = numberize(e['战功总量'])
         const diff = next - prev
-        display.push({ 成员: member, 分组: startGroup, 前值: prev, 后值: next, 差值: diff, 达标: diff >= threshold })
+        
+        // 处理助攻数据
+        const assistPrev = numberize(s['助攻总量'])
+        const assistNext = numberize(e['助攻总量'])
+        const assistDiff = assistNext - assistPrev
+        
+        display.push({ 
+          成员: member, 
+          分组: startGroup, 
+          前值: prev, 
+          后值: next, 
+          差值: diff, 
+          助攻前值: assistPrev,
+          助攻后值: assistNext,
+          助攻差值: assistDiff,
+          达标: diff >= threshold 
+        })
       }
       setFilteredCount(filtered)
       display.sort((a, b) => b.差值 - a.差值)
@@ -485,7 +504,10 @@ function App() {
                       <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>分组</th>
                       <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>战功总量（前值）</th>
                       <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>战功总量（后值）</th>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>差值</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>战功差值</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>助攻总量（前值）</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>助攻总量（后值）</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>助攻差值</th>
                       <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left' }}>是否达标</th>
                     </tr>
                   </thead>
@@ -497,6 +519,9 @@ function App() {
                         <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.前值}</td>
                         <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.后值}</td>
                         <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.差值}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.助攻前值 || 0}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.助攻后值 || 0}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.助攻差值 || 0}</td>
                         <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.达标 ? '出勤' : '未出勤'}</td>
                       </tr>
                     ))}
@@ -616,9 +641,12 @@ function App() {
                       <tr style={{ background: '#f8f9fa' }}>
                         <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>成员</th>
                         <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>分组</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>前值</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>后值</th>
-                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>差值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>战功前值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>战功后值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>战功差值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>助攻前值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>助攻后值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>助攻差值</th>
                         <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>是否达标</th>
                       </tr>
                     </thead>
@@ -635,12 +663,15 @@ function App() {
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.前值}</td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.后值}</td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.差值}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.助攻前值 || 0}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.助攻后值 || 0}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.助攻差值 || 0}</td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.达标 ? '出勤' : '未出勤'}</td>
                             </tr>
                           ));
                         } catch (error) {
                           console.error('解析成员数据失败:', error);
-                          return <tr><td colSpan={6} style={{ padding: '8px', border: '1px solid #dee2e6', color: 'red' }}>解析成员数据失败: {error instanceof Error ? error.message : String(error)}</td></tr>;
+                          return <tr><td colSpan={9} style={{ padding: '8px', border: '1px solid #dee2e6', color: 'red' }}>解析成员数据失败: {error instanceof Error ? error.message : String(error)}</td></tr>;
                         }
                       })()}
                     </tbody>

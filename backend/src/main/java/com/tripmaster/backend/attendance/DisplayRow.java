@@ -6,6 +6,9 @@ public class DisplayRow {
     private long 前值;
     private long 后值;
     private long 差值;
+    private long 助攻前值;
+    private long 助攻后值;
+    private long 助攻差值;
     private boolean 达标;
 
     public String get成员() { return 成员; }
@@ -22,6 +25,15 @@ public class DisplayRow {
 
     public long get差值() { return 差值; }
     public void set差值(long 差值) { this.差值 = 差值; }
+
+    public long get助攻前值() { return 助攻前值; }
+    public void set助攻前值(long 助攻前值) { this.助攻前值 = 助攻前值; }
+
+    public long get助攻后值() { return 助攻后值; }
+    public void set助攻后值(long 助攻后值) { this.助攻后值 = 助攻后值; }
+
+    public long get助攻差值() { return 助攻差值; }
+    public void set助攻差值(long 助攻差值) { this.助攻差值 = 助攻差值; }
 
     public boolean is达标() { return 达标; }
     public void set达标(boolean 达标) { this.达标 = 达标; }

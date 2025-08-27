@@ -59,6 +59,11 @@ public class AttendanceController {
             long prev = parseLong(s.getOrDefault("战功总量", "0"));
             long next = parseLong(t.getOrDefault("战功总量", "0"));
             long diff = next - prev;
+            
+            // 处理助攻数据
+            long assistPrev = parseLong(s.getOrDefault("助攻总量", "0"));
+            long assistNext = parseLong(t.getOrDefault("助攻总量", "0"));
+            long assistDiff = assistNext - assistPrev;
 
             DisplayRow row = new DisplayRow();
             row.set成员(member);
@@ -66,6 +71,9 @@ public class AttendanceController {
             row.set前值(prev);
             row.set后值(next);
             row.set差值(diff);
+            row.set助攻前值(assistPrev);
+            row.set助攻后值(assistNext);
+            row.set助攻差值(assistDiff);
             row.set达标(diff >= threshold);
             result.add(row);
         }
@@ -178,6 +186,13 @@ public class AttendanceController {
                 // 计算出勤率：达标人数 / 总人数 * 100%
                 double attendanceRate = (double) stat.getAttendedCount() / stat.getMemberCount() * 100.0;
                 stat.setAttendanceRate(Math.round(attendanceRate * 100.0) / 100.0);
+                
+                // 调试日志
+                System.out.println("小组: " + stat.getGroup() + 
+                    ", 总人数: " + stat.getMemberCount() + 
+                    ", 达标人数: " + stat.getAttendedCount() + 
+                    ", 出勤率: " + attendanceRate + 
+                    ", 最终出勤率: " + stat.getAttendanceRate());
             }
         }
         
