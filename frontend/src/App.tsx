@@ -951,9 +951,9 @@ function App() {
                           />
                         </div>
                         
-                        {/* 第三行：出勤率第 */}
+                        {/* 第三行：出勤率倒数第 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>出勤率第</label>
+                          <label style={{ minWidth: '80px', color: '#000', fontWeight: 'bold' }}>出勤率倒数第</label>
                           <select 
                             value={attendanceRankFailure}
                             onChange={(e) => setAttendanceRankFailure(e.target.value)}
