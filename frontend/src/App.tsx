@@ -70,11 +70,56 @@ function App() {
     }
   }, [])
 
+  // 加载码表数据
+  const loadCodeTables = async () => {
+    try {
+      console.log('开始加载码表数据...')
+      const [rewardResponse, penaltyResponse] = await Promise.all([
+        fetch('http://localhost:8080/api/v1/attendance/code-tables?type=REWARD'),
+        fetch('http://localhost:8080/api/v1/attendance/code-tables?type=PENALTY')
+      ])
+      
+      console.log('码表响应状态:', rewardResponse.status, penaltyResponse.status)
+      
+      if (rewardResponse.ok && penaltyResponse.ok) {
+        const rewardData = await rewardResponse.json()
+        const penaltyData = await penaltyResponse.json()
+        console.log('加载到的奖励码表:', rewardData)
+        console.log('加载到的处罚码表:', penaltyData)
+        setRewardCodes(rewardData)
+        setPenaltyCodes(penaltyData)
+      } else {
+        console.error('码表加载失败:', rewardResponse.status, penaltyResponse.status)
+      }
+    } catch (error) {
+      console.error('加载码表失败:', error)
+    }
+  }
+
+  // 初始化码表数据
+  const initCodeTables = async () => {
+    try {
+      const response = await fetch('http://localhost:8080/api/v1/attendance/code-tables/init', {
+        method: 'POST'
+      })
+      
+      if (response.ok) {
+        const result = await response.text()
+        console.log('码表初始化结果:', result)
+        // 初始化成功后重新加载码表
+        await loadCodeTables()
+      } else {
+        console.error('初始化码表失败:', response.status, response.statusText)
+      }
+    } catch (error) {
+      console.error('初始化码表失败:', error)
+    }
+  }
+
   // 组件加载时初始化码表数据
   useEffect(() => {
     const initializeCodeTables = async () => {
       try {
-        // 先尝试加载码表
         await loadCodeTables()
         
         // 如果码表为空，则初始化
@@ -88,7 +133,7 @@ function App() {
     }
     
     initializeCodeTables()
-  }, [rewardCodes.length, penaltyCodes.length])
+  }, [])
 
   // 计算加成后出勤率的函数
   const calculateBonusAttendanceRate = (attendanceRate: number, memberCount: number): number => {
@@ -1035,52 +1080,6 @@ function App() {
   const cancelDelete = () => {
     setShowDeleteConfirm(false)
     setSessionToDelete(null)
-  }
-
-  // 加载码表数据
-  const loadCodeTables = async () => {
-    try {
-      console.log('开始加载码表数据...')
-      const [rewardResponse, penaltyResponse] = await Promise.all([
-        fetch('http://localhost:8080/api/v1/attendance/code-tables?type=REWARD'),
-        fetch('http://localhost:8080/api/v1/attendance/code-tables?type=PENALTY')
-      ])
-      
-      console.log('码表响应状态:', rewardResponse.status, penaltyResponse.status)
-      
-      if (rewardResponse.ok && penaltyResponse.ok) {
-        const rewardData = await rewardResponse.json()
-        const penaltyData = await penaltyResponse.json()
-        console.log('加载到的奖励码表:', rewardData)
-        console.log('加载到的处罚码表:', penaltyData)
-        setRewardCodes(rewardData)
-        setPenaltyCodes(penaltyData)
-      } else {
-        console.error('码表加载失败:', rewardResponse.status, penaltyResponse.status)
-      }
-    } catch (error) {
-      console.error('加载码表失败:', error)
-    }
-  }
-
-  // 初始化码表数据
-  const initCodeTables = async () => {
-    try {
-      const response = await fetch('http://localhost:8080/api/v1/attendance/code-tables/init', {
-        method: 'POST'
-      })
-      
-      if (response.ok) {
-        const result = await response.text()
-        console.log('码表初始化结果:', result)
-        // 初始化成功后重新加载码表
-        await loadCodeTables()
-      } else {
-        console.error('初始化码表失败:', response.status, response.statusText)
-      }
-    } catch (error) {
-      console.error('初始化码表失败:', error)
-    }
   }
 
   return (
