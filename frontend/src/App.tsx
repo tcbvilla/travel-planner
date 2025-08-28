@@ -45,6 +45,12 @@ type AttendanceSession = {
   threshold?: number
   startTime?: string
   endTime?: string
+  season?: {
+    id: number
+    name: string
+    startDate: string
+    endDate: string
+  }
 }
 
 type PageResponse<T> = {
@@ -623,7 +629,17 @@ function App() {
   const [activeSubTab, setActiveSubTab] = useState<'members' | 'groups'>('members')
   const [filteredCount, setFilteredCount] = useState<number>(0)
   const [error, setError] = useState<string | null>(null)
-  
+
+  // 当切换到赛季管理页面时自动加载赛季列表
+  useEffect(() => {
+    if (activeTab === 'season') {
+      loadSeasons(0)
+    }
+    if (activeTab === 'add') {
+      loadAllSeasons()
+    }
+  }, [activeTab])
+
   // 考勤会话相关状态
   const [sessions, setSessions] = useState<AttendanceSession[]>([])
   const [currentPage, setCurrentPage] = useState(0)
@@ -631,7 +647,17 @@ function App() {
 
   const [sessionName, setSessionName] = useState('')
   const [battleResult, setBattleResult] = useState<'VICTORY' | 'DEFEAT'>('VICTORY')
+  const [selectedSeasonId, setSelectedSeasonId] = useState<number | null>(null)
+  const [seasonSearchTerm, setSeasonSearchTerm] = useState('')
+  const [showSeasonDropdown, setShowSeasonDropdown] = useState(false)
   const [showSessionModal, setShowSessionModal] = useState(false)
+
+  // 当打开会话详情时加载所有赛季（用于编辑）
+  useEffect(() => {
+    if (showSessionModal) {
+      loadAllSeasons()
+    }
+  }, [showSessionModal])
   const [selectedSession, setSelectedSession] = useState<AttendanceSession | null>(null)
   const [modalActiveTab, setModalActiveTab] = useState<'members' | 'groups' | 'rewards' | 'attendance'>('members')
 
@@ -675,6 +701,20 @@ function App() {
   
   // 导出排序选择器状态
   const [exportSortBy, setExportSortBy] = useState<'attendance' | 'averageMerit'>('attendance')
+  
+  // 赛季管理状态
+  const [seasons, setSeasons] = useState<any[]>([])
+  const [seasonName, setSeasonName] = useState('')
+  const [seasonStartDate, setSeasonStartDate] = useState('')
+  const [seasonEndDate, setSeasonEndDate] = useState('')
+  const [loadingSeasons, setLoadingSeasons] = useState(false)
+  const [currentSeasonPage, setCurrentSeasonPage] = useState(0)
+  const [totalSeasonPages, setTotalSeasonPages] = useState(0)
+  const [totalSeasonElements, setTotalSeasonElements] = useState(0)
+  const [editingSeason, setEditingSeason] = useState<any>(null)
+  const [editSeasonName, setEditSeasonName] = useState('')
+  const [editSeasonStartDate, setEditSeasonStartDate] = useState('')
+  const [editSeasonEndDate, setEditSeasonEndDate] = useState('')
 
 
 
@@ -689,6 +729,9 @@ function App() {
   const [editingBattleResult, setEditingBattleResult] = useState<'VICTORY' | 'DEFEAT'>('VICTORY')
   const [editingStartTime, setEditingStartTime] = useState<string>('')
   const [editingEndTime, setEditingEndTime] = useState<string>('')
+  const [editingSeasonId, setEditingSeasonId] = useState<number | null>(null)
+  const [editingSeasonSearchTerm, setEditingSeasonSearchTerm] = useState('')
+  const [showEditingSeasonDropdown, setShowEditingSeasonDropdown] = useState(false)
 
   // 新增函数：处理"若任务"状态变化
   const handleTaskStatusChange = (status: '成功' | '失败') => {
@@ -729,6 +772,11 @@ function App() {
     setEditingStartTime(formatLocalDateTime(selectedSession.startTime || ''))
     setEditingEndTime(formatLocalDateTime(selectedSession.endTime || ''))
     setEditingThresholdValue(selectedSession.threshold || 0)
+    
+    // 设置赛季编辑信息
+    setEditingSeasonId(selectedSession.season?.id || null)
+    setEditingSeasonSearchTerm('') // 搜索栏初始置空
+    
     setEditingSession(true)
   }
 
@@ -780,6 +828,11 @@ function App() {
         updateData.threshold = editingThresholdValue
       }
       
+      // 检查赛季是否发生变化
+      if (editingSeasonId !== selectedSession.season?.id) {
+        updateData.seasonId = editingSeasonId
+      }
+      
       // 只有当有数据需要更新时才发送请求
       if (Object.keys(updateData).length > 0) {
         console.log('发送的更新数据:', updateData)
@@ -796,6 +849,9 @@ function App() {
           
           // 重新获取数据以刷新界面
           await recalculateSessionData()
+          
+          // 刷新考勤记录列表页
+          await loadSessions(currentPage)
           
           alert('会话信息更新成功')
         } else {
@@ -814,6 +870,9 @@ function App() {
   // 新增函数：取消编辑会话信息
   const cancelEditSession = () => {
     setEditingSession(false)
+    setEditingSeasonId(null)
+    setEditingSeasonSearchTerm('')
+    setShowEditingSeasonDropdown(false)
   }
 
   // 新增函数：重新计算会话数据
@@ -1426,6 +1485,12 @@ function App() {
   const saveSession = async () => {
     let finalSessionName = sessionName.trim();
     
+    // 验证赛季选择
+    if (!selectedSeasonId) {
+      setError('请选择赛季')
+      return
+    }
+    
     // 如果考勤名称为空，使用默认名称
     if (!finalSessionName) {
       finalSessionName = generateDefaultSessionName();
@@ -1443,7 +1508,8 @@ function App() {
         // 移除小组统计数据的保存，改为实时计算
         threshold: threshold,
         startTime: startFile?.name || '',
-        endTime: endFile?.name || ''
+        endTime: endFile?.name || '',
+        seasonId: selectedSeasonId
       }
       
       const resp = await fetch(`http://localhost:8080/api/v1/attendance/save-session`, {
@@ -1458,6 +1524,8 @@ function App() {
       
       setSessionName('')
       setBattleResult('VICTORY')
+      setSelectedSeasonId(null)
+      setSeasonSearchTerm('')
       setError(null)
       // 切换到查看考勤记录页面并刷新列表
       setActiveTab('view')
@@ -1564,6 +1632,220 @@ function App() {
     setShowDeleteConfirm(false)
     setSessionToDelete(null)
   }
+
+  // 加载赛季列表
+  const loadSeasons = async (page: number = 0) => {
+    setLoadingSeasons(true)
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/seasons?page=${page}&size=10`)
+      if (response.ok) {
+        const data = await response.json()
+        setSeasons(data.content || [])
+        setTotalSeasonPages(data.totalPages || 0)
+        setTotalSeasonElements(data.totalElements || 0)
+        setCurrentSeasonPage(page)
+      } else {
+        console.error('加载赛季列表失败:', response.status)
+      }
+    } catch (error) {
+      console.error('加载赛季列表失败:', error)
+    } finally {
+      setLoadingSeasons(false)
+    }
+  }
+
+  // 创建赛季
+  const createSeason = async () => {
+    if (!seasonName.trim() || !seasonStartDate || !seasonEndDate) {
+      setError('请填写完整的赛季信息')
+      return
+    }
+
+    try {
+      const response = await fetch('http://localhost:8080/api/v1/attendance/seasons', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: seasonName.trim(),
+          startDate: seasonStartDate,
+          endDate: seasonEndDate
+        })
+      })
+
+      if (response.ok) {
+        setSeasonName('')
+        setSeasonStartDate('')
+        setSeasonEndDate('')
+        setError(null)
+        loadSeasons(currentSeasonPage) // 重新加载赛季列表
+      } else {
+        const errorData = await response.text()
+        setError('创建赛季失败: ' + errorData)
+      }
+    } catch (error) {
+      setError('创建赛季失败: ' + error)
+    }
+  }
+
+  // 删除赛季
+  const deleteSeason = async (id: number) => {
+    if (!confirm('确定要删除这个赛季吗？')) {
+      return
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/seasons/${id}`, {
+        method: 'DELETE'
+      })
+
+      if (response.ok) {
+        loadSeasons(currentSeasonPage) // 重新加载赛季列表
+      } else {
+        const errorData = await response.text()
+        setError('删除赛季失败: ' + errorData)
+      }
+    } catch (error) {
+      setError('删除赛季失败: ' + error)
+    }
+  }
+
+  // 开始编辑赛季
+  const startEditSeason = (season: any) => {
+    setEditingSeason(season)
+    setEditSeasonName(season.name)
+    setEditSeasonStartDate(season.startDate)
+    setEditSeasonEndDate(season.endDate)
+  }
+
+  // 取消编辑
+  const cancelEditSeason = () => {
+    setEditingSeason(null)
+    setEditSeasonName('')
+    setEditSeasonStartDate('')
+    setEditSeasonEndDate('')
+  }
+
+  // 保存编辑
+  const saveEditSeason = async () => {
+    if (!editingSeason || !editSeasonName.trim() || !editSeasonStartDate || !editSeasonEndDate) {
+      setError('请填写完整的赛季信息')
+      return
+    }
+
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/seasons/${editingSeason.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: editSeasonName.trim(),
+          startDate: editSeasonStartDate,
+          endDate: editSeasonEndDate
+        })
+      })
+
+      if (response.ok) {
+        setEditingSeason(null)
+        setEditSeasonName('')
+        setEditSeasonStartDate('')
+        setEditSeasonEndDate('')
+        setError(null)
+        loadSeasons(currentSeasonPage) // 重新加载赛季列表
+      } else {
+        const errorData = await response.text()
+        setError('更新赛季失败: ' + errorData)
+      }
+    } catch (error) {
+      setError('更新赛季失败: ' + error)
+    }
+  }
+
+  // 计算赛季状态
+  const getSeasonStatus = (startDate: string, endDate: string) => {
+    const now = new Date()
+    const start = new Date(startDate)
+    const end = new Date(endDate)
+    
+    // 设置时间为当天的开始和结束
+    start.setHours(0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+    now.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds())
+    
+    if (now < start) {
+      return { status: '未开始', color: '#6c757d' }
+    } else if (now >= start && now <= end) {
+      return { status: '进行中', color: '#28a745' }
+    } else {
+      return { status: '已完结', color: '#dc3545' }
+    }
+  }
+
+  // 分页控制函数
+  const handleSeasonPageChange = (newPage: number) => {
+    loadSeasons(newPage)
+  }
+
+  // 获取所有赛季（用于下拉选择）
+  const [allSeasons, setAllSeasons] = useState<any[]>([])
+  const loadAllSeasons = async () => {
+    try {
+      const response = await fetch('http://localhost:8080/api/v1/attendance/seasons?page=0&size=1000')
+      if (response.ok) {
+        const data = await response.json()
+        setAllSeasons(data.content || [])
+      }
+    } catch (error) {
+      console.error('加载所有赛季失败:', error)
+    }
+  }
+
+  // 赛季搜索和选择相关函数
+  const getFilteredSeasons = () => {
+    if (!seasonSearchTerm.trim()) {
+      return allSeasons
+    }
+    return allSeasons.filter(season => 
+      season.name.toLowerCase().includes(seasonSearchTerm.toLowerCase())
+    )
+  }
+
+  const selectSeason = (season: any) => {
+    console.log('选择赛季:', season)
+    setSelectedSeasonId(season.id)
+    setSeasonSearchTerm('') // 清空搜索词
+    setShowSeasonDropdown(false)
+  }
+
+  // 编辑赛季选择相关函数
+  const selectEditingSeason = (season: any) => {
+    console.log('选择编辑赛季:', season)
+    setEditingSeasonId(season.id)
+    setEditingSeasonSearchTerm(season.name)
+    setShowEditingSeasonDropdown(false)
+  }
+
+
+
+  // 点击外部关闭下拉框
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      if (!target.closest('.season-dropdown-container')) {
+        setShowSeasonDropdown(false)
+      }
+      if (!target.closest('.editing-season-dropdown-container')) {
+        setShowEditingSeasonDropdown(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
 
   return (
     <div style={{ 
@@ -1723,6 +2005,7 @@ function App() {
               <thead>
                 <tr style={{ background: '#f8f9fa' }}>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>考勤名称</th>
+                  <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>赛季</th>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>战役结果</th>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>出勤标准</th>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>起始时间</th>
@@ -1736,6 +2019,9 @@ function App() {
                 {sessions.map((session) => (
                   <tr key={session.id}>
                     <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>{session.name}</td>
+                    <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                      {session.season?.name || '未设置'}
+                    </td>
                     <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                       {session.battleResult === 'VICTORY' ? '胜利' : '失败'}
                     </td>
@@ -1806,8 +2092,332 @@ function App() {
       {activeTab === 'season' && (
         <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px' }}>
           <h2 style={{ color: '#fff', marginBottom: '20px' }}>赛季管理</h2>
-          <div style={{ color: '#fff', fontSize: '16px', textAlign: 'center', padding: '40px' }}>
-            赛季管理功能正在开发中，敬请期待...
+          
+          {/* 添加赛季表单 */}
+          <div style={{ 
+            background: '#3d3d3d', 
+            padding: '20px', 
+            borderRadius: '8px', 
+            marginBottom: '20px',
+            border: '1px solid #555'
+          }}>
+            <h3 style={{ color: '#fff', marginBottom: '16px' }}>添加赛季</h3>
+            <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <label style={{ color: '#fff', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                赛季名称：
+                <input
+                  type="text"
+                  value={seasonName}
+                  onChange={(e) => setSeasonName(e.target.value)}
+                  placeholder="请输入赛季名称"
+                  style={{ 
+                    padding: '8px 12px', 
+                    border: '1px solid #555', 
+                    borderRadius: '4px', 
+                    background: '#2d2d2d',
+                    color: '#fff',
+                    minWidth: '200px'
+                  }}
+                />
+              </label>
+              <label style={{ color: '#fff', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                起始日期：
+                <input
+                  type="date"
+                  value={seasonStartDate}
+                  onChange={(e) => setSeasonStartDate(e.target.value)}
+                  style={{ 
+                    padding: '8px 12px', 
+                    border: '1px solid #555', 
+                    borderRadius: '4px', 
+                    background: '#2d2d2d',
+                    color: '#fff'
+                  }}
+                />
+              </label>
+              <label style={{ color: '#fff', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                结束日期：
+                <input
+                  type="date"
+                  value={seasonEndDate}
+                  onChange={(e) => setSeasonEndDate(e.target.value)}
+                  style={{ 
+                    padding: '8px 12px', 
+                    border: '1px solid #555', 
+                    borderRadius: '4px', 
+                    background: '#2d2d2d',
+                    color: '#fff'
+                  }}
+                />
+              </label>
+              <button
+                onClick={createSeason}
+                style={{
+                  padding: '8px 16px',
+                  background: '#28a745',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  marginTop: '20px'
+                }}
+              >
+                添加赛季
+              </button>
+            </div>
+            
+            {/* 错误提示 */}
+            {error && (
+              <div style={{ 
+                color: '#ff6b6b', 
+                marginTop: '12px', 
+                padding: '8px 12px', 
+                background: '#4a2d2d', 
+                borderRadius: '4px',
+                border: '1px solid #ff6b6b'
+              }}>
+                错误：{error}
+              </div>
+            )}
+          </div>
+
+          {/* 赛季列表 */}
+          <div style={{ 
+            background: '#3d3d3d', 
+            padding: '20px', 
+            borderRadius: '8px',
+            border: '1px solid #555'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ color: '#fff', margin: 0 }}>赛季列表</h3>
+              <button
+                onClick={() => loadSeasons(0)}
+                style={{
+                  padding: '6px 12px',
+                  background: '#007bff',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                刷新
+              </button>
+            </div>
+            
+            {loadingSeasons ? (
+              <div style={{ color: '#fff', textAlign: 'center', padding: '20px' }}>加载中...</div>
+            ) : seasons.length === 0 ? (
+              <div style={{ color: '#fff', textAlign: 'center', padding: '20px' }}>暂无赛季数据</div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#404040' }}>
+                      <th style={{ padding: '12px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>赛季名称</th>
+                      <th style={{ padding: '12px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>起始日期</th>
+                      <th style={{ padding: '12px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>结束日期</th>
+                      <th style={{ padding: '12px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>赛季状态</th>
+                      <th style={{ padding: '12px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {seasons.map((season) => (
+                      <tr key={season.id} style={{ background: '#2d2d2d' }}>
+                        <td style={{ padding: '12px', border: '1px solid #555', color: '#fff' }}>
+                          {editingSeason?.id === season.id ? (
+                            <input
+                              type="text"
+                              value={editSeasonName}
+                              onChange={(e) => setEditSeasonName(e.target.value)}
+                              style={{ 
+                                padding: '4px 8px', 
+                                border: '1px solid #555', 
+                                borderRadius: '4px', 
+                                background: '#2d2d2d',
+                                color: '#fff',
+                                width: '100%'
+                              }}
+                            />
+                          ) : (
+                            season.name
+                          )}
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #555', color: '#fff' }}>
+                          {editingSeason?.id === season.id ? (
+                            <input
+                              type="date"
+                              value={editSeasonStartDate}
+                              onChange={(e) => setEditSeasonStartDate(e.target.value)}
+                              style={{ 
+                                padding: '4px 8px', 
+                                border: '1px solid #555', 
+                                borderRadius: '4px', 
+                                background: '#2d2d2d',
+                                color: '#fff'
+                              }}
+                            />
+                          ) : (
+                            season.startDate
+                          )}
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #555', color: '#fff' }}>
+                          {editingSeason?.id === season.id ? (
+                            <input
+                              type="date"
+                              value={editSeasonEndDate}
+                              onChange={(e) => setEditSeasonEndDate(e.target.value)}
+                              style={{ 
+                                padding: '4px 8px', 
+                                border: '1px solid #555', 
+                                borderRadius: '4px', 
+                                background: '#2d2d2d',
+                                color: '#fff'
+                              }}
+                            />
+                          ) : (
+                            season.endDate
+                          )}
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #555', color: '#fff' }}>
+                          <span style={{ 
+                            padding: '4px 8px', 
+                            borderRadius: '4px', 
+                            fontSize: '12px',
+                            fontWeight: 'bold',
+                            background: getSeasonStatus(season.startDate, season.endDate).color,
+                            color: '#fff'
+                          }}>
+                            {getSeasonStatus(season.startDate, season.endDate).status}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #555', color: '#fff' }}>
+                          {editingSeason?.id === season.id ? (
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button
+                                onClick={saveEditSeason}
+                                style={{
+                                  padding: '4px 8px',
+                                  background: '#28a745',
+                                  color: '#fff',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                保存
+                              </button>
+                              <button
+                                onClick={cancelEditSeason}
+                                style={{
+                                  padding: '4px 8px',
+                                  background: '#6c757d',
+                                  color: '#fff',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                取消
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', gap: '4px' }}>
+                              <button
+                                onClick={() => startEditSeason(season)}
+                                style={{
+                                  padding: '4px 8px',
+                                  background: '#ffc107',
+                                  color: '#000',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                编辑
+                              </button>
+                              <button
+                                onClick={() => deleteSeason(season.id)}
+                                style={{
+                                  padding: '4px 8px',
+                                  background: '#dc3545',
+                                  color: '#fff',
+                                  border: 'none',
+                                  borderRadius: '4px',
+                                  cursor: 'pointer',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                删除
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                
+                {/* 分页控件 */}
+                {totalSeasonPages > 1 && (
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'center', 
+                    alignItems: 'center', 
+                    gap: '8px', 
+                    marginTop: '16px',
+                    padding: '12px',
+                    background: '#2d2d2d',
+                    borderRadius: '4px'
+                  }}>
+                    <button
+                      onClick={() => handleSeasonPageChange(currentSeasonPage - 1)}
+                      disabled={currentSeasonPage === 0}
+                      style={{
+                        padding: '6px 12px',
+                        background: currentSeasonPage === 0 ? '#6c757d' : '#007bff',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: currentSeasonPage === 0 ? 'not-allowed' : 'pointer',
+                        fontSize: '14px'
+                      }}
+                    >
+                      上一页
+                    </button>
+                    
+                    <span style={{ color: '#fff', fontSize: '14px' }}>
+                      第 {currentSeasonPage + 1} 页，共 {totalSeasonPages} 页
+                    </span>
+                    
+                    <button
+                      onClick={() => handleSeasonPageChange(currentSeasonPage + 1)}
+                      disabled={currentSeasonPage >= totalSeasonPages - 1}
+                      style={{
+                        padding: '6px 12px',
+                        background: currentSeasonPage >= totalSeasonPages - 1 ? '#6c757d' : '#007bff',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: currentSeasonPage >= totalSeasonPages - 1 ? 'not-allowed' : 'pointer',
+                        fontSize: '14px'
+                      }}
+                    >
+                      下一页
+                    </button>
+                    
+                    <span style={{ color: '#fff', fontSize: '14px', marginLeft: '16px' }}>
+                      共 {totalSeasonElements} 条记录
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1818,30 +2428,156 @@ function App() {
             <div style={{ marginBottom: 16, padding: '16px', border: '1px solid #dee2e6', borderRadius: '4px', background: '#2d2d2d' }}>
               <h4 style={{ margin: '0 0 12px 0', color: '#fff' }}>保存考勤</h4>
               <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-                <label style={{ color: '#fff' }}>
+                <label style={{ color: '#fff', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   考勤名称：
                   <input
                     type="text"
                     value={sessionName}
                     onChange={(e) => setSessionName(e.target.value)}
                     placeholder="请输入考勤名称"
-                    style={{ width: 200 }}
+                    style={{ 
+                      width: 200,
+                      padding: '8px 12px',
+                      border: '1px solid #555',
+                      borderRadius: '4px',
+                      background: '#2d2d2d',
+                      color: '#fff',
+                      minHeight: '36px'
+                    }}
                   />
                 </label>
-                <label style={{ color: '#fff' }}>
+                <label style={{ color: '#fff', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   战役结果：
                   <select
                     value={battleResult}
                     onChange={(e) => setBattleResult(e.target.value as 'VICTORY' | 'DEFEAT')}
-                    style={{ width: 100 }}
+                    style={{ 
+                      width: 100,
+                      padding: '8px 12px',
+                      border: '1px solid #555',
+                      borderRadius: '4px',
+                      background: '#2d2d2d',
+                      color: '#fff',
+                      minHeight: '36px'
+                    }}
                   >
                     <option value="VICTORY">胜利</option>
                     <option value="DEFEAT">失败</option>
                   </select>
                 </label>
-                <button onClick={saveSession} style={{ padding: '8px 16px', background: '#28a745', color: '#fff', border: 'none', cursor: 'pointer' }}>
-                  保存考勤
-                </button>
+                <label style={{ color: '#fff', display: 'flex', flexDirection: 'column', gap: '4px', position: 'relative' }} className="season-dropdown-container">
+                  赛季：
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px',
+                    padding: '8px 12px',
+                    border: '1px solid #555',
+                    borderRadius: '4px',
+                    background: '#2d2d2d',
+                    color: '#fff',
+                    width: 200,
+                    minHeight: '36px',
+                    cursor: 'pointer'
+                  }}
+                  onClick={() => setShowSeasonDropdown(!showSeasonDropdown)}
+                  >
+                    <span style={{ flex: 1, textAlign: 'left' }}>
+                      {selectedSeasonId 
+                        ? allSeasons.find(s => s.id === selectedSeasonId)?.name 
+                        : '请选择赛季'
+                      }
+                    </span>
+                    <span style={{ 
+                      transform: showSeasonDropdown ? 'rotate(180deg)' : 'rotate(0deg)',
+                      transition: 'transform 0.2s ease'
+                    }}>
+                      ▼
+                    </span>
+                  </div>
+                  
+                  {/* 搜索框 - 只在下拉框打开时显示 */}
+                  {showSeasonDropdown && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      background: '#2d2d2d',
+                      border: '1px solid #555',
+                      borderRadius: '4px',
+                      zIndex: 1000,
+                      padding: '8px'
+                    }}>
+                      <input
+                        type="text"
+                        value={seasonSearchTerm}
+                        onChange={(e) => setSeasonSearchTerm(e.target.value)}
+                        placeholder="搜索赛季..."
+                        style={{ 
+                          width: '100%',
+                          padding: '6px 8px',
+                          border: '1px solid #555',
+                          borderRadius: '4px',
+                          background: '#1a1a1a',
+                          color: '#fff',
+                          fontSize: '14px'
+                        }}
+                        autoFocus
+                      />
+                      <div style={{
+                        maxHeight: '150px',
+                        overflowY: 'auto',
+                        marginTop: '8px'
+                      }}>
+                        {getFilteredSeasons().map((season) => (
+                          <div
+                            key={season.id}
+                            onClick={() => selectSeason(season)}
+                            style={{
+                              padding: '8px 12px',
+                              cursor: 'pointer',
+                              color: '#fff',
+                              borderBottom: '1px solid #555',
+                              backgroundColor: selectedSeasonId === season.id ? '#404040' : 'transparent'
+                            }}
+                            onMouseEnter={(e) => {
+                              if (selectedSeasonId !== season.id) {
+                                e.currentTarget.style.background = '#404040'
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (selectedSeasonId !== season.id) {
+                                e.currentTarget.style.background = 'transparent'
+                              }
+                            }}
+                          >
+                            {season.name}
+                          </div>
+                        ))}
+                        {getFilteredSeasons().length === 0 && (
+                          <div style={{ padding: '8px 12px', color: '#999', textAlign: 'center' }}>
+                            没有找到匹配的赛季
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ height: '20px' }}></div>
+                  <button onClick={saveSession} style={{ 
+                    padding: '8px 16px', 
+                    background: '#28a745', 
+                    color: '#fff', 
+                    border: 'none', 
+                    cursor: 'pointer',
+                    borderRadius: '4px',
+                    minHeight: '36px'
+                  }}>
+                    保存考勤
+                  </button>
+                </div>
               </div>
             </div>
             
@@ -2065,6 +2801,109 @@ function App() {
                         }}
                       />
                     </div>
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '4px', color: '#fff' }}>赛季：</label>
+                      <div style={{ position: 'relative' }} className="editing-season-dropdown-container">
+                        <div style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          gap: '8px',
+                          padding: '8px',
+                          border: '1px solid #007bff',
+                          borderRadius: '4px',
+                          background: '#2d2d2d',
+                          color: '#fff',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => setShowEditingSeasonDropdown(!showEditingSeasonDropdown)}
+                        >
+                          <span style={{ flex: 1, textAlign: 'left' }}>
+                            {editingSeasonId 
+                              ? allSeasons.find(s => s.id === editingSeasonId)?.name 
+                              : '请选择赛季'
+                            }
+                          </span>
+                          <span style={{ 
+                            transform: showEditingSeasonDropdown ? 'rotate(180deg)' : 'rotate(0deg)',
+                            transition: 'transform 0.2s ease'
+                          }}>
+                            ▼
+                          </span>
+                        </div>
+                        
+                        {/* 搜索框 - 只在下拉框打开时显示 */}
+                        {showEditingSeasonDropdown && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            right: 0,
+                            background: '#2d2d2d',
+                            border: '1px solid #555',
+                            borderRadius: '4px',
+                            zIndex: 1000,
+                            padding: '8px'
+                          }}>
+                            <input
+                              type="text"
+                              value={editingSeasonSearchTerm}
+                              onChange={(e) => setEditingSeasonSearchTerm(e.target.value)}
+                              placeholder="搜索赛季..."
+                              style={{ 
+                                width: '100%',
+                                padding: '6px 8px',
+                                border: '1px solid #555',
+                                borderRadius: '4px',
+                                background: '#1a1a1a',
+                                color: '#fff',
+                                fontSize: '14px'
+                              }}
+                              autoFocus
+                            />
+                            <div style={{
+                              maxHeight: '150px',
+                              overflowY: 'auto',
+                              marginTop: '8px'
+                            }}>
+                              {allSeasons.filter(season => 
+                                season.name.toLowerCase().includes(editingSeasonSearchTerm.toLowerCase())
+                              ).map((season) => (
+                                <div
+                                  key={season.id}
+                                  onClick={() => selectEditingSeason(season)}
+                                  style={{
+                                    padding: '8px 12px',
+                                    cursor: 'pointer',
+                                    color: '#fff',
+                                    borderBottom: '1px solid #555',
+                                    backgroundColor: editingSeasonId === season.id ? '#404040' : 'transparent'
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    if (editingSeasonId !== season.id) {
+                                      e.currentTarget.style.background = '#404040'
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (editingSeasonId !== season.id) {
+                                      e.currentTarget.style.background = 'transparent'
+                                    }
+                                  }}
+                                >
+                                  {season.name}
+                                </div>
+                              ))}
+                              {allSeasons.filter(season => 
+                                season.name.toLowerCase().includes(editingSeasonSearchTerm.toLowerCase())
+                              ).length === 0 && (
+                                <div style={{ padding: '8px 12px', color: '#999', textAlign: 'center' }}>
+                                  没有找到匹配的赛季
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: '8px', marginTop: '16px' }}>
                     <button
@@ -2100,6 +2939,7 @@ function App() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px', fontSize: '14px', color: '#fff' }}>
                   <div><strong>考勤名称：</strong>{selectedSession.name}</div>
                   <div><strong>战役结果：</strong>{selectedSession.battleResult === 'VICTORY' ? '胜利' : '失败'}</div>
+                  <div><strong>赛季：</strong>{selectedSession.season?.name || '未设置'}</div>
                   <div><strong>起始时间：</strong>{selectedSession.startTime ? new Date(selectedSession.startTime).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '未设置'}</div>
                   <div><strong>结束时间：</strong>{selectedSession.endTime ? new Date(selectedSession.endTime).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '未设置'}</div>
                   <div><strong>战功阈值：</strong>{selectedSession.threshold || '未设置'}</div>
@@ -2606,33 +3446,33 @@ function App() {
                 </div>
                 
                 {/* 奖惩条件列表 */}
-                <div style={{ marginTop: '16px', padding: '16px', border: '1px solid #dee2e6', borderRadius: '4px', background: '#fff' }}>
-                  <h4 style={{ margin: '0 0 16px 0', color: '#495057' }}>已保存的奖惩条件</h4>
+                <div style={{ marginTop: '16px', padding: '16px', border: '1px solid #555', borderRadius: '4px', background: '#2d2d2d' }}>
+                  <h4 style={{ margin: '0 0 16px 0', color: '#fff' }}>已保存的奖惩条件</h4>
                   
                   {rewardConditions.length === 0 ? (
-                    <p style={{ color: '#6c757d', fontStyle: 'italic' }}>暂无奖惩条件</p>
+                    <p style={{ color: '#ccc', fontStyle: 'italic' }}>暂无奖惩条件</p>
                   ) : (
                     <div style={{ overflowX: 'auto' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
-                          <tr style={{ background: '#f8f9fa' }}>
-                            <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>任务状态</th>
-                            <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>出勤率条件</th>
-                            <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>排名条件</th>
-                            <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>奖惩</th>
-                            <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#000' }}>操作</th>
+                          <tr style={{ background: '#404040' }}>
+                            <th style={{ padding: '8px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>任务状态</th>
+                            <th style={{ padding: '8px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>出勤率条件</th>
+                            <th style={{ padding: '8px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>排名条件</th>
+                            <th style={{ padding: '8px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>奖惩</th>
+                            <th style={{ padding: '8px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>操作</th>
                           </tr>
                         </thead>
                         <tbody>
                           {rewardConditions.map((condition, index) => (
-                            <tr key={condition.id} style={{ background: index % 2 === 0 ? '#fff' : '#f8f9fa' }}>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>
+                            <tr key={condition.id} style={{ background: index % 2 === 0 ? '#2d2d2d' : '#404040' }}>
+                              <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
                                 {condition.taskStatus}
                               </td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>
+                              <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
                                 {condition.taskStatus === '成功' ? '大于' : '小于'} {condition.attendanceRateThreshold}%
                               </td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>
+                              <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
                                 {condition.taskStatus === '成功' ? (
                                   condition.meritIncreaseRank && condition.meritIncreaseRank !== '' ? (
                                     <>战功增量第{condition.meritIncreaseRank}名</>
@@ -2643,10 +3483,10 @@ function App() {
                                   <>出勤率倒数第{condition.attendanceRateRank}名</>
                                 )}
                               </td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>
+                              <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
                                 {condition.taskStatus === '成功' ? condition.rewardType : condition.penaltyType}
                               </td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>
+                              <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
                                 <button
                                   onClick={() => editRewardCondition(condition)}
                                   disabled={selectedSession.status === 'SAVED'}

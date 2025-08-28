@@ -8,6 +8,7 @@ public class SaveSessionRequest {
     private Integer threshold;
     private String startTime; // 起始时间字符串
     private String endTime; // 结束时间字符串
+    private Long seasonId; // 关联的赛季ID
 
     // Getters
     public String getName() { return name; }
@@ -17,6 +18,7 @@ public class SaveSessionRequest {
     public Integer getThreshold() { return threshold; }
     public String getStartTime() { return startTime; }
     public String getEndTime() { return endTime; }
+    public Long getSeasonId() { return seasonId; }
 
     // Setters
     public void setName(String name) { this.name = name; }
@@ -26,4 +28,5 @@ public class SaveSessionRequest {
     public void setThreshold(Integer threshold) { this.threshold = threshold; }
     public void setStartTime(String startTime) { this.startTime = startTime; }
     public void setEndTime(String endTime) { this.endTime = endTime; }
+    public void setSeasonId(Long seasonId) { this.seasonId = seasonId; }
 }

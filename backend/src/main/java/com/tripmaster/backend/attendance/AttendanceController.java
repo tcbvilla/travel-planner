@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import com.tripmaster.backend.attendance.BattleResult;
 
@@ -32,6 +33,9 @@ public class AttendanceController {
     
     @Autowired
     private CodeTableRepository codeTableRepository;
+    
+    @Autowired
+    private SeasonRepository seasonRepository;
 
     @PostMapping(value = "/compare", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public AttendanceResponse compare(@RequestPart("start") MultipartFile start,
@@ -145,6 +149,15 @@ public class AttendanceController {
         session.setBattleResult(request.getBattleResult());
         session.setStatus(SessionStatus.ADDED);
         session.setThreshold(request.getThreshold());
+        
+        // 设置赛季关联
+        if (request.getSeasonId() != null) {
+            Season season = seasonRepository.findById(request.getSeasonId())
+                    .orElseThrow(() -> new RuntimeException("未找到指定的赛季: " + request.getSeasonId()));
+            session.setSeason(season);
+        } else {
+            throw new RuntimeException("赛季是必须的，请选择赛季");
+        }
         
         // 处理成员数据：将DisplayRow转换为MemberData，只保存基础字段
         if (request.getMemberData() != null && !request.getMemberData().isEmpty()) {
@@ -663,6 +676,25 @@ public class AttendanceController {
             }
         }
         
+        // 更新赛季
+        if (request.containsKey("seasonId")) {
+            Object seasonIdObj = request.get("seasonId");
+            if (seasonIdObj == null) {
+                // 如果seasonId为null，表示取消关联赛季
+                session.setSeason(null);
+            } else if (seasonIdObj instanceof Integer) {
+                Long seasonId = ((Integer) seasonIdObj).longValue();
+                Season season = seasonRepository.findById(seasonId)
+                        .orElseThrow(() -> new RuntimeException("赛季不存在"));
+                session.setSeason(season);
+            } else if (seasonIdObj instanceof Long) {
+                Long seasonId = (Long) seasonIdObj;
+                Season season = seasonRepository.findById(seasonId)
+                        .orElseThrow(() -> new RuntimeException("赛季不存在"));
+                session.setSeason(season);
+            }
+        }
+        
         return attendanceSessionRepository.save(session);
     }
     
@@ -916,6 +948,122 @@ public class AttendanceController {
             return ResponseEntity.badRequest().body("码表初始化失败: " + e.getMessage());
         }
     }
+
+    // ==================== 赛季管理接口 ====================
+
+    /**
+     * 获取赛季列表（分页排序）
+     */
+    @GetMapping("/seasons")
+    public Page<Season> getSeasons(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        Pageable pageable = PageRequest.of(page, size, org.springframework.data.domain.Sort.by("startDate").ascending());
+        return seasonRepository.findAll(pageable);
+    }
+
+    /**
+     * 根据ID获取赛季
+     */
+    @GetMapping("/seasons/{id}")
+    public Season getSeasonById(@PathVariable Long id) {
+        return seasonRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("未找到赛季: " + id));
+    }
+
+    /**
+     * 创建新赛季
+     */
+    @PostMapping("/seasons")
+    public Season createSeason(@RequestBody Season season) {
+        // 检查赛季名称是否已存在
+        if (seasonRepository.existsByName(season.getName())) {
+            throw new RuntimeException("赛季名称已存在: " + season.getName());
+        }
+        
+        // 验证日期
+        if (season.getStartDate().isAfter(season.getEndDate())) {
+            throw new RuntimeException("起始日期不能晚于结束日期");
+        }
+        
+        return seasonRepository.save(season);
+    }
+
+    /**
+     * 更新赛季
+     */
+    @PutMapping("/seasons/{id}")
+    public Season updateSeason(@PathVariable Long id, @RequestBody Season season) {
+        Season existingSeason = seasonRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("未找到赛季: " + id));
+        
+        // 检查赛季名称是否已被其他赛季使用
+        if (!existingSeason.getName().equals(season.getName()) && 
+            seasonRepository.existsByName(season.getName())) {
+            throw new RuntimeException("赛季名称已存在: " + season.getName());
+        }
+        
+        // 验证日期
+        if (season.getStartDate().isAfter(season.getEndDate())) {
+            throw new RuntimeException("起始日期不能晚于结束日期");
+        }
+        
+        existingSeason.setName(season.getName());
+        existingSeason.setStartDate(season.getStartDate());
+        existingSeason.setEndDate(season.getEndDate());
+        
+        return seasonRepository.save(existingSeason);
+    }
+
+    /**
+     * 测试接口：查看赛季关联的考勤记录
+     */
+    @GetMapping("/seasons/{id}/attendance-count")
+    public ResponseEntity<String> getSeasonAttendanceCount(@PathVariable Long id) {
+        try {
+            Season season = seasonRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("未找到赛季: " + id));
+            
+            long count = seasonRepository.countAttendanceSessionsBySeasonId(id);
+            
+            // 获取所有考勤记录，查看它们的season_id
+            List<AttendanceSession> allSessions = attendanceSessionRepository.findAll();
+            StringBuilder debugInfo = new StringBuilder();
+            debugInfo.append("赛季 '").append(season.getName()).append("' (ID: ").append(id).append(") 关联的考勤记录数量: ").append(count).append("\n");
+            debugInfo.append("所有考勤记录的season_id:\n");
+            for (AttendanceSession session : allSessions) {
+                debugInfo.append("考勤记录ID: ").append(session.getId())
+                        .append(", 名称: ").append(session.getName())
+                        .append(", season_id: ").append(session.getSeason() != null ? session.getSeason().getId() : "null")
+                        .append("\n");
+            }
+            
+            return ResponseEntity.ok(debugInfo.toString());
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("查询失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 删除赛季
+     */
+    @DeleteMapping("/seasons/{id}")
+    public ResponseEntity<String> deleteSeason(@PathVariable Long id) {
+        try {
+            Season season = seasonRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("未找到赛季: " + id));
+            
+            // 检查赛季是否被考勤记录使用
+            long count = seasonRepository.countAttendanceSessionsBySeasonId(id);
+            System.out.println("赛季ID: " + id + ", 关联的考勤记录数量: " + count);
+            if (count > 0) {
+                return ResponseEntity.badRequest().body("无法删除赛季：该赛季已被 " + count + " 条考勤记录使用，请先删除相关的考勤记录");
+            }
+            
+            seasonRepository.delete(season);
+            return ResponseEntity.ok("赛季删除成功");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("删除赛季失败: " + e.getMessage());
+        }
+    }
 }
-
-

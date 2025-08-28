@@ -44,6 +44,10 @@ public class AttendanceSession {
     @Column
     private LocalDateTime endTime; // 结束时间
     
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "season_id")
+    private Season season; // 关联的赛季
+    
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();
