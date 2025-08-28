@@ -132,6 +132,10 @@ function App() {
   const [showMemberDropdown, setShowMemberDropdown] = useState<boolean>(false)
   const [memberAttendanceStatus, setMemberAttendanceStatus] = useState<boolean>(true)
   const [isUpdatingMemberAttendance, setIsUpdatingMemberAttendance] = useState<boolean>(false)
+  
+  // 删除确认弹框状态
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false)
+  const [sessionToDelete, setSessionToDelete] = useState<number | null>(null)
 
 
 
@@ -975,14 +979,18 @@ function App() {
     }
   }
 
-  // 删除会话
-  const deleteSession = async (sessionId: number) => {
-    if (!confirm('确定要删除这条考勤记录吗？')) {
-      return
-    }
+  // 显示删除确认弹框
+  const showDeleteConfirmation = (sessionId: number) => {
+    setSessionToDelete(sessionId)
+    setShowDeleteConfirm(true)
+  }
+
+  // 确认删除会话
+  const confirmDeleteSession = async () => {
+    if (!sessionToDelete) return
     
     try {
-      const resp = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${sessionId}`, {
+      const resp = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${sessionToDelete}`, {
         method: 'DELETE'
       })
       
@@ -991,9 +999,18 @@ function App() {
       setError(null)
       // 刷新会话列表
       loadSessions(currentPage)
+      // 关闭弹框
+      setShowDeleteConfirm(false)
+      setSessionToDelete(null)
     } catch (err: any) {
       setError(err?.message ?? '删除失败')
     }
+  }
+
+  // 取消删除
+  const cancelDelete = () => {
+    setShowDeleteConfirm(false)
+    setSessionToDelete(null)
   }
 
   return (
@@ -1157,7 +1174,7 @@ function App() {
                           查看
                         </button>
                         <button
-                          onClick={() => deleteSession(session.id)}
+                          onClick={() => showDeleteConfirmation(session.id)}
                           style={{ padding: '4px 8px', background: '#dc3545', color: '#fff', border: 'none', cursor: 'pointer' }}
                         >
                           删除
@@ -2060,6 +2077,13 @@ function App() {
                 <div style={{ padding: '16px', border: '1px solid #dee2e6', borderRadius: '4px', background: '#2d2d2d' }}>
                   <h4 style={{ margin: '0 0 16px 0', color: '#fff' }}>调整参加考勤状态</h4>
                   
+                  {/* 状态提示 */}
+                  {selectedSession.status === 'SAVED' && (
+                    <div style={{ marginBottom: '16px', padding: '8px 12px', background: '#2d2d2d', border: '1px solid #ffc107', borderRadius: '4px', color: '#ffc107' }}>
+                      <strong>提示：</strong>当前考勤记录已保存，无法调整参加考勤状态。请先取消保存状态。
+                    </div>
+                  )}
+                  
                   {/* 团队批量处理 */}
                   <div style={{ marginBottom: '24px', padding: '16px', border: '2px solid #007bff', borderRadius: '4px', background: '#1a1a1a' }}>
                     <h5 style={{ margin: '0 0 16px 0', color: '#fff' }}>团队批量处理</h5>
@@ -2302,6 +2326,69 @@ function App() {
                 style={{ padding: '8px 16px', background: '#6c757d', color: '#fff', border: 'none', cursor: 'pointer' }}
               >
                 关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 删除确认弹框 */}
+      {showDeleteConfirm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#2d2d2d',
+            padding: '24px',
+            borderRadius: '8px',
+            border: '2px solid #dc3545',
+            maxWidth: '400px',
+            width: '90%',
+            textAlign: 'center'
+          }}>
+            <h3 style={{ margin: '0 0 16px 0', color: '#fff' }}>确认删除</h3>
+            <p style={{ margin: '0 0 24px 0', color: '#fff', fontSize: '16px' }}>
+              确定要删除这条考勤记录吗？此操作不可撤销。
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+              <button
+                onClick={cancelDelete}
+                style={{
+                  padding: '10px 20px',
+                  background: '#6c757d',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmDeleteSession}
+                style={{
+                  padding: '10px 20px',
+                  background: '#dc3545',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}
+              >
+                确认删除
               </button>
             </div>
           </div>
