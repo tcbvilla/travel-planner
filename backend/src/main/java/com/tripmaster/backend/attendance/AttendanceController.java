@@ -340,6 +340,21 @@ public class AttendanceController {
                 // 计算出勤率：达标人数 / 总人数 * 100%
                 double attendanceRate = (double) stat.getAttendedCount() / stat.getMemberCount() * 100.0;
                 stat.setAttendanceRate(Math.round(attendanceRate * 100.0) / 100.0);
+                
+                // 计算人均战功增量（加成后）
+                long averageMeritIncrease = stat.getAverageMeritIncrease();
+                long averageMeritIncreaseBonus = averageMeritIncrease;
+                
+                int memberCount = stat.getMemberCount();
+                if (memberCount >= 40 && memberCount <= 45) {
+                    // 小组人数40-45，加成1.03
+                    averageMeritIncreaseBonus = Math.round(averageMeritIncrease * 1.03);
+                } else if (memberCount >= 46 && memberCount <= 50) {
+                    // 小组人数46-50，加成1.05
+                    averageMeritIncreaseBonus = Math.round(averageMeritIncrease * 1.05);
+                }
+                
+                stat.setAverageMeritIncreaseBonus(averageMeritIncreaseBonus);
             }
         }
         

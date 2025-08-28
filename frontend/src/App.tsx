@@ -20,6 +20,7 @@ type GroupStat = {
   group: string
   totalMeritIncrease: number
   averageMeritIncrease: number
+  averageMeritIncreaseBonus: number
   totalAssistIncrease: number
   averageAssistIncrease: number
   attendanceRate: number
@@ -96,7 +97,7 @@ const GroupStatsExportComponent = ({
     const sortedByAttendance = [...groupData].sort((a, b) => 
       (b.attendanceRate || 0) - (a.attendanceRate || 0)
     )
-    const sortedByAverageMerit = [...groupData].sort((a, b) => b.averageMeritIncrease - a.averageMeritIncrease)
+    const sortedByAverageMerit = [...groupData].sort((a, b) => (b.averageMeritIncreaseBonus || b.averageMeritIncrease) - (a.averageMeritIncreaseBonus || a.averageMeritIncrease))
     const sortedByTotalMerit = [...groupData].sort((a, b) => b.totalMeritIncrease - a.totalMeritIncrease)
 
     // 为每个团队计算排名（支持并列排名）
@@ -287,11 +288,12 @@ const GroupStatsExportComponent = ({
           // 直接使用小组统计数据中的出勤率（加成后）
           const teamBattleRatio = team.attendanceRate ? team.attendanceRate.toFixed(1) : '0.0'
           const teamTotalMerit = teamMembers.reduce((sum: number, member: DisplayRow) => sum + member.差值, 0)
-          const teamAverageMerit = teamTotalMembers > 0 ? Math.round(teamTotalMerit / teamTotalMembers) : 0
+          // 使用人均战功增量（加成后）的值
+          const teamAverageMerit = team.averageMeritIncreaseBonus || team.averageMeritIncrease
           
           // 获取排名
           const attendanceRank = getTeamRank(team.group, sortedByAttendance, 'attendanceRate')
-          const averageMeritRank = getTeamRank(team.group, sortedByAverageMerit, 'averageMeritIncrease')
+          const averageMeritRank = getTeamRank(team.group, sortedByAverageMerit, 'averageMeritIncreaseBonus')
           const totalMeritRank = getTeamRank(team.group, sortedByTotalMerit, 'totalMeritIncrease')
           
           // 缺勤人员
@@ -1382,10 +1384,23 @@ function App() {
       console.log('Debug - groupMap entries:', Array.from(groupMap.entries()))
       const stats: GroupStat[] = []
       for (const [group, data] of groupMap.entries()) {
+        const averageMeritIncrease = data.count > 0 ? Math.round(data.total / data.count) : 0
+        let averageMeritIncreaseBonus = averageMeritIncrease
+        
+        // 计算人均战功增量（加成后）
+        if (data.count >= 40 && data.count <= 45) {
+          // 小组人数40-45，加成1.03
+          averageMeritIncreaseBonus = Math.round(averageMeritIncrease * 1.03)
+        } else if (data.count >= 46 && data.count <= 50) {
+          // 小组人数46-50，加成1.05
+          averageMeritIncreaseBonus = Math.round(averageMeritIncrease * 1.05)
+        }
+        
         stats.push({
           group: group,
           totalMeritIncrease: data.total,
-          averageMeritIncrease: data.count > 0 ? Math.round(data.total / data.count) : 0,
+          averageMeritIncrease: averageMeritIncrease,
+          averageMeritIncreaseBonus: averageMeritIncreaseBonus,
           totalAssistIncrease: data.assistTotal,
           averageAssistIncrease: data.count > 0 ? Math.round(data.assistTotal / data.count) : 0,
           attendanceRate: data.count > 0 ? Number(((data.present / data.count) * 100).toFixed(2)) : 0,
@@ -2184,6 +2199,7 @@ function App() {
                         <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>分组</th>
                         <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>总战功增量</th>
                         <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>人均战功增量</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>人均战功增量（加成后）</th>
                         <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>总助攻增量</th>
                         <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>人均助攻增量</th>
                         <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>出勤率（%）</th>
@@ -2196,7 +2212,7 @@ function App() {
                         try {
                           console.log('渲染小组统计，selectedSession.groupData:', selectedSession.groupData)
                           if (!selectedSession.groupData || selectedSession.groupData === '[]') {
-                            return <tr><td colSpan={8} style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff', textAlign: 'center' }}>暂无小组统计数据</td></tr>;
+                            return <tr><td colSpan={9} style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff', textAlign: 'center' }}>暂无小组统计数据</td></tr>;
                           }
                           const groupData = JSON.parse(selectedSession.groupData);
                           console.log('解析后的groupData:', groupData)
@@ -2205,6 +2221,7 @@ function App() {
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.group}</td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.totalMeritIncrease}</td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.averageMeritIncrease}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.averageMeritIncreaseBonus || group.averageMeritIncrease}</td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.totalAssistIncrease || 0}</td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.averageAssistIncrease || 0}</td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.attendanceRate}%</td>
@@ -2214,7 +2231,7 @@ function App() {
                           ));
                         } catch (error) {
                           console.error('解析小组数据失败:', error);
-                          return <tr><td colSpan={8} style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff', textAlign: 'center' }}>解析小组数据失败: {error instanceof Error ? error.message : String(error)}</td></tr>;
+                          return <tr><td colSpan={9} style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff', textAlign: 'center' }}>解析小组数据失败: {error instanceof Error ? error.message : String(error)}</td></tr>;
                         }
                       })()}
                     </tbody>
