@@ -747,6 +747,16 @@ function App() {
   const [loadingSettlementConditions, setLoadingSettlementConditions] = useState(false)
   const [settlementResults, setSettlementResults] = useState<any[]>([])
   const [loadingSettlementResults, setLoadingSettlementResults] = useState(false)
+  const [executingSettlement, setExecutingSettlement] = useState(false)
+  const [showSettlementConfirm, setShowSettlementConfirm] = useState(false)
+  
+  // 查看日志相关状态
+  const [showLogModal, setShowLogModal] = useState(false)
+  const [settlementLogs, setSettlementLogs] = useState<any[]>([])
+  const [loadingLogs, setLoadingLogs] = useState(false)
+  const [currentLogPage, setCurrentLogPage] = useState(0)
+  const [totalLogPages, setTotalLogPages] = useState(0)
+  const [totalLogElements, setTotalLogElements] = useState(0)
 
   // 新增函数：处理"若任务"状态变化
   const handleTaskStatusChange = (status: '胜利' | '失败') => {
@@ -1867,6 +1877,115 @@ function App() {
     }
   }
 
+  // 执行结算
+  const executeSettlement = async () => {
+    if (!selectedSession || settlementResults.length === 0) return
+    
+    setExecutingSettlement(true)
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${selectedSession.id}/execute-settlement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settlementResults)
+      })
+      
+      if (response.ok) {
+        const message = await response.text()
+        alert('结算执行成功: ' + message)
+        
+        // 更新会话状态为已结算
+        setSelectedSession(prev => prev ? { ...prev, status: 'SETTLED' } : null)
+        
+        // 刷新会话列表
+        loadSessions()
+      } else {
+        const errorText = await response.text()
+        console.error('执行结算失败:', errorText)
+        alert('执行结算失败: ' + errorText)
+      }
+    } catch (error) {
+      console.error('执行结算失败:', error)
+      alert('网络错误: ' + error)
+    } finally {
+      setExecutingSettlement(false)
+      setShowSettlementConfirm(false)
+    }
+  }
+
+  // 撤销结算
+  const revokeSettlement = async () => {
+    if (!selectedSession) return
+    
+    if (!confirm('确定要撤销结算吗？此操作将删除所有结算记录。')) {
+      return
+    }
+    
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${selectedSession.id}/revoke-settlement`, {
+        method: 'DELETE'
+      })
+      
+      if (response.ok) {
+        const message = await response.text()
+        alert('结算撤销成功: ' + message)
+        
+        // 更新会话状态为已保存
+        setSelectedSession(prev => prev ? { ...prev, status: 'SAVED' } : null)
+        
+        // 清空结算结果
+        setSettlementResults([])
+        
+        // 刷新会话列表
+        loadSessions()
+      } else {
+        const errorText = await response.text()
+        console.error('撤销结算失败:', errorText)
+        alert('撤销结算失败: ' + errorText)
+      }
+    } catch (error) {
+      console.error('撤销结算失败:', error)
+      alert('网络错误: ' + error)
+    }
+  }
+
+  // 加载结算日志
+  const loadSettlementLogs = async (page: number = 0) => {
+    setLoadingLogs(true)
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/settlement-logs?page=${page}&size=10`)
+      if (response.ok) {
+        const data = await response.json()
+        setSettlementLogs(data.logs || [])
+        setTotalLogPages(data.totalPages || 0)
+        setTotalLogElements(data.totalElements || 0)
+        setCurrentLogPage(page)
+      } else {
+        console.error('加载日志失败')
+        alert('加载日志失败')
+        setSettlementLogs([])
+      }
+    } catch (error) {
+      console.error('加载日志失败:', error)
+      alert('网络错误: ' + error)
+      setSettlementLogs([])
+    } finally {
+      setLoadingLogs(false)
+    }
+  }
+
+  // 打开日志弹窗
+  const openLogModal = () => {
+    setShowLogModal(true)
+    loadSettlementLogs(0)
+  }
+
+  // 处理日志分页
+  const handleLogPageChange = (newPage: number) => {
+    if (newPage >= 0 && newPage < totalLogPages) {
+      loadSettlementLogs(newPage)
+    }
+  }
+
 
 
   // 点击外部关闭下拉框
@@ -2056,7 +2175,7 @@ function App() {
       )}
 
       {activeTab === 'view' && (
-        <div>
+      <div>
           <h2>查看考勤记录</h2>
           
           <div style={{ overflowX: 'auto' }}>
@@ -2115,7 +2234,7 @@ function App() {
                         >
                           删除
                         </button>
-                      </div>
+      </div>
                     </td>
                   </tr>
                 ))}
@@ -2132,7 +2251,7 @@ function App() {
                 style={{ padding: '8px 12px', border: '1px solid #ccc', background: currentPage === 0 ? '#f8f9fa' : '#fff', cursor: currentPage === 0 ? 'not-allowed' : 'pointer' }}
               >
                 上一页
-              </button>
+        </button>
               <span style={{ padding: '8px 12px' }}>
                 第 {currentPage + 1} 页，共 {totalPages} 页
               </span>
@@ -2143,7 +2262,7 @@ function App() {
               >
                 下一页
               </button>
-            </div>
+      </div>
           )}
         </div>
       )}
@@ -4026,23 +4145,23 @@ function App() {
                     计算结算
                   </button>
                   <button
-                    onClick={() => {/* TODO: 执行结算 */}}
-                    disabled={selectedSession.status !== 'SAVED' || settlementResults.length === 0}
+                    onClick={() => setShowSettlementConfirm(true)}
+                    disabled={selectedSession.status !== 'SAVED' || settlementResults.length === 0 || executingSettlement}
                     style={{
                       padding: '8px 16px',
-                      background: (selectedSession.status === 'SAVED' && settlementResults.length > 0) ? '#28a745' : '#6c757d',
+                      background: (selectedSession.status === 'SAVED' && settlementResults.length > 0 && !executingSettlement) ? '#28a745' : '#6c757d',
                       color: '#fff',
                       border: 'none',
                       borderRadius: '4px',
-                      cursor: (selectedSession.status === 'SAVED' && settlementResults.length > 0) ? 'pointer' : 'not-allowed',
-                      opacity: (selectedSession.status === 'SAVED' && settlementResults.length > 0) ? 1 : 0.6
+                      cursor: (selectedSession.status === 'SAVED' && settlementResults.length > 0 && !executingSettlement) ? 'pointer' : 'not-allowed',
+                      opacity: (selectedSession.status === 'SAVED' && settlementResults.length > 0 && !executingSettlement) ? 1 : 0.6
                     }}
                     title={selectedSession.status !== 'SAVED' ? '考勤记录未保存' : settlementResults.length === 0 ? '请先计算结算结果' : '执行结算'}
                   >
-                    执行结算
+                    {executingSettlement ? '执行中...' : '执行结算'}
                   </button>
                   <button
-                    onClick={() => {/* TODO: 撤销结算 */}}
+                    onClick={revokeSettlement}
                     disabled={selectedSession.status !== 'SETTLED'}
                     style={{
                       padding: '8px 16px',
@@ -4072,10 +4191,99 @@ function App() {
         </div>
       )}
 
+      {/* 执行结算确认弹窗 */}
+      {showSettlementConfirm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#2d2d2d',
+            padding: '24px',
+            borderRadius: '8px',
+            maxWidth: '500px',
+            width: '90%',
+            color: '#fff'
+          }}>
+            <h3 style={{ margin: '0 0 16px 0', color: '#fff' }}>确认执行结算</h3>
+            
+            <div style={{ marginBottom: '16px' }}>
+              <p>您确定要执行结算吗？执行后将会：</p>
+              <ul style={{ paddingLeft: '20px', margin: '8px 0' }}>
+                <li>保存 {settlementResults.length} 条结算记录到数据库</li>
+                <li>关联到赛季：{selectedSession?.season?.name}</li>
+                <li>记录操作日志</li>
+                <li>考勤记录状态变更为"已结算"</li>
+              </ul>
+              <p style={{ color: '#ffc107', fontSize: '14px' }}>
+                <strong>注意：</strong>执行后如需修改，请先撤销结算再重新操作。
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowSettlementConfirm(false)}
+                disabled={executingSettlement}
+                style={{
+                  padding: '8px 16px',
+                  background: '#6c757d',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: executingSettlement ? 'not-allowed' : 'pointer',
+                  opacity: executingSettlement ? 0.6 : 1
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={executeSettlement}
+                disabled={executingSettlement}
+                style={{
+                  padding: '8px 16px',
+                  background: executingSettlement ? '#6c757d' : '#28a745',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: executingSettlement ? 'not-allowed' : 'pointer',
+                  opacity: executingSettlement ? 0.6 : 1
+                }}
+              >
+                {executingSettlement ? '执行中...' : '确认执行'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'ranking' && (
         <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <h2 style={{ color: '#fff', margin: 0 }}>查看榜单</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <h2 style={{ color: '#fff', margin: 0 }}>查看榜单</h2>
+              <button
+                onClick={openLogModal}
+                style={{
+                  padding: '8px 16px',
+                  background: '#17a2b8',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                查看日志
+              </button>
+            </div>
             
             {/* 赛季选择下拉框 */}
             <div style={{ position: 'relative' }} className="ranking-season-dropdown-container">
@@ -4247,6 +4455,157 @@ function App() {
                 }}
               >
                 确认删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 结算日志弹窗 */}
+      {showLogModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#2d2d2d',
+            padding: '24px',
+            borderRadius: '8px',
+            maxWidth: '800px',
+            width: '90%',
+            maxHeight: '80vh',
+            color: '#fff',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, color: '#fff' }}>结算日志</h3>
+              <button
+                onClick={() => setShowLogModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#fff',
+                  fontSize: '20px',
+                  cursor: 'pointer',
+                  padding: '0',
+                  width: '24px',
+                  height: '24px'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ flex: 1, overflowY: 'auto' }}>
+              {loadingLogs ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#fff' }}>
+                  加载中...
+                </div>
+              ) : settlementLogs.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px', color: '#ccc' }}>
+                  暂无结算日志
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#1a1a1a' }}>
+                        <th style={{ padding: '12px', border: '1px solid #555', textAlign: 'left', color: '#fff', minWidth: '140px' }}>操作时间</th>
+                        <th style={{ padding: '12px', border: '1px solid #555', textAlign: 'left', color: '#fff', minWidth: '120px' }}>考勤记录名称</th>
+                        <th style={{ padding: '12px', border: '1px solid #555', textAlign: 'left', color: '#fff', minWidth: '100px' }}>结算赛季</th>
+                        <th style={{ padding: '12px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>结算内容</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {settlementLogs.map((log, index) => (
+                        <tr key={log.id} style={{ background: index % 2 === 0 ? '#404040' : '#2d2d2d' }}>
+                          <td style={{ padding: '12px', border: '1px solid #555', color: '#fff' }}>
+                            {new Date(log.operationTime).toLocaleString('zh-CN')}
+                          </td>
+                          <td style={{ padding: '12px', border: '1px solid #555', color: '#fff' }}>
+                            {log.attendanceRecordName}
+                          </td>
+                          <td style={{ padding: '12px', border: '1px solid #555', color: '#fff' }}>
+                            {log.settlementSeason}
+                          </td>
+                          <td style={{ padding: '12px', border: '1px solid #555', color: '#fff', maxWidth: '300px', wordBreak: 'break-word' }}>
+                            {log.settlementContent}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* 分页控制 */}
+            {totalLogPages > 1 && (
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'center', 
+                alignItems: 'center', 
+                gap: '8px', 
+                marginTop: '16px',
+                paddingTop: '16px',
+                borderTop: '1px solid #555'
+              }}>
+                <button
+                  onClick={() => handleLogPageChange(currentLogPage - 1)}
+                  disabled={currentLogPage === 0}
+                  style={{
+                    padding: '6px 12px',
+                    background: currentLogPage === 0 ? '#555' : '#007bff',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: currentLogPage === 0 ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  上一页
+                </button>
+                <span style={{ color: '#fff', fontSize: '14px' }}>
+                  第 {currentLogPage + 1} 页，共 {totalLogPages} 页 (共 {totalLogElements} 条记录)
+                </span>
+                <button
+                  onClick={() => handleLogPageChange(currentLogPage + 1)}
+                  disabled={currentLogPage >= totalLogPages - 1}
+                  style={{
+                    padding: '6px 12px',
+                    background: currentLogPage >= totalLogPages - 1 ? '#555' : '#007bff',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: currentLogPage >= totalLogPages - 1 ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  下一页
+                </button>
+              </div>
+            )}
+
+            <div style={{ textAlign: 'center', marginTop: '16px' }}>
+              <button
+                onClick={() => setShowLogModal(false)}
+                style={{
+                  padding: '8px 16px',
+                  background: '#6c757d',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                关闭
               </button>
             </div>
           </div>

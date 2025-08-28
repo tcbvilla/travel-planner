@@ -38,6 +38,12 @@ public class AttendanceController {
     
     @Autowired
     private SeasonRepository seasonRepository;
+    
+    @Autowired
+    private SettlementRecordRepository settlementRecordRepository;
+    
+    @Autowired
+    private SettlementLogRepository settlementLogRepository;
 
     @PostMapping(value = "/compare", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public AttendanceResponse compare(@RequestPart("start") MultipartFile start,
@@ -1331,6 +1337,132 @@ public class AttendanceController {
             return ResponseEntity.ok("赛季删除成功");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("删除赛季失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 执行结算 - 保存结算结果到数据库并记录日志
+     */
+    @PostMapping("/sessions/{sessionId}/execute-settlement")
+    public ResponseEntity<String> executeSettlement(@PathVariable Long sessionId, @RequestBody List<SettlementResult> settlementResults) {
+        try {
+            AttendanceSession session = attendanceSessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new RuntimeException("未找到考勤记录: " + sessionId));
+            
+            if (session.getSeason() == null) {
+                return ResponseEntity.badRequest().body("考勤记录未关联赛季，无法执行结算");
+            }
+            
+            // 检查是否已经结算过
+            if (settlementRecordRepository.existsByAttendanceSessionId(sessionId)) {
+                return ResponseEntity.badRequest().body("该考勤记录已经执行过结算，请先撤销后再重新结算");
+            }
+            
+            System.out.println("开始执行结算，考勤记录ID: " + sessionId + ", 结算结果数量: " + settlementResults.size());
+            
+            // 保存结算记录
+            List<SettlementRecord> records = new ArrayList<>();
+            StringBuilder settlementContent = new StringBuilder();
+            
+            for (SettlementResult result : settlementResults) {
+                SettlementRecord record = new SettlementRecord();
+                record.setTeamName(result.getTeamName());
+                record.setRewardDescription(result.getRewardDescription());
+                record.setAmount(result.getAmount());
+                record.setRewardType(result.getRewardType());
+                record.setMultiplier(result.getMultiplier());
+                record.setSeason(session.getSeason());
+                record.setAttendanceSession(session);
+                
+                records.add(record);
+                
+                // 构建日志内容
+                settlementContent.append(result.getTeamName())
+                        .append(": ").append(result.getRewardDescription())
+                        .append(", 金额: ").append(result.getAmount())
+                        .append("; ");
+            }
+            
+            settlementRecordRepository.saveAll(records);
+            System.out.println("保存了 " + records.size() + " 条结算记录");
+            
+            // 记录日志
+            SettlementLog log = new SettlementLog();
+            log.setAttendanceRecordName(session.getName());
+            log.setSettlementSeason(session.getSeason().getName());
+            log.setSettlementContent(settlementContent.toString());
+            log.setAttendanceSession(session);
+            
+            settlementLogRepository.save(log);
+            System.out.println("保存结算日志成功");
+            
+            return ResponseEntity.ok("结算执行成功，共处理 " + records.size() + " 条记录");
+        } catch (Exception e) {
+            System.err.println("执行结算失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body("执行结算失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 查看结算日志
+     */
+    @GetMapping("/settlement-logs")
+    public ResponseEntity<Map<String, Object>> getSettlementLogs(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        try {
+            Pageable pageable = PageRequest.of(page, size);
+            Page<SettlementLog> logs = settlementLogRepository.findAllOrderByOperationTimeDesc(pageable);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("logs", logs.getContent());
+            response.put("totalElements", logs.getTotalElements());
+            response.put("totalPages", logs.getTotalPages());
+            response.put("currentPage", logs.getNumber());
+            response.put("size", logs.getSize());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            System.err.println("查询结算日志失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(Map.of("error", "查询结算日志失败: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 撤销结算 - 删除结算记录和日志
+     */
+    @DeleteMapping("/sessions/{sessionId}/revoke-settlement")
+    public ResponseEntity<String> revokeSettlement(@PathVariable Long sessionId) {
+        try {
+            AttendanceSession session = attendanceSessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new RuntimeException("未找到考勤记录: " + sessionId));
+            
+            // 删除结算记录
+            List<SettlementRecord> records = settlementRecordRepository.findByAttendanceSessionId(sessionId);
+            if (records.isEmpty()) {
+                return ResponseEntity.badRequest().body("该考勤记录没有结算记录可以撤销");
+            }
+            
+            settlementRecordRepository.deleteAll(records);
+            System.out.println("删除了 " + records.size() + " 条结算记录");
+            
+            // 记录撤销日志
+            SettlementLog log = new SettlementLog();
+            log.setAttendanceRecordName(session.getName());
+            log.setSettlementSeason(session.getSeason() != null ? session.getSeason().getName() : "未知赛季");
+            log.setSettlementContent("撤销结算，删除了 " + records.size() + " 条结算记录");
+            log.setAttendanceSession(session);
+            
+            settlementLogRepository.save(log);
+            System.out.println("保存撤销日志成功");
+            
+            return ResponseEntity.ok("结算撤销成功，删除了 " + records.size() + " 条记录");
+        } catch (Exception e) {
+            System.err.println("撤销结算失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body("撤销结算失败: " + e.getMessage());
         }
     }
 }
