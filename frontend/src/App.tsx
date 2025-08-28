@@ -1811,7 +1811,11 @@ function App() {
     setRankingSeasonId(season.id)
     setRankingSeasonSearchTerm('') // 清空搜索词
     setShowRankingSeasonDropdown(false)
-    // TODO: 这里可以添加刷新榜单数据的逻辑
+    
+    // 如果日志弹窗是打开的，重新加载日志
+    if (showLogModal) {
+      loadSettlementLogs(0)
+    }
   }
 
   // 加载奖惩结算条件
@@ -1952,7 +1956,12 @@ function App() {
   const loadSettlementLogs = async (page: number = 0) => {
     setLoadingLogs(true)
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/settlement-logs?page=${page}&size=10`)
+      let url = `http://localhost:8080/api/v1/attendance/settlement-logs?page=${page}&size=10`
+      if (rankingSeasonId) {
+        url += `&seasonId=${rankingSeasonId}`
+      }
+      
+      const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
         setSettlementLogs(data.logs || [])
@@ -3123,7 +3132,7 @@ function App() {
                   <div><strong>战功阈值：</strong>{selectedSession.threshold || '未设置'}</div>
                   <div><strong>状态：</strong>
                     {selectedSession.status === 'ADDED' && '已添加'}
-                    {selectedSession.status === 'SAVED' && '已保存'}
+                    {selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' && '已保存'}
                     {selectedSession.status === 'SETTLED' && '已结算'}
                   </div>
                   <div><strong>创建时间：</strong>{new Date(selectedSession.createdAt).toLocaleString()}</div>
@@ -3393,7 +3402,7 @@ function App() {
                   </h4>
                   
                   {/* 状态提示 */}
-                  {selectedSession.status === 'SAVED' && (
+                  {selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' && (
                     <div style={{ marginBottom: '16px', padding: '8px 12px', background: '#2d2d2d', border: '1px solid #ffc107', borderRadius: '4px', color: '#ffc107' }}>
                       <strong>提示：</strong>当前考勤记录已保存，无法修改奖惩条件。请先取消保存状态。
                     </div>
@@ -3406,15 +3415,15 @@ function App() {
                       <select 
                         value={taskStatus}
                                                     onChange={(e) => handleTaskStatusChange(e.target.value as '胜利' | '失败')}
-                        disabled={selectedSession.status === 'SAVED'}
+                        disabled={selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED'}
                         style={{ 
                           padding: '8px 12px', 
                           border: '2px solid #007bff', 
                           borderRadius: '4px', 
                           color: '#dc3545', 
-                          background: selectedSession.status === 'SAVED' ? '#f8f9fa' : '#fff',
+                          background: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? '#f8f9fa' : '#fff',
                           minWidth: '150px',
-                          opacity: selectedSession.status === 'SAVED' ? 0.6 : 1
+                          opacity: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 0.6 : 1
                         }}
                       >
                                                     <option value="胜利">胜利</option>
@@ -3601,15 +3610,15 @@ function App() {
                     <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
                       <button
                         onClick={editingCondition ? updateRewardCondition : saveRewardCondition}
-                        disabled={selectedSession.status === 'SAVED'}
+                        disabled={selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED'}
                         style={{
                           padding: '8px 16px',
-                          background: selectedSession.status === 'SAVED' ? '#6c757d' : '#28a745',
+                          background: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? '#6c757d' : '#28a745',
                           color: '#fff',
                           border: 'none',
                           borderRadius: '4px',
-                          cursor: selectedSession.status === 'SAVED' ? 'not-allowed' : 'pointer',
-                          opacity: selectedSession.status === 'SAVED' ? 0.6 : 1
+                          cursor: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 'not-allowed' : 'pointer',
+                          opacity: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 0.6 : 1
                         }}
                       >
                         {editingCondition ? '更新' : '新增'}
@@ -3617,15 +3626,15 @@ function App() {
                       {editingCondition && (
                         <button
                           onClick={resetRewardForm}
-                          disabled={selectedSession.status === 'SAVED'}
+                          disabled={selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED'}
                           style={{
                             padding: '8px 16px',
-                            background: selectedSession.status === 'SAVED' ? '#6c757d' : '#6c757d',
+                            background: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? '#6c757d' : '#6c757d',
                             color: '#fff',
                             border: 'none',
                             borderRadius: '4px',
-                            cursor: selectedSession.status === 'SAVED' ? 'not-allowed' : 'pointer',
-                            opacity: selectedSession.status === 'SAVED' ? 0.6 : 1
+                            cursor: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 'not-allowed' : 'pointer',
+                            opacity: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 0.6 : 1
                           }}
                         >
                           取消编辑
@@ -3679,31 +3688,31 @@ function App() {
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
                                 <button
                                   onClick={() => editRewardCondition(condition)}
-                                  disabled={selectedSession.status === 'SAVED'}
+                                  disabled={selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED'}
                                   style={{
                                     padding: '4px 8px',
-                                    background: selectedSession.status === 'SAVED' ? '#6c757d' : '#007bff',
+                                    background: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? '#6c757d' : '#007bff',
                                     color: '#fff',
                                     border: 'none',
                                     borderRadius: '2px',
-                                    cursor: selectedSession.status === 'SAVED' ? 'not-allowed' : 'pointer',
+                                    cursor: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 'not-allowed' : 'pointer',
                                     marginRight: '4px',
-                                    opacity: selectedSession.status === 'SAVED' ? 0.6 : 1
+                                    opacity: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 0.6 : 1
                                   }}
                                 >
                                   编辑
                                 </button>
                                 <button
                                   onClick={() => deleteRewardCondition(condition.id)}
-                                  disabled={selectedSession.status === 'SAVED'}
+                                  disabled={selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED'}
                                   style={{
                                     padding: '4px 8px',
-                                    background: selectedSession.status === 'SAVED' ? '#6c757d' : '#dc3545',
+                                    background: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? '#6c757d' : '#dc3545',
                                     color: '#fff',
                                     border: 'none',
                                     borderRadius: '2px',
-                                    cursor: selectedSession.status === 'SAVED' ? 'not-allowed' : 'pointer',
-                                    opacity: selectedSession.status === 'SAVED' ? 0.6 : 1
+                                    cursor: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 'not-allowed' : 'pointer',
+                                    opacity: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 0.6 : 1
                                   }}
                                 >
                                   删除
@@ -3763,7 +3772,7 @@ function App() {
                   <h4 style={{ margin: '0 0 16px 0', color: '#fff' }}>调整参加考勤状态</h4>
                   
                   {/* 状态提示 */}
-                  {selectedSession.status === 'SAVED' && (
+                  {selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' && (
                     <div style={{ marginBottom: '16px', padding: '8px 12px', background: '#2d2d2d', border: '1px solid #ffc107', borderRadius: '4px', color: '#ffc107' }}>
                       <strong>提示：</strong>当前考勤记录已保存，无法调整参加考勤状态。请先取消保存状态。
                     </div>
@@ -3820,17 +3829,17 @@ function App() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <button
                           onClick={updateTeamAttendance}
-                          disabled={!selectedTeam || isUpdatingTeamAttendance || selectedSession.status === 'SAVED'}
+                          disabled={!selectedTeam || isUpdatingTeamAttendance || selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED'}
                           style={{
                             padding: '10px 20px',
-                            background: selectedTeam && !isUpdatingTeamAttendance && selectedSession.status !== 'SAVED' ? '#007bff' : '#6c757d',
+                            background: selectedTeam && !isUpdatingTeamAttendance && selectedSession.status !== 'SAVED' && selectedSession.status !== 'SETTLED' ? '#007bff' : '#6c757d',
                             color: '#fff',
                             border: 'none',
                             borderRadius: '4px',
-                            cursor: selectedTeam && !isUpdatingTeamAttendance && selectedSession.status !== 'SAVED' ? 'pointer' : 'not-allowed',
+                            cursor: selectedTeam && !isUpdatingTeamAttendance && selectedSession.status !== 'SAVED' && selectedSession.status !== 'SETTLED' ? 'pointer' : 'not-allowed',
                             fontSize: '14px',
                             fontWeight: 'bold',
-                            opacity: selectedSession.status === 'SAVED' ? 0.6 : 1
+                            opacity: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 0.6 : 1
                           }}
                         >
                           {isUpdatingTeamAttendance ? '执行中...' : '执行批量更新'}
@@ -3983,17 +3992,17 @@ function App() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <button
                           onClick={updateMembersAttendance}
-                          disabled={selectedMembers.length === 0 || isUpdatingMemberAttendance || selectedSession.status === 'SAVED'}
+                          disabled={selectedMembers.length === 0 || isUpdatingMemberAttendance || selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED'}
                           style={{
                             padding: '10px 20px',
-                            background: selectedMembers.length > 0 && !isUpdatingMemberAttendance && selectedSession.status !== 'SAVED' ? '#28a745' : '#6c757d',
+                            background: selectedMembers.length > 0 && !isUpdatingMemberAttendance && selectedSession.status !== 'SAVED' && selectedSession.status !== 'SETTLED' ? '#28a745' : '#6c757d',
                             color: '#fff',
                             border: 'none',
                             borderRadius: '4px',
-                            cursor: selectedMembers.length > 0 && !isUpdatingMemberAttendance && selectedSession.status !== 'SAVED' ? 'pointer' : 'not-allowed',
+                            cursor: selectedMembers.length > 0 && !isUpdatingMemberAttendance && selectedSession.status !== 'SAVED' && selectedSession.status !== 'SETTLED' ? 'pointer' : 'not-allowed',
                             fontSize: '14px',
                             fontWeight: 'bold',
-                            opacity: selectedSession.status === 'SAVED' ? 0.6 : 1
+                            opacity: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 0.6 : 1
                           }}
                         >
                           {isUpdatingMemberAttendance ? '执行中...' : `批量更新 ${selectedMembers.length} 个成员`}
@@ -4010,7 +4019,7 @@ function App() {
               <div style={{ background: '#404040', padding: '16px', borderRadius: '8px', marginBottom: '16px' }}>
                 <h4 style={{ margin: '0 0 16px 0', color: '#fff' }}>奖惩结算</h4>
                 
-                {selectedSession.status === 'SAVED' ? (
+                {selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? (
                   <div style={{ color: '#fff', marginBottom: '16px' }}>
                     <strong>提示：</strong>当前考勤记录已保存，可以进行奖惩结算。
                   </div>

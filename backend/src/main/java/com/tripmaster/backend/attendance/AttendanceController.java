@@ -1396,6 +1396,11 @@ public class AttendanceController {
             settlementLogRepository.save(log);
             System.out.println("保存结算日志成功");
             
+            // 更新考勤记录状态为已结算
+            session.setStatus("SETTLED");
+            attendanceSessionRepository.save(session);
+            System.out.println("更新考勤记录状态为已结算");
+            
             return ResponseEntity.ok("结算执行成功，共处理 " + records.size() + " 条记录");
         } catch (Exception e) {
             System.err.println("执行结算失败: " + e.getMessage());
@@ -1410,10 +1415,19 @@ public class AttendanceController {
     @GetMapping("/settlement-logs")
     public ResponseEntity<Map<String, Object>> getSettlementLogs(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) Long seasonId) {
         try {
             Pageable pageable = PageRequest.of(page, size);
-            Page<SettlementLog> logs = settlementLogRepository.findAllOrderByOperationTimeDesc(pageable);
+            Page<SettlementLog> logs;
+            
+            if (seasonId != null) {
+                // 根据赛季筛选日志
+                logs = settlementLogRepository.findBySeasonIdOrderByOperationTimeDesc(seasonId, pageable);
+            } else {
+                // 查看所有日志
+                logs = settlementLogRepository.findAllOrderByOperationTimeDesc(pageable);
+            }
             
             Map<String, Object> response = new HashMap<>();
             response.put("logs", logs.getContent());
@@ -1457,6 +1471,11 @@ public class AttendanceController {
             
             settlementLogRepository.save(log);
             System.out.println("保存撤销日志成功");
+            
+            // 更新考勤记录状态为已保存
+            session.setStatus("SAVED");
+            attendanceSessionRepository.save(session);
+            System.out.println("更新考勤记录状态为已保存");
             
             return ResponseEntity.ok("结算撤销成功，删除了 " + records.size() + " 条记录");
         } catch (Exception e) {
