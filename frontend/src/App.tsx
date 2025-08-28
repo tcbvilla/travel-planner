@@ -120,6 +120,7 @@ function App() {
   useEffect(() => {
     const initializeCodeTables = async () => {
       try {
+        // 先尝试加载码表
         await loadCodeTables()
         
         // 如果码表为空，则初始化
@@ -132,8 +133,9 @@ function App() {
       }
     }
     
+    // 只在组件首次加载时执行一次
     initializeCodeTables()
-  }, [])
+  }, []) // 空依赖数组，确保只执行一次
 
   // 计算加成后出勤率的函数
   const calculateBonusAttendanceRate = (attendanceRate: number, memberCount: number): number => {
@@ -1086,21 +1088,6 @@ function App() {
     <div style={{ padding: 16 }}>
       {/* 主导航菜单 */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '2px solid #dee2e6', paddingBottom: 16 }}>
-        <button
-          onClick={loadCodeTables}
-          style={{
-            padding: '8px 16px',
-            border: 'none',
-            background: '#28a745',
-            color: '#fff',
-            cursor: 'pointer',
-            fontSize: '14px',
-            borderRadius: '4px',
-            marginLeft: 'auto'
-          }}
-        >
-          刷新码表
-        </button>
         <button
           onClick={() => setActiveTab('add')}
           style={{
