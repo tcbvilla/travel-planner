@@ -619,7 +619,7 @@ function App() {
   const [threshold, setThreshold] = useState<number>(1)
   const [rows, setRows] = useState<DisplayRow[]>([])
   const [groupStats, setGroupStats] = useState<GroupStat[]>([])
-  const [activeTab, setActiveTab] = useState<'add' | 'view'>('add')
+  const [activeTab, setActiveTab] = useState<'add' | 'view' | 'season'>('add')
   const [activeSubTab, setActiveSubTab] = useState<'members' | 'groups'>('members')
   const [filteredCount, setFilteredCount] = useState<number>(0)
   const [error, setError] = useState<string | null>(null)
@@ -1566,9 +1566,23 @@ function App() {
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      {/* 主导航菜单 */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '2px solid #dee2e6', paddingBottom: 16 }}>
+    <div style={{ 
+      minHeight: '100vh',
+      width: '100%'
+    }}>
+      {/* 固定顶部菜单 */}
+      <div style={{ 
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        zIndex: 1000,
+        background: '#1a1a1a',
+        borderBottom: '2px solid #dee2e6',
+        padding: '16px',
+        display: 'flex',
+        gap: 8
+      }}>
         <button
           onClick={() => setActiveTab('add')}
           style={{
@@ -1579,7 +1593,8 @@ function App() {
             cursor: 'pointer',
             fontSize: '16px',
             fontWeight: activeTab === 'add' ? 'bold' : 'normal',
-            borderRadius: '4px 4px 0 0'
+            borderRadius: '4px',
+            transition: 'all 0.3s ease'
           }}
         >
           添加考勤
@@ -1597,12 +1612,36 @@ function App() {
             cursor: 'pointer',
             fontSize: '16px',
             fontWeight: activeTab === 'view' ? 'bold' : 'normal',
-            borderRadius: '4px 4px 0 0'
+            borderRadius: '4px',
+            transition: 'all 0.3s ease'
           }}
         >
           查看考勤记录
         </button>
+        <button
+          onClick={() => setActiveTab('season')}
+          style={{
+            padding: '12px 24px',
+            border: 'none',
+            background: activeTab === 'season' ? '#007bff' : '#555555',
+            color: '#fff',
+            cursor: 'pointer',
+            fontSize: '16px',
+            fontWeight: activeTab === 'season' ? 'bold' : 'normal',
+            borderRadius: '4px',
+            transition: 'all 0.3s ease'
+          }}
+        >
+          赛季管理
+        </button>
       </div>
+
+      {/* 页面内容区域 */}
+      <div style={{ 
+        marginTop: '80px', // 为固定菜单留出空间
+        padding: '16px',
+        minHeight: 'calc(100vh - 80px)' // 确保内容区域至少占满剩余空间
+      }}>
 
       {activeTab === 'add' && (
         <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px' }}>
@@ -1761,6 +1800,15 @@ function App() {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === 'season' && (
+        <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px' }}>
+          <h2 style={{ color: '#fff', marginBottom: '20px' }}>赛季管理</h2>
+          <div style={{ color: '#fff', fontSize: '16px', textAlign: 'center', padding: '40px' }}>
+            赛季管理功能正在开发中，敬请期待...
+          </div>
         </div>
       )}
 
@@ -2938,6 +2986,9 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* 页面内容区域结束 */}
+      </div>
 
       {/* 删除确认弹框 */}
       {showDeleteConfirm && (

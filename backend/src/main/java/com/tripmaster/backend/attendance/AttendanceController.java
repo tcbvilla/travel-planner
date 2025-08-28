@@ -348,10 +348,10 @@ public class AttendanceController {
                 int memberCount = stat.getMemberCount();
                 if (memberCount >= 40 && memberCount <= 45) {
                     // 小组人数40-45，加成1.03
-                    averageMeritIncreaseBonus = Math.round(averageMeritIncrease * 1.03);
+                    averageMeritIncreaseBonus = Math.round((double) averageMeritIncrease * 1.03);
                 } else if (memberCount >= 46 && memberCount <= 50) {
                     // 小组人数46-50，加成1.05
-                    averageMeritIncreaseBonus = Math.round(averageMeritIncrease * 1.05);
+                    averageMeritIncreaseBonus = Math.round((double) averageMeritIncrease * 1.05);
                 }
                 
                 stat.setAverageMeritIncreaseBonus(averageMeritIncreaseBonus);
