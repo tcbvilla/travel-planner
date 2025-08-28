@@ -2111,16 +2111,17 @@ function App() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <button
                           onClick={updateTeamAttendance}
-                          disabled={!selectedTeam || isUpdatingTeamAttendance}
+                          disabled={!selectedTeam || isUpdatingTeamAttendance || selectedSession.status === 'SAVED'}
                           style={{
                             padding: '10px 20px',
-                            background: selectedTeam && !isUpdatingTeamAttendance ? '#007bff' : '#6c757d',
+                            background: selectedTeam && !isUpdatingTeamAttendance && selectedSession.status !== 'SAVED' ? '#007bff' : '#6c757d',
                             color: '#fff',
                             border: 'none',
                             borderRadius: '4px',
-                            cursor: selectedTeam && !isUpdatingTeamAttendance ? 'pointer' : 'not-allowed',
+                            cursor: selectedTeam && !isUpdatingTeamAttendance && selectedSession.status !== 'SAVED' ? 'pointer' : 'not-allowed',
                             fontSize: '14px',
-                            fontWeight: 'bold'
+                            fontWeight: 'bold',
+                            opacity: selectedSession.status === 'SAVED' ? 0.6 : 1
                           }}
                         >
                           {isUpdatingTeamAttendance ? '执行中...' : '执行批量更新'}
@@ -2273,16 +2274,17 @@ function App() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <button
                           onClick={updateMembersAttendance}
-                          disabled={selectedMembers.length === 0 || isUpdatingMemberAttendance}
+                          disabled={selectedMembers.length === 0 || isUpdatingMemberAttendance || selectedSession.status === 'SAVED'}
                           style={{
                             padding: '10px 20px',
-                            background: selectedMembers.length > 0 && !isUpdatingMemberAttendance ? '#28a745' : '#6c757d',
+                            background: selectedMembers.length > 0 && !isUpdatingMemberAttendance && selectedSession.status !== 'SAVED' ? '#28a745' : '#6c757d',
                             color: '#fff',
                             border: 'none',
                             borderRadius: '4px',
-                            cursor: selectedMembers.length > 0 && !isUpdatingMemberAttendance ? 'pointer' : 'not-allowed',
+                            cursor: selectedMembers.length > 0 && !isUpdatingMemberAttendance && selectedSession.status !== 'SAVED' ? 'pointer' : 'not-allowed',
                             fontSize: '14px',
-                            fontWeight: 'bold'
+                            fontWeight: 'bold',
+                            opacity: selectedSession.status === 'SAVED' ? 0.6 : 1
                           }}
                         >
                           {isUpdatingMemberAttendance ? '执行中...' : `批量更新 ${selectedMembers.length} 个成员`}
