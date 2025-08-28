@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from 'react'
 import Papa from 'papaparse'
+import html2canvas from 'html2canvas'
 import './App.css'
 
 type DisplayRow = {
@@ -53,9 +54,436 @@ type PageResponse<T> = {
   number: number
 }
 
+// 导出组件
+const GroupStatsExportComponent = ({ 
+  selectedSession,
+  sortBy
+}: { 
+  selectedSession: AttendanceSession | null
+  sortBy: 'attendance' | 'averageMerit'
+}) => {
+  if (!selectedSession) return null
+
+  try {
+    const memberData = selectedSession.memberData ? JSON.parse(selectedSession.memberData) : []
+    const groupData = selectedSession.groupData ? JSON.parse(selectedSession.groupData) : []
+    
+    // 只统计参加考勤的成员
+    const attendingMembers = memberData.filter((member: DisplayRow) => member.参加考勤)
+    
+    // 计算同盟概览数据
+    const totalMembers = attendingMembers.length // 总人数（参与考勤人数）
+    const qualifiedMembers = attendingMembers.filter((member: DisplayRow) => member.达标).length // 参战人数（参与考勤且达标的人数）
+    const battleRatio = totalMembers > 0 ? ((qualifiedMembers / totalMembers) * 100).toFixed(1) : '0.0' // 参战比例
+    const totalMerit = attendingMembers.reduce((sum: number, member: DisplayRow) => sum + member.差值, 0) // 总战功
+    const averageMerit = totalMembers > 0 ? Math.round(totalMerit / totalMembers) : 0 // 人均战功
+    
+    // 计算最高/最低战功
+    const maxMeritMember = attendingMembers.reduce((max: DisplayRow, member: DisplayRow) => 
+      member.差值 > max.差值 ? member : max, attendingMembers[0]
+    )
+    const minMeritMember = attendingMembers.reduce((min: DisplayRow, member: DisplayRow) => 
+      member.差值 < min.差值 ? member : min, attendingMembers[0]
+    )
+    
+    // 找出并列的最高/最低战功成员
+    const maxMeritValue = maxMeritMember?.差值 || 0
+    const minMeritValue = minMeritMember?.差值 || 0
+    const maxMeritMembers = attendingMembers.filter((member: DisplayRow) => member.差值 === maxMeritValue)
+    const minMeritMembers = attendingMembers.filter((member: DisplayRow) => member.差值 === minMeritValue)
+
+    // 计算团队排名
+    const sortedByAttendance = [...groupData].sort((a, b) => 
+      (b.attendanceRate || 0) - (a.attendanceRate || 0)
+    )
+    const sortedByAverageMerit = [...groupData].sort((a, b) => b.averageMeritIncrease - a.averageMeritIncrease)
+    const sortedByTotalMerit = [...groupData].sort((a, b) => b.totalMeritIncrease - a.totalMeritIncrease)
+
+    // 为每个团队计算排名（支持并列排名）
+    const getTeamRank = (teamName: string, sortedList: any[], valueKey: string) => {
+      const team = sortedList.find(group => group.group === teamName)
+      if (!team) return 1
+      
+      let rank = 1
+      let previousValue = null
+      
+      for (let i = 0; i < sortedList.length; i++) {
+        const currentValue = sortedList[i][valueKey]
+        if (currentValue !== previousValue) {
+          rank = i + 1
+        }
+        if (sortedList[i].group === teamName) {
+          return rank
+        }
+        previousValue = currentValue
+      }
+      
+      return rank
+    }
+
+    // 根据选择的排序方式决定团队显示顺序
+    const teamsBySelectedRank = sortBy === 'attendance' ? sortedByAttendance : sortedByAverageMerit
+
+    return (
+      <div style={{
+        width: '800px',
+        backgroundColor: '#1a1a1a',
+        color: '#fff',
+        padding: '40px',
+        fontFamily: 'Arial, sans-serif',
+        boxSizing: 'border-box'
+      }}>
+        {/* 标题 */}
+        <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+          <h1 style={{ 
+            margin: '0', 
+            fontSize: '36px', 
+            fontWeight: 'bold',
+            color: '#fff',
+            textShadow: '2px 2px 4px rgba(0,0,0,0.5)'
+          }}>
+            小组统计报告
+          </h1>
+          <p style={{ 
+            margin: '10px 0 0 0', 
+            fontSize: '20px', 
+            color: '#ccc',
+            opacity: 0.8
+          }}>
+            {selectedSession.name}
+          </p>
+        </div>
+
+        {/* 同盟概览模块 */}
+        <div style={{ 
+          background: '#2d2d2d', 
+          borderRadius: '12px', 
+          padding: '30px',
+          marginBottom: '30px',
+          border: '2px solid #444'
+        }}>
+          <h2 style={{ 
+            margin: '0 0 25px 0', 
+            fontSize: '24px', 
+            color: '#ff6b35',
+            textAlign: 'center',
+            borderBottom: '2px solid #ff6b35',
+            paddingBottom: '10px'
+          }}>
+            同盟概览
+          </h2>
+          
+          {/* 概览数据网格 */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: '1fr 1fr 1fr', 
+            gap: '15px',
+            marginBottom: '25px'
+          }}>
+            {/* 总人数 */}
+            <div style={{ 
+              background: '#3d3d3d', 
+              padding: '15px', 
+              borderRadius: '8px',
+              textAlign: 'center',
+              border: '1px solid #555'
+            }}>
+              <div style={{ fontSize: '14px', color: '#ccc', marginBottom: '6px' }}>总人数</div>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#fff' }}>{totalMembers}</div>
+            </div>
+            
+            {/* 参战人数 */}
+            <div style={{ 
+              background: '#3d3d3d', 
+              padding: '15px', 
+              borderRadius: '8px',
+              textAlign: 'center',
+              border: '1px solid #555'
+            }}>
+              <div style={{ fontSize: '14px', color: '#ccc', marginBottom: '6px' }}>参战人数</div>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#4caf50' }}>{qualifiedMembers}</div>
+            </div>
+            
+            {/* 参战比例 */}
+            <div style={{ 
+              background: '#3d3d3d', 
+              padding: '15px', 
+              borderRadius: '8px',
+              textAlign: 'center',
+              border: '1px solid #555'
+            }}>
+              <div style={{ fontSize: '14px', color: '#ccc', marginBottom: '6px' }}>参战比例</div>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff6b35' }}>{battleRatio}%</div>
+            </div>
+            
+            {/* 总战功 */}
+            <div style={{ 
+              background: '#3d3d3d', 
+              padding: '15px', 
+              borderRadius: '8px',
+              textAlign: 'center',
+              border: '1px solid #555'
+            }}>
+              <div style={{ fontSize: '14px', color: '#ccc', marginBottom: '6px' }}>总战功</div>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#2196f3' }}>{totalMerit.toLocaleString()}</div>
+            </div>
+            
+            {/* 人均战功 */}
+            <div style={{ 
+              background: '#3d3d3d', 
+              padding: '15px', 
+              borderRadius: '8px',
+              textAlign: 'center',
+              border: '1px solid #555'
+            }}>
+              <div style={{ fontSize: '14px', color: '#ccc', marginBottom: '6px' }}>人均战功</div>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ffc107' }}>{averageMerit.toLocaleString()}</div>
+            </div>
+            
+            {/* 最高战功 */}
+            <div style={{ 
+              background: '#3d3d3d', 
+              padding: '15px', 
+              borderRadius: '8px',
+              textAlign: 'center',
+              border: '1px solid #555'
+            }}>
+              <div style={{ fontSize: '14px', color: '#ccc', marginBottom: '6px' }}>最高战功</div>
+              <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#4caf50' }}>{maxMeritValue.toLocaleString()}</div>
+              <div style={{ fontSize: '11px', color: '#888', marginTop: '3px' }}>
+                {maxMeritMembers.map((member: DisplayRow) => 
+                  `${member.分组} | ${member.成员}`
+                ).join('、')}
+              </div>
+            </div>
+          </div>
+          
+          {/* 最低战功 */}
+          <div style={{ 
+            background: '#3d3d3d', 
+            padding: '15px', 
+            borderRadius: '8px',
+            textAlign: 'center',
+            border: '1px solid #555',
+            maxWidth: '300px',
+            margin: '0 auto'
+          }}>
+            <div style={{ fontSize: '14px', color: '#ccc', marginBottom: '6px' }}>最低战功</div>
+            <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f44336' }}>{minMeritValue.toLocaleString()}</div>
+            <div style={{ fontSize: '11px', color: '#888', marginTop: '3px' }}>
+              {minMeritMembers.map((member: DisplayRow) => 
+                `${member.分组} | ${member.成员}`
+              ).join('、')}
+            </div>
+          </div>
+        </div>
+
+        {/* 团队详细统计 */}
+        {teamsBySelectedRank.map((team, index) => {
+          // 计算该团队的数据
+          const teamMembers = attendingMembers.filter((member: DisplayRow) => member.分组 === team.group)
+          const teamTotalMembers = teamMembers.length
+          const teamQualifiedMembers = teamMembers.filter((member: DisplayRow) => member.达标).length
+          // 直接使用小组统计数据中的出勤率（加成后）
+          const teamBattleRatio = team.attendanceRate ? team.attendanceRate.toFixed(1) : '0.0'
+          const teamTotalMerit = teamMembers.reduce((sum: number, member: DisplayRow) => sum + member.差值, 0)
+          const teamAverageMerit = teamTotalMembers > 0 ? Math.round(teamTotalMerit / teamTotalMembers) : 0
+          
+          // 获取排名
+          const attendanceRank = getTeamRank(team.group, sortedByAttendance, 'attendanceRate')
+          const averageMeritRank = getTeamRank(team.group, sortedByAverageMerit, 'averageMeritIncrease')
+          const totalMeritRank = getTeamRank(team.group, sortedByTotalMerit, 'totalMeritIncrease')
+          
+          // 缺勤人员
+          const absentMembers = teamMembers.filter((member: DisplayRow) => !member.达标)
+
+          return (
+            <div key={index} style={{ 
+              background: '#2d2d2d', 
+              borderRadius: '12px', 
+              padding: '25px',
+              marginBottom: '20px',
+              border: '2px solid #444'
+            }}>
+              {/* 团队名称和排名概览 */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center',
+                marginBottom: '20px'
+              }}>
+                <h3 style={{ 
+                  margin: '0', 
+                  fontSize: '20px', 
+                  background: '#ff6b35',
+                  color: '#fff',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  fontWeight: 'bold'
+                }}>
+                  {team.group}
+                </h3>
+                
+                {/* 排名概览 */}
+                <div style={{ display: 'flex', gap: '15px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '16px' }}>📖</span>
+                    <span style={{ fontSize: '14px', color: '#ccc' }}>出勤排名 {attendanceRank}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '16px' }}>⚔️</span>
+                    <span style={{ fontSize: '14px', color: '#ccc' }}>人均战功 {averageMeritRank}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '16px' }}>🐉</span>
+                    <span style={{ fontSize: '14px', color: '#ccc' }}>总战功 {totalMeritRank}</span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* 团队核心数据 */}
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', 
+                gap: '12px',
+                marginBottom: '15px'
+              }}>
+                <div style={{ 
+                  background: '#3d3d3d', 
+                  padding: '12px', 
+                  borderRadius: '6px',
+                  textAlign: 'center',
+                  border: '1px solid #555'
+                }}>
+                  <div style={{ fontSize: '12px', color: '#ccc', marginBottom: '4px' }}>总人数</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#fff' }}>{teamTotalMembers}</div>
+                </div>
+                
+                <div style={{ 
+                  background: '#3d3d3d', 
+                  padding: '12px', 
+                  borderRadius: '6px',
+                  textAlign: 'center',
+                  border: '1px solid #555'
+                }}>
+                  <div style={{ fontSize: '12px', color: '#ccc', marginBottom: '4px' }}>参战人数</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#4caf50' }}>{teamQualifiedMembers}</div>
+                </div>
+                
+                <div style={{ 
+                  background: '#3d3d3d', 
+                  padding: '12px', 
+                  borderRadius: '6px',
+                  textAlign: 'center',
+                  border: '1px solid #555'
+                }}>
+                  <div style={{ fontSize: '12px', color: '#ccc', marginBottom: '4px' }}>参战比例</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#ff6b35' }}>{teamBattleRatio}%</div>
+                </div>
+                
+                <div style={{ 
+                  background: '#3d3d3d', 
+                  padding: '12px', 
+                  borderRadius: '6px',
+                  textAlign: 'center',
+                  border: '1px solid #555'
+                }}>
+                  <div style={{ fontSize: '12px', color: '#ccc', marginBottom: '4px' }}>总战功</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#2196f3' }}>{teamTotalMerit.toLocaleString()}</div>
+                </div>
+                
+                <div style={{ 
+                  background: '#3d3d3d', 
+                  padding: '12px', 
+                  borderRadius: '6px',
+                  textAlign: 'center',
+                  border: '1px solid #555'
+                }}>
+                  <div style={{ fontSize: '12px', color: '#ccc', marginBottom: '4px' }}>人均战功</div>
+                  <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#ffc107' }}>{teamAverageMerit.toLocaleString()}</div>
+                </div>
+              </div>
+              
+              {/* 缺勤人员 */}
+              {absentMembers.length > 0 && (
+                <div>
+                  <h4 style={{ 
+                    margin: '0 0 10px 0', 
+                    fontSize: '16px', 
+                    color: '#f44336',
+                    borderBottom: '1px solid #f44336',
+                    paddingBottom: '5px'
+                  }}>
+                    缺勤人员
+                  </h4>
+                  <div style={{ 
+                    fontSize: '13px', 
+                    color: '#ccc', 
+                    lineHeight: '1.4',
+                    background: '#3d3d3d',
+                    padding: '12px',
+                    borderRadius: '6px',
+                    border: '1px solid #555'
+                  }}>
+                    {absentMembers.map((member: DisplayRow, idx: number) => 
+                      `${member.分组} | ${member.成员}${idx < absentMembers.length - 1 ? ', ' : ''}`
+                    ).join('')}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+
+        {/* 备注区域 */}
+        <div style={{ 
+          background: '#2d2d2d', 
+          borderRadius: '12px', 
+          padding: '20px',
+          border: '2px solid #444'
+        }}>
+          <h3 style={{ 
+            margin: '0 0 15px 0', 
+            fontSize: '18px', 
+            color: '#ff6b35',
+            borderBottom: '1px solid #ff6b35',
+            paddingBottom: '8px'
+          }}>
+            备注
+          </h3>
+          <div style={{ fontSize: '14px', color: '#ccc', lineHeight: '1.6' }}>
+            <div>• 出勤标准：战功差值 ≥ {selectedSession.threshold || '未设置'}</div>
+            <div>• 战役结果：{selectedSession.battleResult === 'VICTORY' ? '胜利' : '失败'}</div>
+            <div>• 统计时间：{new Date().toLocaleString('zh-CN')}</div>
+            <div>• 数据来源：仅统计参加考勤的成员</div>
+          </div>
+        </div>
+      </div>
+    )
+  } catch (error) {
+    console.error('导出组件渲染失败:', error)
+    return (
+      <div style={{
+        width: '800px',
+        height: '800px',
+        backgroundColor: '#1a1a1a',
+        color: '#fff',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '18px'
+      }}>
+        数据解析失败，无法生成报告
+      </div>
+    )
+  }
+}
+
 function App() {
   // 添加点击外部关闭下拉菜单的功能
   const memberDropdownRef = useRef<HTMLDivElement>(null)
+  // 导出组件引用
+  const exportRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -149,6 +577,41 @@ function App() {
     return result > 100 ? 100 : result
   }
 
+  // 导出小组统计图片
+  const handleExportGroupStats = async () => {
+    if (!selectedSession || !exportRef.current) {
+      alert('无法导出：数据不完整')
+      return
+    }
+
+    try {
+      // 等待组件渲染完成
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      const canvas = await html2canvas(exportRef.current, {
+        backgroundColor: '#1a1a1a',
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        width: 800,
+        height: exportRef.current.scrollHeight,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: 800,
+        windowHeight: exportRef.current.scrollHeight
+      })
+      
+      // 转换为图片并下载
+      const link = document.createElement('a')
+      link.download = `${selectedSession.name}.jpg`
+      link.href = canvas.toDataURL('image/jpeg', 0.9)
+      link.click()
+    } catch (error) {
+      console.error('导出失败:', error)
+      alert('导出失败，请重试')
+    }
+  }
+
   const [startFile, setStartFile] = useState<File | null>(null)
   const [endFile, setEndFile] = useState<File | null>(null)
   const [threshold, setThreshold] = useState<number>(1)
@@ -168,7 +631,7 @@ function App() {
   const [battleResult, setBattleResult] = useState<'VICTORY' | 'DEFEAT'>('VICTORY')
   const [showSessionModal, setShowSessionModal] = useState(false)
   const [selectedSession, setSelectedSession] = useState<AttendanceSession | null>(null)
-  const [modalActiveTab, setModalActiveTab] = useState<'members' | 'groups' | 'rewards'>('members')
+  const [modalActiveTab, setModalActiveTab] = useState<'members' | 'groups' | 'rewards' | 'attendance'>('members')
 
   // 新增状态：用于控制"若任务"的选择
   const [taskStatus, setTaskStatus] = useState<'成功' | '失败'>('成功')
@@ -207,6 +670,9 @@ function App() {
   // 码表状态
   const [rewardCodes, setRewardCodes] = useState<any[]>([])
   const [penaltyCodes, setPenaltyCodes] = useState<any[]>([])
+  
+  // 导出排序选择器状态
+  const [exportSortBy, setExportSortBy] = useState<'attendance' | 'averageMerit'>('attendance')
 
 
 
@@ -378,7 +844,7 @@ function App() {
     
     try {
       const memberData = JSON.parse(selectedSession.memberData)
-      const teams = [...new Set(memberData.map((member: any) => member.分组))]
+      const teams = [...new Set(memberData.map((member: any) => member.分组))] as string[]
       return teams.sort()
     } catch (error) {
       console.error('解析成员数据失败:', error)
@@ -1754,6 +2220,59 @@ function App() {
                     </tbody>
                   </table>
                 </div>
+                
+                {/* 导出设置和按钮 */}
+                <div style={{ marginTop: '16px', textAlign: 'center' }}>
+                  {/* 排序选择器 */}
+                  <div style={{ marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <label style={{ color: '#fff', fontSize: '14px', fontWeight: 'bold' }}>团队排序方式：</label>
+                    <select 
+                      value={exportSortBy}
+                      onChange={(e) => setExportSortBy(e.target.value as 'attendance' | 'averageMerit')}
+                      style={{
+                        padding: '6px 12px',
+                        border: '2px solid #007bff',
+                        borderRadius: '4px',
+                        color: '#fff',
+                        background: '#2d2d2d',
+                        fontSize: '14px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="attendance">按出勤率排名</option>
+                      <option value="averageMerit">按人均战功增量排名</option>
+                    </select>
+                  </div>
+                  
+                  <button
+                    onClick={handleExportGroupStats}
+                    style={{
+                      padding: '12px 24px',
+                      backgroundColor: '#28a745',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      fontSize: '16px',
+                      fontWeight: 'bold',
+                      cursor: 'pointer',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                      transition: 'all 0.3s ease'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.backgroundColor = '#218838'
+                      e.currentTarget.style.transform = 'translateY(-1px)'
+                      e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.3)'
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.backgroundColor = '#28a745'
+                      e.currentTarget.style.transform = 'translateY(0)'
+                      e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)'
+                    }}
+                  >
+                    导出小组统计图片
+                  </button>
+                </div>
               </div>
             )}
             
@@ -2278,7 +2797,7 @@ function App() {
                                     cursor: 'pointer',
                                     color: '#fff',
                                     borderBottom: '1px solid #444',
-                                    ':hover': { background: '#444' }
+                                    background: '#2d2d2d'
                                   }}
                                   onMouseEnter={(e) => {
                                     e.currentTarget.style.background = '#444'
@@ -2465,6 +2984,14 @@ function App() {
           </div>
         </div>
       )}
+
+      {/* 导出组件（隐藏） */}
+      <div ref={exportRef} style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
+        <GroupStatsExportComponent 
+          selectedSession={selectedSession}
+          sortBy={exportSortBy}
+        />
+      </div>
     </div>
   )
 }
