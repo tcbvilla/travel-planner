@@ -708,6 +708,53 @@ public class AttendanceController {
             throw new RuntimeException("更新成员参加状态失败: " + e.getMessage());
         }
     }
+
+    /**
+     * 批量更新团队的参加考勤状态
+     */
+    @PutMapping("/sessions/{sessionId}/team-attendance")
+    public AttendanceSession updateTeamAttendance(@PathVariable Long sessionId, @RequestBody Map<String, Object> request) {
+        AttendanceSession session = attendanceSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("考勤记录不存在"));
+        
+        String teamName = (String) request.get("teamName");
+        Boolean isAttending = (Boolean) request.get("isAttending");
+        
+        if (teamName == null || isAttending == null) {
+            throw new RuntimeException("团队名称和参加状态不能为空");
+        }
+        
+        try {
+            // 解析现有的memberData
+            ObjectMapper mapper = new ObjectMapper();
+            List<MemberData> memberDataList = mapper.readValue(session.getMemberData(), 
+                    mapper.getTypeFactory().constructCollectionType(List.class, MemberData.class));
+            
+            // 批量更新指定团队所有成员的参加考勤状态
+            boolean found = false;
+            int updatedCount = 0;
+            for (MemberData member : memberDataList) {
+                if (member.get分组().equals(teamName)) {
+                    member.set参加考勤(isAttending);
+                    found = true;
+                    updatedCount++;
+                }
+            }
+            
+            if (!found) {
+                throw new RuntimeException("未找到指定团队: " + teamName);
+            }
+            
+            // 保存更新后的memberData
+            session.setMemberData(mapper.writeValueAsString(memberDataList));
+            
+            // 保存更新后的数据
+            return attendanceSessionRepository.save(session);
+            
+        } catch (Exception e) {
+            throw new RuntimeException("批量更新团队参加状态失败: " + e.getMessage());
+        }
+    }
 }
 
 

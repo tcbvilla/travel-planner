@@ -12,6 +12,7 @@ type DisplayRow = {
   助攻后值: number
   助攻差值: number
   达标: boolean
+  参加考勤: boolean
 }
 
 type GroupStat = {
@@ -103,6 +104,11 @@ function App() {
   // 新增状态：奖惩条件管理
   const [rewardConditions, setRewardConditions] = useState<any[]>([])
   const [editingCondition, setEditingCondition] = useState<any>(null)
+  
+  // 调整参加考勤状态
+  const [selectedTeam, setSelectedTeam] = useState<string>('')
+  const [teamAttendanceStatus, setTeamAttendanceStatus] = useState<boolean>(true)
+  const [isUpdatingTeamAttendance, setIsUpdatingTeamAttendance] = useState<boolean>(false)
 
 
 
@@ -265,6 +271,63 @@ function App() {
       }
     } catch (error) {
       console.error('重新计算数据失败:', error)
+    }
+  }
+
+  // 新增函数：获取团队列表
+  const getTeamList = (): string[] => {
+    if (!selectedSession?.memberData) return []
+    
+    try {
+      const memberData = JSON.parse(selectedSession.memberData)
+      const teams = [...new Set(memberData.map((member: any) => member.分组))]
+      return teams.sort()
+    } catch (error) {
+      console.error('解析成员数据失败:', error)
+      return []
+    }
+  }
+
+  // 新增函数：批量更新团队参加考勤状态
+  const updateTeamAttendance = async () => {
+    if (!selectedTeam || !selectedSession) {
+      alert('请选择团队')
+      return
+    }
+    
+    setIsUpdatingTeamAttendance(true)
+    
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${selectedSession.id}/team-attendance`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          teamName: selectedTeam,
+          isAttending: teamAttendanceStatus
+        })
+      })
+      
+      if (response.ok) {
+        const updatedSession = await response.json()
+        setSelectedSession(updatedSession)
+        
+        // 重新获取数据以刷新界面
+        await recalculateSessionData()
+        
+        alert(`已成功将"${selectedTeam}"设置为${teamAttendanceStatus ? '参加' : '不参加'}考勤`)
+        
+        // 重置表单
+        setSelectedTeam('')
+        setTeamAttendanceStatus(true)
+      } else {
+        const errorData = await response.json()
+        alert(`更新失败: ${errorData.message || '未知错误'}`)
+      }
+    } catch (error) {
+      console.error('批量更新团队参加考勤状态失败:', error)
+      alert('批量更新团队参加考勤状态失败: ' + error)
+    } finally {
+      setIsUpdatingTeamAttendance(false)
     }
   }
 
@@ -638,18 +701,25 @@ function App() {
           助攻前值: assistPrev,
           助攻后值: assistNext,
           助攻差值: assistDiff,
-          达标: diff >= threshold
+          达标: diff >= threshold,
+          参加考勤: true
         })
       }
       setFilteredCount(filtered)
       display.sort((a, b) => b.差值 - a.差值)
       setRows(display)
-      // 计算小组统计
+      // 计算小组统计（只包含参加考勤的人员）
       const groupMap = new Map<string, { total: number; assistTotal: number; count: number; present: number }>()
       console.log('Debug - starting group calculation with', display.length, 'rows')
       for (const row of display) {
+        // 只处理参加考勤的人员
+        if (!row.参加考勤) {
+          console.log('Debug - skipping member:', row.成员, 'group:', row.分组, 'reason: not attending')
+          continue
+        }
+        
         const group = row.分组
-        console.log('Debug - processing member:', row.成员, 'group:', group, 'diff:', row.差值, 'assistDiff:', row.助攻差值, 'qualified:', row.达标)
+        console.log('Debug - processing member:', row.成员, 'group:', group, 'diff:', row.差值, 'assistDiff:', row.助攻差值, 'qualified:', row.达标, 'attending:', row.参加考勤)
         const existing = groupMap.get(group) || { total: 0, assistTotal: 0, count: 0, present: 0 }
         existing.total += row.差值
         existing.assistTotal += row.助攻差值
@@ -1088,6 +1158,7 @@ function App() {
                       <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>助攻总量（前值）</th>
                       <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>助攻总量（后值）</th>
                       <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>助攻差值</th>
+                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>是否参加考勤</th>
                       <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>是否达标</th>
                     </tr>
                   </thead>
@@ -1102,7 +1173,8 @@ function App() {
                         <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.助攻前值 || 0}</td>
                         <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.助攻后值 || 0}</td>
                         <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.助攻差值 || 0}</td>
-                                                 <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.达标 ? '出勤' : '未出勤'}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.参加考勤 ? '参加' : '不参加'}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.达标 ? '出勤' : '未出勤'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1371,6 +1443,18 @@ function App() {
               >
                 考勤奖惩
               </button>
+              <button
+                onClick={() => setModalActiveTab('attendance')}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid #ccc',
+                  background: modalActiveTab === 'attendance' ? '#007bff' : '#555555',
+                  color: '#fff',
+                  cursor: 'pointer'
+                }}
+              >
+                调整参加考勤
+              </button>
             </div>
             
             {/* 成员详情 */}
@@ -1388,6 +1472,7 @@ function App() {
                         <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>助攻前值</th>
                         <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>助攻后值</th>
                         <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>助攻差值</th>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>是否参加考勤</th>
                         <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>是否达标</th>
 
                       </tr>
@@ -1408,13 +1493,14 @@ function App() {
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.助攻前值 || 0}</td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.助攻后值 || 0}</td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.助攻差值 || 0}</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.参加考勤 ? '参加' : '不参加'}</td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{member.达标 ? '出勤' : '未出勤'}</td>
 
                             </tr>
                           ));
                         } catch (error) {
                           console.error('解析成员数据失败:', error);
-                          return <tr><td colSpan={9} style={{ padding: '8px', border: '1px solid #dee2e6', color: 'red' }}>解析成员数据失败: {error instanceof Error ? error.message : String(error)}</td></tr>;
+                          return <tr><td colSpan={10} style={{ padding: '8px', border: '1px solid #dee2e6', color: 'red' }}>解析成员数据失败: {error instanceof Error ? error.message : String(error)}</td></tr>;
                         }
                       })()}
                     </tbody>
@@ -1853,6 +1939,92 @@ function App() {
                       取消保存
                     </button>
                   )}
+                </div>
+              </div>
+            )}
+            
+            {/* 调整参加考勤 */}
+            {modalActiveTab === 'attendance' && (
+              <div style={{ marginBottom: '16px', width: '100%' }}>
+                <div style={{ padding: '16px', border: '1px solid #dee2e6', borderRadius: '4px', background: '#2d2d2d' }}>
+                  <h4 style={{ margin: '0 0 16px 0', color: '#fff' }}>调整参加考勤状态</h4>
+                  
+                  {/* 团队批量处理 */}
+                  <div style={{ marginBottom: '24px', padding: '16px', border: '2px solid #007bff', borderRadius: '4px', background: '#1a1a1a' }}>
+                    <h5 style={{ margin: '0 0 16px 0', color: '#fff' }}>团队批量处理</h5>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {/* 团队选择 */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <label style={{ minWidth: '100px', color: '#fff', fontWeight: 'bold' }}>选择团队:</label>
+                        <select 
+                          value={selectedTeam}
+                          onChange={(e) => setSelectedTeam(e.target.value)}
+                          style={{ 
+                            padding: '8px 12px', 
+                            border: '2px solid #007bff', 
+                            borderRadius: '4px', 
+                            color: '#fff',
+                            background: '#2d2d2d',
+                            minWidth: '200px'
+                          }}
+                        >
+                          <option value="">请选择团队</option>
+                          {getTeamList().map((team) => (
+                            <option key={team} value={team}>{team}</option>
+                          ))}
+                        </select>
+                      </div>
+                      
+                      {/* 参加状态选择 */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <label style={{ minWidth: '100px', color: '#fff', fontWeight: 'bold' }}>参加状态:</label>
+                        <select 
+                          value={teamAttendanceStatus ? 'true' : 'false'}
+                          onChange={(e) => setTeamAttendanceStatus(e.target.value === 'true')}
+                          style={{ 
+                            padding: '8px 12px', 
+                            border: '2px solid #007bff', 
+                            borderRadius: '4px', 
+                            color: '#fff',
+                            background: '#2d2d2d',
+                            minWidth: '200px'
+                          }}
+                        >
+                          <option value="true">参加考勤</option>
+                          <option value="false">不参加考勤</option>
+                        </select>
+                      </div>
+                      
+                      {/* 执行按钮 */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <button
+                          onClick={updateTeamAttendance}
+                          disabled={!selectedTeam || isUpdatingTeamAttendance}
+                          style={{
+                            padding: '10px 20px',
+                            background: selectedTeam && !isUpdatingTeamAttendance ? '#007bff' : '#6c757d',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: selectedTeam && !isUpdatingTeamAttendance ? 'pointer' : 'not-allowed',
+                            fontSize: '14px',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          {isUpdatingTeamAttendance ? '执行中...' : '执行批量更新'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* 个人处理（预留） */}
+                  <div style={{ marginBottom: '24px', padding: '16px', border: '2px solid #28a745', borderRadius: '4px', background: '#1a1a1a' }}>
+                    <h5 style={{ margin: '0 0 16px 0', color: '#fff' }}>个人处理</h5>
+                    <p style={{ margin: '8px 0', color: '#fff' }}>
+                      个人参加考勤状态调整功能（待开发）
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
