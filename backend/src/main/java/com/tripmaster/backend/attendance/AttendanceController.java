@@ -15,11 +15,13 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.stream.Collectors;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import com.tripmaster.backend.attendance.BattleResult;
+import java.math.BigDecimal;
 
 @RestController
 @RequestMapping("/api/v1/attendance")
@@ -350,7 +352,7 @@ public class AttendanceController {
             if (stat.getMemberCount() > 0) {
                 stat.setAverageMeritIncrease(stat.getTotalMeritIncrease() / stat.getMemberCount());
                 stat.setAverageAssistIncrease(stat.getTotalAssistIncrease() / stat.getMemberCount());
-                // 计算出勤率：达标人数 / 总人数 * 100%
+                // 计算出勤率：达标人数 / 参加考勤人数 * 100%
                 double attendanceRate = (double) stat.getAttendedCount() / stat.getMemberCount() * 100.0;
                 stat.setAttendanceRate(Math.round(attendanceRate * 100.0) / 100.0);
                 
@@ -368,6 +370,30 @@ public class AttendanceController {
                 }
                 
                 stat.setAverageMeritIncreaseBonus(averageMeritIncreaseBonus);
+                
+                // 计算出勤率（加成后）
+                double attendanceRateBonus = attendanceRate;
+                if (memberCount >= 40 && memberCount <= 45) {
+                    // 小组人数40-45，出勤率 + 3%
+                    attendanceRateBonus = attendanceRate + 3.0;
+                } else if (memberCount >= 46 && memberCount <= 50) {
+                    // 小组人数46-50，出勤率 + 5%
+                    attendanceRateBonus = attendanceRate + 5.0;
+                }
+                
+                // 出勤率（加成后）100%封顶
+                if (attendanceRateBonus > 100.0) {
+                    attendanceRateBonus = 100.0;
+                }
+                
+                stat.setAttendanceRateBonus(Math.round(attendanceRateBonus * 100.0) / 100.0);
+                
+                // 调试信息
+                System.out.println("小组统计计算 - 小组: " + stat.getGroup() + 
+                    ", 达标人数: " + stat.getAttendedCount() + 
+                    ", 参加考勤人数: " + stat.getMemberCount() + 
+                    ", 出勤率: " + stat.getAttendanceRate() + 
+                    ", 出勤率(加成后): " + stat.getAttendanceRateBonus());
             }
         }
         
@@ -584,6 +610,71 @@ public class AttendanceController {
     public void deleteRewardCondition(@PathVariable Long id) {
         rewardConditionRepository.deleteById(id);
     }
+
+    /**
+     * 计算奖惩结算结果
+     */
+    @PostMapping("/sessions/{sessionId}/calculate-settlement")
+    public List<SettlementResult> calculateSettlement(@PathVariable Long sessionId, @RequestBody List<GroupStat> groupStats) {
+        try {
+            System.out.println("开始计算结算结果，sessionId: " + sessionId);
+            System.out.println("接收到的groupStats数量: " + (groupStats != null ? groupStats.size() : "null"));
+            
+            AttendanceSession session = attendanceSessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new RuntimeException("考勤记录不存在"));
+            
+            List<SettlementResult> results = new ArrayList<>();
+            
+            // 获取所有奖惩条件
+            List<RewardCondition> conditions = rewardConditionRepository.findByAttendanceSessionIdOrderByCreatedAtDesc(sessionId);
+            System.out.println("获取到的奖惩条件数量: " + conditions.size());
+            
+            // 根据战役结果筛选奖惩条件
+            String battleResult = session.getBattleResult().toString();
+            System.out.println("战役结果: " + battleResult);
+            
+            List<RewardCondition> filteredConditions = conditions.stream()
+                    .filter(condition -> {
+                        if ("VICTORY".equals(battleResult)) {
+                            return "胜利".equals(condition.getTaskStatus());
+                        } else {
+                            return "失败".equals(condition.getTaskStatus());
+                        }
+                    })
+                    .collect(Collectors.toList());
+            
+            System.out.println("筛选后的奖惩条件数量: " + filteredConditions.size());
+            
+            // 处理每个奖惩条件
+            if (groupStats == null || groupStats.isEmpty()) {
+                System.out.println("小组统计数据为空，返回空结果");
+                return results;
+            }
+            
+            // 打印小组统计数据
+            for (GroupStat stat : groupStats) {
+                System.out.println("小组: " + stat.getGroup() + 
+                    ", 出勤率(加成后): " + stat.getAttendanceRateBonus() + 
+                    ", 人均战功增量(加成后): " + stat.getAverageMeritIncreaseBonus() + 
+                    ", 成员数: " + stat.getMemberCount());
+            }
+            
+            for (RewardCondition condition : filteredConditions) {
+                System.out.println("处理奖惩条件: " + condition.getTaskStatus() + 
+                    ", 出勤率阈值: " + condition.getAttendanceRateThreshold() + 
+                    ", 出勤率排名: " + condition.getAttendanceRateRank() + 
+                    ", 战功增量排名: " + condition.getMeritIncreaseRank());
+                processRewardCondition(condition, groupStats, results);
+            }
+            
+            System.out.println("结算结果数量: " + results.size());
+            return results;
+        } catch (Exception e) {
+            System.err.println("计算结算结果时发生错误: " + e.getMessage());
+            e.printStackTrace();
+            throw new RuntimeException("计算结算结果失败: " + e.getMessage());
+        }
+    }
     
     /**
      * 更新考勤记录的基本信息
@@ -696,6 +787,182 @@ public class AttendanceController {
         }
         
         return attendanceSessionRepository.save(session);
+    }
+
+    /**
+     * 解析成员数据
+     */
+    private List<MemberData> parseMemberData(String memberDataJson) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            return mapper.readValue(memberDataJson, mapper.getTypeFactory().constructCollectionType(List.class, MemberData.class));
+        } catch (Exception e) {
+            throw new RuntimeException("解析成员数据失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 解析小组统计数据
+     */
+    private List<GroupStat> parseGroupStats(String groupDataJson) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            return mapper.readValue(groupDataJson, mapper.getTypeFactory().constructCollectionType(List.class, GroupStat.class));
+        } catch (Exception e) {
+            throw new RuntimeException("解析小组统计数据失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 处理单个奖惩条件
+     */
+    private void processRewardCondition(RewardCondition condition, List<GroupStat> groupStats, List<SettlementResult> results) {
+        try {
+            System.out.println("开始处理奖惩条件: " + condition.getTaskStatus());
+            
+            // 根据条件类型进行排名计算
+            if (condition.getMeritIncreaseRank() != null && !condition.getMeritIncreaseRank().toString().isEmpty()) {
+                System.out.println("使用战功增量排名");
+                // 按人均战功增量（加成后）排名
+                processMeritRanking(condition, groupStats, results);
+            } else {
+                System.out.println("使用出勤率排名");
+                // 按出勤率（加成后）排名
+                processAttendanceRanking(condition, groupStats, results);
+            }
+        } catch (Exception e) {
+            System.err.println("处理奖惩条件时发生错误: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * 处理战功增量排名
+     */
+    private void processMeritRanking(RewardCondition condition, List<GroupStat> groupStats, List<SettlementResult> results) {
+        // 按人均战功增量（加成后）排序
+        List<GroupStat> sortedStats = new ArrayList<>(groupStats);
+        sortedStats.sort((a, b) -> Long.compare(b.getAverageMeritIncreaseBonus(), a.getAverageMeritIncreaseBonus()));
+        
+        // 计算密集排名
+        Map<String, Integer> rankings = calculateDenseRanking(sortedStats, 
+            GroupStat::getAverageMeritIncreaseBonus, true);
+        
+        // 找到符合排名要求的队伍
+        int targetRank = condition.getMeritIncreaseRank();
+        List<String> qualifiedTeams = findTeamsByRank(rankings, targetRank);
+        
+        if (!qualifiedTeams.isEmpty()) {
+            distributeReward(condition, qualifiedTeams, results);
+        }
+    }
+
+    /**
+     * 处理出勤率排名
+     */
+    private void processAttendanceRanking(RewardCondition condition, List<GroupStat> groupStats, List<SettlementResult> results) {
+        // 先过滤出满足出勤率条件的队伍
+        List<GroupStat> filteredStats = new ArrayList<>();
+        double threshold = condition.getAttendanceRateThreshold();
+        
+        for (GroupStat stat : groupStats) {
+            if ("胜利".equals(condition.getTaskStatus())) {
+                // 胜利情况：出勤率（加成后）大于阈值
+                if (stat.getAttendanceRateBonus() > threshold) {
+                    filteredStats.add(stat);
+                }
+            } else {
+                // 失败情况：出勤率（加成后）小于阈值
+                if (stat.getAttendanceRateBonus() < threshold) {
+                    filteredStats.add(stat);
+                }
+            }
+        }
+        
+        if (filteredStats.isEmpty()) {
+            return; // 没有队伍满足出勤率条件
+        }
+        
+        // 按出勤率（加成后）排序
+        filteredStats.sort((a, b) -> Double.compare(b.getAttendanceRateBonus(), a.getAttendanceRateBonus()));
+        
+        // 计算密集排名
+        Map<String, Integer> rankings = calculateDenseRanking(filteredStats, 
+            GroupStat::getAttendanceRateBonus, true);
+        
+        // 找到符合排名要求的队伍
+        int targetRank = condition.getAttendanceRateRank();
+        List<String> qualifiedTeams = findTeamsByRank(rankings, targetRank);
+        
+        if (!qualifiedTeams.isEmpty()) {
+            distributeReward(condition, qualifiedTeams, results);
+        }
+    }
+
+    /**
+     * 计算密集排名
+     */
+    private <T> Map<String, Integer> calculateDenseRanking(List<GroupStat> stats, 
+            java.util.function.Function<GroupStat, T> valueExtractor, boolean descending) {
+        Map<String, Integer> rankings = new HashMap<>();
+        int currentRank = 1;
+        T previousValue = null;
+        
+        for (int i = 0; i < stats.size(); i++) {
+            GroupStat stat = stats.get(i);
+            T currentValue = valueExtractor.apply(stat);
+            
+            // 如果是第一个元素，或者当前值与上一个值不同，则增加排名
+            if (i == 0 || (previousValue != null && !currentValue.equals(previousValue))) {
+                currentRank = i + 1; // 密集排名：第1个是第1名，第2个是第2名，以此类推
+            }
+            
+            rankings.put(stat.getGroup(), currentRank);
+            previousValue = currentValue;
+        }
+        
+        return rankings;
+    }
+
+    /**
+     * 根据排名找到符合条件的队伍
+     */
+    private List<String> findTeamsByRank(Map<String, Integer> rankings, int targetRank) {
+        return rankings.entrySet().stream()
+                .filter(entry -> entry.getValue() == targetRank)
+                .map(Map.Entry::getKey)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 分配奖励
+     */
+    private void distributeReward(RewardCondition condition, List<String> qualifiedTeams, List<SettlementResult> results) {
+        String rewardType = "胜利".equals(condition.getTaskStatus()) ? condition.getRewardType() : condition.getPenaltyType();
+        
+        // 获取码表值
+        CodeTable codeTable = codeTableRepository.findByCodeName(rewardType);
+        if (codeTable == null) {
+            throw new RuntimeException("未找到奖惩类型: " + rewardType);
+        }
+        
+        // 计算倍数
+        BigDecimal multiplier = BigDecimal.valueOf(1.0 / qualifiedTeams.size());
+        multiplier = multiplier.setScale(3, BigDecimal.ROUND_HALF_UP);
+        
+        // 计算金额
+        BigDecimal amount = BigDecimal.valueOf(codeTable.getCodeValue()).multiply(multiplier);
+        
+        // 为每个队伍创建结算结果
+        for (String teamName : qualifiedTeams) {
+            SettlementResult result = new SettlementResult();
+            result.setTeamName(teamName);
+            result.setRewardType(rewardType);
+            result.setMultiplier(multiplier);
+            result.setRewardDescription(rewardType + "✖️" + multiplier);
+            result.setAmount(amount);
+            results.add(result);
+        }
     }
     
     /**

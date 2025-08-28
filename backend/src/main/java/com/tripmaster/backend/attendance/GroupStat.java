@@ -11,6 +11,7 @@ public class GroupStat {
     private long totalAssistIncrease; // 总助攻增量
     private long averageAssistIncrease; // 人均助攻增量
     private double attendanceRate;
+    private double attendanceRateBonus; // 出勤率（加成后）
     private int memberCount;
     private int attendedCount; // 达标人数
 }

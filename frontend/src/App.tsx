@@ -24,6 +24,7 @@ type GroupStat = {
   totalAssistIncrease: number
   averageAssistIncrease: number
   attendanceRate: number
+  attendanceRateBonus: number
   memberCount: number
 }
 
@@ -101,7 +102,7 @@ const GroupStatsExportComponent = ({
 
     // 计算团队排名
     const sortedByAttendance = [...groupData].sort((a, b) => 
-      (b.attendanceRate || 0) - (a.attendanceRate || 0)
+      (b.attendanceRateBonus || 0) - (a.attendanceRateBonus || 0)
     )
     const sortedByAverageMerit = [...groupData].sort((a, b) => (b.averageMeritIncreaseBonus || b.averageMeritIncrease) - (a.averageMeritIncreaseBonus || a.averageMeritIncrease))
     const sortedByTotalMerit = [...groupData].sort((a, b) => b.totalMeritIncrease - a.totalMeritIncrease)
@@ -292,13 +293,13 @@ const GroupStatsExportComponent = ({
           const teamTotalMembers = teamMembers.length
           const teamQualifiedMembers = teamMembers.filter((member: DisplayRow) => member.达标).length
           // 直接使用小组统计数据中的出勤率（加成后）
-          const teamBattleRatio = team.attendanceRate ? team.attendanceRate.toFixed(1) : '0.0'
+          const teamBattleRatio = team.attendanceRateBonus ? team.attendanceRateBonus.toFixed(1) : '0.0'
           const teamTotalMerit = teamMembers.reduce((sum: number, member: DisplayRow) => sum + member.差值, 0)
           // 使用人均战功增量（加成后）的值
           const teamAverageMerit = team.averageMeritIncreaseBonus || team.averageMeritIncrease
           
           // 获取排名
-          const attendanceRank = getTeamRank(team.group, sortedByAttendance, 'attendanceRate')
+          const attendanceRank = getTeamRank(team.group, sortedByAttendance, 'attendanceRateBonus')
           const averageMeritRank = getTeamRank(team.group, sortedByAverageMerit, 'averageMeritIncreaseBonus')
           const totalMeritRank = getTeamRank(team.group, sortedByTotalMerit, 'totalMeritIncrease')
           
@@ -573,17 +574,7 @@ function App() {
     initializeCodeTables()
   }, []) // 空依赖数组，确保只执行一次
 
-  // 计算加成后出勤率的函数
-  const calculateBonusAttendanceRate = (attendanceRate: number, memberCount: number): number => {
-    let bonus = 0
-    if (memberCount >= 40 && memberCount <= 45) {
-      bonus = 3
-    } else if (memberCount >= 46 && memberCount <= 50) {
-      bonus = 5
-    }
-    const result = attendanceRate + bonus
-    return result > 100 ? 100 : result
-  }
+
 
   // 导出小组统计图片
   const handleExportGroupStats = async () => {
@@ -625,7 +616,7 @@ function App() {
   const [threshold, setThreshold] = useState<number>(1)
   const [rows, setRows] = useState<DisplayRow[]>([])
   const [groupStats, setGroupStats] = useState<GroupStat[]>([])
-  const [activeTab, setActiveTab] = useState<'add' | 'view' | 'season'>('add')
+  const [activeTab, setActiveTab] = useState<'add' | 'view' | 'season' | 'ranking'>('add')
   const [activeSubTab, setActiveSubTab] = useState<'members' | 'groups'>('members')
   const [filteredCount, setFilteredCount] = useState<number>(0)
   const [error, setError] = useState<string | null>(null)
@@ -636,6 +627,9 @@ function App() {
       loadSeasons(0)
     }
     if (activeTab === 'add') {
+      loadAllSeasons()
+    }
+    if (activeTab === 'ranking') {
       loadAllSeasons()
     }
   }, [activeTab])
@@ -658,13 +652,23 @@ function App() {
       loadAllSeasons()
     }
   }, [showSessionModal])
+
   const [selectedSession, setSelectedSession] = useState<AttendanceSession | null>(null)
-  const [modalActiveTab, setModalActiveTab] = useState<'members' | 'groups' | 'rewards' | 'attendance'>('members')
+  const [modalActiveTab, setModalActiveTab] = useState<'members' | 'groups' | 'rewards' | 'attendance' | 'settlement'>('members')
+
+  // 当切换到奖惩结算页签时加载奖惩条件
+  useEffect(() => {
+    if (modalActiveTab === 'settlement' && selectedSession) {
+      loadSettlementRewardConditions()
+      // 清除之前的结算结果，确保数据准确性
+      setSettlementResults([])
+    }
+  }, [modalActiveTab, selectedSession])
 
   // 新增状态：用于控制"若任务"的选择
-  const [taskStatus, setTaskStatus] = useState<'成功' | '失败'>('成功')
+  const [taskStatus, setTaskStatus] = useState<'胜利' | '失败'>('胜利')
 
-  // 新增状态：用于"成功"情况下的表单字段
+  // 新增状态：用于"胜利"情况下的表单字段
   const [attendanceRateSuccess, setAttendanceRateSuccess] = useState<number | ''>('')
   const [attendanceRankSuccess, setAttendanceRankSuccess] = useState<string>('')
   const [meritRankSuccess, setMeritRankSuccess] = useState<string>('')
@@ -732,12 +736,23 @@ function App() {
   const [editingSeasonId, setEditingSeasonId] = useState<number | null>(null)
   const [editingSeasonSearchTerm, setEditingSeasonSearchTerm] = useState('')
   const [showEditingSeasonDropdown, setShowEditingSeasonDropdown] = useState(false)
+  
+  // 榜单页面赛季选择相关状态
+  const [rankingSeasonId, setRankingSeasonId] = useState<number | null>(null)
+  const [rankingSeasonSearchTerm, setRankingSeasonSearchTerm] = useState('')
+  const [showRankingSeasonDropdown, setShowRankingSeasonDropdown] = useState(false)
+  
+  // 奖惩结算相关状态
+  const [settlementRewardConditions, setSettlementRewardConditions] = useState<any[]>([])
+  const [loadingSettlementConditions, setLoadingSettlementConditions] = useState(false)
+  const [settlementResults, setSettlementResults] = useState<any[]>([])
+  const [loadingSettlementResults, setLoadingSettlementResults] = useState(false)
 
   // 新增函数：处理"若任务"状态变化
-  const handleTaskStatusChange = (status: '成功' | '失败') => {
+  const handleTaskStatusChange = (status: '胜利' | '失败') => {
     setTaskStatus(status)
     // 当任务状态改变时，清空或重置不显示的表单字段
-    if (status === '成功') {
+    if (status === '胜利') {
       setAttendanceRateFailure('')
       setAttendanceRankFailure('')
       setPenaltyTypeFailure('粪汤')
@@ -1093,8 +1108,8 @@ function App() {
 
   // 新增函数：验证表单数据
   const validateForm = () => {
-    if (taskStatus === '成功') {
-      // 成功情况：必须填写出勤率阈值，出勤率排名和战功增量排名只能选择一个
+          if (taskStatus === '胜利') {
+        // 胜利情况：必须填写出勤率阈值，出勤率排名和战功增量排名只能选择一个
       if (!attendanceRateSuccess) {
         alert('请填写出勤率阈值')
         return false
@@ -1146,10 +1161,10 @@ function App() {
     const requestData = {
       attendanceSessionId: selectedSession.id,
       taskStatus: taskStatus,
-      attendanceRateThreshold: taskStatus === '成功' ? attendanceRateSuccess : attendanceRateFailure,
-      attendanceRateRank: taskStatus === '成功' ? (attendanceRankSuccess || null) : attendanceRankFailure,
-      meritIncreaseRank: taskStatus === '成功' ? (meritRankSuccess || null) : null,
-      rewardType: taskStatus === '成功' ? rewardTypeSuccess : null,
+      attendanceRateThreshold: taskStatus === '胜利' ? attendanceRateSuccess : attendanceRateFailure,
+      attendanceRateRank: taskStatus === '胜利' ? (attendanceRankSuccess || null) : attendanceRankFailure,
+      meritIncreaseRank: taskStatus === '胜利' ? (meritRankSuccess || null) : null,
+      rewardType: taskStatus === '胜利' ? rewardTypeSuccess : null,
       penaltyType: taskStatus === '失败' ? penaltyTypeFailure : null
     }
 
@@ -1209,7 +1224,7 @@ function App() {
     setEditingCondition(condition)
     setTaskStatus(condition.taskStatus)
     
-    if (condition.taskStatus === '成功') {
+    if (condition.taskStatus === '胜利') {
       setAttendanceRateSuccess(condition.attendanceRateThreshold || '')
       setAttendanceRankSuccess(condition.attendanceRateRank ? String(condition.attendanceRateRank) : '')
       setMeritRankSuccess(condition.meritIncreaseRank ? String(condition.meritIncreaseRank) : '')
@@ -1233,10 +1248,10 @@ function App() {
     const requestData = {
       attendanceSessionId: selectedSession?.id,
       taskStatus: taskStatus,
-      attendanceRateThreshold: taskStatus === '成功' ? attendanceRateSuccess : attendanceRateFailure,
-      attendanceRateRank: taskStatus === '成功' ? (attendanceRankSuccess || null) : attendanceRankFailure,
-      meritIncreaseRank: taskStatus === '成功' ? (meritRankSuccess || null) : null,
-      rewardType: taskStatus === '成功' ? rewardTypeSuccess : null,
+      attendanceRateThreshold: taskStatus === '胜利' ? attendanceRateSuccess : attendanceRateFailure,
+      attendanceRateRank: taskStatus === '胜利' ? (attendanceRankSuccess || null) : attendanceRankFailure,
+      meritIncreaseRank: taskStatus === '胜利' ? (meritRankSuccess || null) : null,
+      rewardType: taskStatus === '胜利' ? rewardTypeSuccess : null,
       penaltyType: taskStatus === '失败' ? penaltyTypeFailure : null
     }
 
@@ -1308,7 +1323,7 @@ function App() {
 
   // 新增函数：重置奖惩表单
   const resetRewardForm = () => {
-    setTaskStatus('成功')
+    setTaskStatus('胜利')
     setAttendanceRateSuccess('')
     setAttendanceRankSuccess('')
     setMeritRankSuccess('')
@@ -1421,55 +1436,8 @@ function App() {
       setFilteredCount(filtered)
       display.sort((a, b) => b.差值 - a.差值)
       setRows(display)
-      // 计算小组统计（只包含参加考勤的人员）
-      const groupMap = new Map<string, { total: number; assistTotal: number; count: number; present: number }>()
-      console.log('Debug - starting group calculation with', display.length, 'rows')
-      for (const row of display) {
-        // 只处理参加考勤的人员
-        if (!row.参加考勤) {
-          console.log('Debug - skipping member:', row.成员, 'group:', row.分组, 'reason: not attending')
-          continue
-        }
-        
-        const group = row.分组
-        console.log('Debug - processing member:', row.成员, 'group:', group, 'diff:', row.差值, 'assistDiff:', row.助攻差值, 'qualified:', row.达标, 'attending:', row.参加考勤)
-        const existing = groupMap.get(group) || { total: 0, assistTotal: 0, count: 0, present: 0 }
-        existing.total += row.差值
-        existing.assistTotal += row.助攻差值
-        existing.count += 1
-        if (row.达标) existing.present += 1
-        groupMap.set(group, existing)
-      }
-      console.log('Debug - groupMap entries:', Array.from(groupMap.entries()))
-      const stats: GroupStat[] = []
-      for (const [group, data] of groupMap.entries()) {
-        const averageMeritIncrease = data.count > 0 ? Math.round(data.total / data.count) : 0
-        let averageMeritIncreaseBonus = averageMeritIncrease
-        
-        // 计算人均战功增量（加成后）
-        if (data.count >= 40 && data.count <= 45) {
-          // 小组人数40-45，加成1.03
-          averageMeritIncreaseBonus = Math.round(averageMeritIncrease * 1.03)
-        } else if (data.count >= 46 && data.count <= 50) {
-          // 小组人数46-50，加成1.05
-          averageMeritIncreaseBonus = Math.round(averageMeritIncrease * 1.05)
-        }
-        
-        stats.push({
-          group: group,
-          totalMeritIncrease: data.total,
-          averageMeritIncrease: averageMeritIncrease,
-          averageMeritIncreaseBonus: averageMeritIncreaseBonus,
-          totalAssistIncrease: data.assistTotal,
-          averageAssistIncrease: data.count > 0 ? Math.round(data.assistTotal / data.count) : 0,
-          attendanceRate: data.count > 0 ? Number(((data.present / data.count) * 100).toFixed(2)) : 0,
-          memberCount: data.count
-        })
-      }
-        stats.sort((a, b) => b.totalMeritIncrease - a.totalMeritIncrease)
-      setGroupStats(stats)
-      console.log('Debug - display rows:', display.length, display.map(r => ({ member: r.成员, group: r.分组 })))
-      console.log('Debug - group stats:', stats)
+      // 小组统计数据由后端计算，前端不进行计算
+      setGroupStats([])
       
       // 自动生成默认考勤名称
       const defaultName = generateDefaultSessionName();
@@ -1827,6 +1795,78 @@ function App() {
     setShowEditingSeasonDropdown(false)
   }
 
+  // 榜单赛季选择相关函数
+  const selectRankingSeason = (season: any) => {
+    console.log('选择榜单赛季:', season)
+    setRankingSeasonId(season.id)
+    setRankingSeasonSearchTerm('') // 清空搜索词
+    setShowRankingSeasonDropdown(false)
+    // TODO: 这里可以添加刷新榜单数据的逻辑
+  }
+
+  // 加载奖惩结算条件
+  const loadSettlementRewardConditions = async () => {
+    if (!selectedSession) return
+    
+    setLoadingSettlementConditions(true)
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/reward-conditions/${selectedSession.id}`)
+      if (response.ok) {
+        const conditions = await response.json()
+        setSettlementRewardConditions(conditions)
+      } else {
+        console.error('加载奖惩条件失败')
+        setSettlementRewardConditions([])
+      }
+    } catch (error) {
+      console.error('加载奖惩条件失败:', error)
+      setSettlementRewardConditions([])
+    } finally {
+      setLoadingSettlementConditions(false)
+    }
+  }
+
+  // 计算结算结果
+  const calculateSettlementResults = async () => {
+    if (!selectedSession) return
+    
+    setLoadingSettlementResults(true)
+    try {
+      // 重新获取最新的小组统计数据（从后端获取，确保包含正确的attendanceRateBonus）
+      const sessionResponse = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${selectedSession.id}`)
+      if (!sessionResponse.ok) {
+        throw new Error('获取会话数据失败')
+      }
+      
+      const sessionData = await sessionResponse.json()
+      const groupStats = sessionData.groupStats || []
+      
+      console.log('发送给后端的groupStats:', groupStats)
+      
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${selectedSession.id}/calculate-settlement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(groupStats)
+      })
+      
+      if (response.ok) {
+        const results = await response.json()
+        setSettlementResults(results)
+      } else {
+        const errorText = await response.text()
+        console.error('计算结算结果失败:', errorText)
+        alert('计算结算结果失败: ' + errorText)
+        setSettlementResults([])
+      }
+    } catch (error) {
+      console.error('计算结算结果失败:', error)
+      alert('网络错误: ' + error)
+      setSettlementResults([])
+    } finally {
+      setLoadingSettlementResults(false)
+    }
+  }
+
 
 
   // 点击外部关闭下拉框
@@ -1838,6 +1878,9 @@ function App() {
       }
       if (!target.closest('.editing-season-dropdown-container')) {
         setShowEditingSeasonDropdown(false)
+      }
+      if (!target.closest('.ranking-season-dropdown-container')) {
+        setShowRankingSeasonDropdown(false)
       }
     }
 
@@ -1915,6 +1958,22 @@ function App() {
           }}
         >
           赛季管理
+        </button>
+        <button
+          onClick={() => setActiveTab('ranking')}
+          style={{
+            padding: '12px 24px',
+            border: 'none',
+            background: activeTab === 'ranking' ? '#007bff' : '#555555',
+            color: '#fff',
+            cursor: 'pointer',
+            fontSize: '16px',
+            fontWeight: activeTab === 'ranking' ? 'bold' : 'normal',
+            borderRadius: '4px',
+            transition: 'all 0.3s ease'
+          }}
+        >
+          查看榜单
         </button>
       </div>
 
@@ -2670,7 +2729,7 @@ function App() {
                         <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{g.totalAssistIncrease || 0}</td>
                         <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{g.averageAssistIncrease || 0}</td>
                         <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{g.attendanceRate}%</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{calculateBonusAttendanceRate(g.attendanceRate, g.memberCount)}%</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{g.attendanceRateBonus}%</td>
                         <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{g.memberCount}</td>
                       </tr>
                     ))}
@@ -3023,6 +3082,18 @@ function App() {
               >
                 调整参加考勤
               </button>
+              <button
+                onClick={() => setModalActiveTab('settlement')}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid #ccc',
+                  background: modalActiveTab === 'settlement' ? '#007bff' : '#555555',
+                  color: '#fff',
+                  cursor: 'pointer'
+                }}
+              >
+                奖惩结算
+              </button>
             </div>
             
             {/* 成员详情 */}
@@ -3113,7 +3184,7 @@ function App() {
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.totalAssistIncrease || 0}</td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.averageAssistIncrease || 0}</td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.attendanceRate}%</td>
-                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{calculateBonusAttendanceRate(group.attendanceRate, group.memberCount)}%</td>
+                              <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.attendanceRateBonus}%</td>
                               <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#fff' }}>{group.memberCount}</td>
                             </tr>
                           ));
@@ -3215,7 +3286,7 @@ function App() {
                       <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>若任务</label>
                       <select 
                         value={taskStatus}
-                        onChange={(e) => handleTaskStatusChange(e.target.value as '成功' | '失败')}
+                                                    onChange={(e) => handleTaskStatusChange(e.target.value as '胜利' | '失败')}
                         disabled={selectedSession.status === 'SAVED'}
                         style={{ 
                           padding: '8px 12px', 
@@ -3227,13 +3298,13 @@ function App() {
                           opacity: selectedSession.status === 'SAVED' ? 0.6 : 1
                         }}
                       >
-                        <option value="成功">成功</option>
+                                                    <option value="胜利">胜利</option>
                         <option value="失败">失败</option>
                       </select>
                     </div>
                     
-                    {/* 成功情况下的表单字段 */}
-                    {taskStatus === '成功' && (
+                                            {/* 胜利情况下的表单字段 */}
+                        {taskStatus === '胜利' && (
                       <>
                         {/* 第二行：出勤率大于 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -3470,10 +3541,10 @@ function App() {
                                 {condition.taskStatus}
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
-                                {condition.taskStatus === '成功' ? '大于' : '小于'} {condition.attendanceRateThreshold}%
+                                {condition.taskStatus === '胜利' ? '大于' : '小于'} {condition.attendanceRateThreshold}%
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
-                                {condition.taskStatus === '成功' ? (
+                                {condition.taskStatus === '胜利' ? (
                                   condition.meritIncreaseRank && condition.meritIncreaseRank !== '' ? (
                                     <>战功增量第{condition.meritIncreaseRank}名</>
                                   ) : (
@@ -3484,7 +3555,7 @@ function App() {
                                 )}
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
-                                {condition.taskStatus === '成功' ? condition.rewardType : condition.penaltyType}
+                                {condition.taskStatus === '胜利' ? condition.rewardType : condition.penaltyType}
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
                                 <button
@@ -3814,6 +3885,180 @@ function App() {
                 </div>
               </div>
             )}
+
+            {/* 奖惩结算 */}
+            {modalActiveTab === 'settlement' && (
+              <div style={{ background: '#404040', padding: '16px', borderRadius: '8px', marginBottom: '16px' }}>
+                <h4 style={{ margin: '0 0 16px 0', color: '#fff' }}>奖惩结算</h4>
+                
+                {selectedSession.status === 'SAVED' ? (
+                  <div style={{ color: '#fff', marginBottom: '16px' }}>
+                    <strong>提示：</strong>当前考勤记录已保存，可以进行奖惩结算。
+                  </div>
+                ) : (
+                  <div style={{ color: '#fff', marginBottom: '16px' }}>
+                    <strong>提示：</strong>当前考勤记录未保存，请先保存考勤记录后再进行奖惩结算。
+                  </div>
+                )}
+
+                <div style={{ marginBottom: '16px' }}>
+                  <h5 style={{ color: '#fff', marginBottom: '8px' }}>结算状态</h5>
+                  <div style={{ color: '#fff' }}>
+                    {selectedSession.status === 'SETTLED' ? (
+                      <span style={{ color: '#28a745' }}>✓ 已结算</span>
+                    ) : (
+                      <span style={{ color: '#ffc107' }}>○ 未结算</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* 需要结算的奖惩条件 */}
+                <div style={{ marginBottom: '16px' }}>
+                  <h5 style={{ color: '#fff', marginBottom: '8px' }}>需要结算的奖惩条件</h5>
+                  
+                  {loadingSettlementConditions ? (
+                    <div style={{ color: '#fff', textAlign: 'center', padding: '20px' }}>
+                      加载中...
+                    </div>
+                  ) : settlementRewardConditions.length === 0 ? (
+                    <div style={{ color: '#ccc', fontStyle: 'italic', padding: '8px' }}>
+                      暂无奖惩条件，请先在"考勤奖惩"页签中添加奖惩条件
+                    </div>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: '#2d2d2d' }}>
+                            <th style={{ padding: '8px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>任务状态</th>
+                            <th style={{ padding: '8px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>出勤率条件</th>
+                            <th style={{ padding: '8px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>排名条件</th>
+                            <th style={{ padding: '8px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>奖惩</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {settlementRewardConditions.map((condition, index) => (
+                            <tr key={condition.id} style={{ background: index % 2 === 0 ? '#404040' : '#2d2d2d' }}>
+                              <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
+                                {condition.taskStatus}
+                              </td>
+                              <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
+                                {condition.taskStatus === '胜利' ? '大于' : '小于'} {condition.attendanceRateThreshold}%
+                              </td>
+                              <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
+                                {condition.taskStatus === '胜利' ? (
+                                  condition.meritIncreaseRank && condition.meritIncreaseRank !== '' ? (
+                                    <>战功增量第{condition.meritIncreaseRank}名</>
+                                  ) : (
+                                    <>出勤率第{condition.attendanceRateRank}名</>
+                                  )
+                                ) : (
+                                  <>出勤率倒数第{condition.attendanceRateRank}名</>
+                                )}
+                              </td>
+                              <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
+                                {condition.taskStatus === '胜利' ? condition.rewardType : condition.penaltyType}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* 结算结果 */}
+                <div style={{ marginBottom: '16px' }}>
+                  <h5 style={{ color: '#fff', marginBottom: '8px' }}>结算结果</h5>
+                  
+                  {loadingSettlementResults ? (
+                    <div style={{ color: '#fff', textAlign: 'center', padding: '20px' }}>
+                      计算中...
+                    </div>
+                  ) : settlementResults.length === 0 ? (
+                    <div style={{ color: '#ccc', fontStyle: 'italic', padding: '8px' }}>
+                      暂无结算结果，请先点击"计算结算"按钮进行计算
+                    </div>
+                  ) : (
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: '#2d2d2d' }}>
+                            <th style={{ padding: '8px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>小组名</th>
+                            <th style={{ padding: '8px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>奖惩结果</th>
+                            <th style={{ padding: '8px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>金额</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {settlementResults.map((result, index) => (
+                            <tr key={index} style={{ background: index % 2 === 0 ? '#404040' : '#2d2d2d' }}>
+                              <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
+                                {result.teamName}
+                              </td>
+                              <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
+                                {result.rewardDescription}
+                              </td>
+                              <td style={{ padding: '8px', border: '1px solid #555', color: result.amount >= 0 ? '#28a745' : '#dc3545' }}>
+                                {result.amount.toFixed(3)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button
+                    onClick={calculateSettlementResults}
+                    disabled={selectedSession.status !== 'SAVED' || settlementRewardConditions.length === 0}
+                    style={{
+                      padding: '8px 16px',
+                      background: (selectedSession.status === 'SAVED' && settlementRewardConditions.length > 0) ? '#007bff' : '#6c757d',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: (selectedSession.status === 'SAVED' && settlementRewardConditions.length > 0) ? 'pointer' : 'not-allowed',
+                      opacity: (selectedSession.status === 'SAVED' && settlementRewardConditions.length > 0) ? 1 : 0.6
+                    }}
+                    title={selectedSession.status !== 'SAVED' ? '考勤记录未保存' : settlementRewardConditions.length === 0 ? '请先添加奖惩条件' : '计算结算结果'}
+                  >
+                    计算结算
+                  </button>
+                  <button
+                    onClick={() => {/* TODO: 执行结算 */}}
+                    disabled={selectedSession.status !== 'SAVED' || settlementResults.length === 0}
+                    style={{
+                      padding: '8px 16px',
+                      background: (selectedSession.status === 'SAVED' && settlementResults.length > 0) ? '#28a745' : '#6c757d',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: (selectedSession.status === 'SAVED' && settlementResults.length > 0) ? 'pointer' : 'not-allowed',
+                      opacity: (selectedSession.status === 'SAVED' && settlementResults.length > 0) ? 1 : 0.6
+                    }}
+                    title={selectedSession.status !== 'SAVED' ? '考勤记录未保存' : settlementResults.length === 0 ? '请先计算结算结果' : '执行结算'}
+                  >
+                    执行结算
+                  </button>
+                  <button
+                    onClick={() => {/* TODO: 撤销结算 */}}
+                    disabled={selectedSession.status !== 'SETTLED'}
+                    style={{
+                      padding: '8px 16px',
+                      background: selectedSession.status === 'SETTLED' ? '#dc3545' : '#6c757d',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: selectedSession.status === 'SETTLED' ? 'pointer' : 'not-allowed',
+                      opacity: selectedSession.status === 'SETTLED' ? 1 : 0.6
+                    }}
+                  >
+                    撤销结算
+                  </button>
+                </div>
+              </div>
+            )}
             
             <div style={{ textAlign: 'center' }}>
               <button
@@ -3823,6 +4068,121 @@ function App() {
                 关闭
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'ranking' && (
+        <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2 style={{ color: '#fff', margin: 0 }}>查看榜单</h2>
+            
+            {/* 赛季选择下拉框 */}
+            <div style={{ position: 'relative' }} className="ranking-season-dropdown-container">
+              <div style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                padding: '8px 12px',
+                border: '1px solid #007bff',
+                borderRadius: '4px',
+                background: '#2d2d2d',
+                color: '#fff',
+                cursor: 'pointer',
+                minWidth: '200px'
+              }}
+              onClick={() => setShowRankingSeasonDropdown(!showRankingSeasonDropdown)}
+              >
+                <span style={{ flex: 1, textAlign: 'left' }}>
+                  {rankingSeasonId 
+                    ? allSeasons.find(s => s.id === rankingSeasonId)?.name 
+                    : '请选择赛季'
+                  }
+                </span>
+                <span style={{ 
+                  transform: showRankingSeasonDropdown ? 'rotate(180deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.2s ease'
+                }}>
+                  ▼
+                </span>
+              </div>
+              
+              {/* 搜索框 - 只在下拉框打开时显示 */}
+              {showRankingSeasonDropdown && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  background: '#2d2d2d',
+                  border: '1px solid #555',
+                  borderRadius: '4px',
+                  zIndex: 1000,
+                  padding: '8px'
+                }}>
+                  <input
+                    type="text"
+                    value={rankingSeasonSearchTerm}
+                    onChange={(e) => setRankingSeasonSearchTerm(e.target.value)}
+                    placeholder="搜索赛季..."
+                    style={{ 
+                      width: '100%',
+                      padding: '6px 8px',
+                      border: '1px solid #555',
+                      borderRadius: '4px',
+                      background: '#1a1a1a',
+                      color: '#fff',
+                      fontSize: '14px'
+                    }}
+                    autoFocus
+                  />
+                  <div style={{
+                    maxHeight: '150px',
+                    overflowY: 'auto',
+                    marginTop: '8px'
+                  }}>
+                    {allSeasons.filter(season => 
+                      season.name.toLowerCase().includes(rankingSeasonSearchTerm.toLowerCase())
+                    ).map((season) => (
+                      <div
+                        key={season.id}
+                        onClick={() => selectRankingSeason(season)}
+                        style={{
+                          padding: '8px 12px',
+                          cursor: 'pointer',
+                          color: '#fff',
+                          borderBottom: '1px solid #555',
+                          backgroundColor: rankingSeasonId === season.id ? '#404040' : 'transparent'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (rankingSeasonId !== season.id) {
+                            e.currentTarget.style.background = '#404040'
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          if (rankingSeasonId !== season.id) {
+                            e.currentTarget.style.background = 'transparent'
+                          }
+                        }}
+                      >
+                        {season.name}
+                      </div>
+                    ))}
+                    {allSeasons.filter(season => 
+                      season.name.toLowerCase().includes(rankingSeasonSearchTerm.toLowerCase())
+                    ).length === 0 && (
+                      <div style={{ padding: '8px 12px', color: '#999', textAlign: 'center' }}>
+                        没有找到匹配的赛季
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          <div style={{ color: '#fff', textAlign: 'center', padding: '40px' }}>
+            <p>榜单功能正在开发中，敬请期待...</p>
           </div>
         </div>
       )}
