@@ -3132,7 +3132,7 @@ function App() {
                   <div><strong>战功阈值：</strong>{selectedSession.threshold || '未设置'}</div>
                   <div><strong>状态：</strong>
                     {selectedSession.status === 'ADDED' && '已添加'}
-                    {selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' && '已保存'}
+                    {selectedSession.status === 'SAVED' && '已保存'}
                     {selectedSession.status === 'SETTLED' && '已结算'}
                   </div>
                   <div><strong>创建时间：</strong>{new Date(selectedSession.createdAt).toLocaleString()}</div>
@@ -3402,9 +3402,14 @@ function App() {
                   </h4>
                   
                   {/* 状态提示 */}
-                  {selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' && (
+                  {selectedSession.status === 'SAVED' && (
                     <div style={{ marginBottom: '16px', padding: '8px 12px', background: '#2d2d2d', border: '1px solid #ffc107', borderRadius: '4px', color: '#ffc107' }}>
                       <strong>提示：</strong>当前考勤记录已保存，无法修改奖惩条件。请先取消保存状态。
+                    </div>
+                  )}
+                  {selectedSession.status === 'SETTLED' && (
+                    <div style={{ marginBottom: '16px', padding: '8px 12px', background: '#2d2d2d', border: '1px solid #dc3545', borderRadius: '4px', color: '#dc3545' }}>
+                      <strong>提示：</strong>当前考勤记录已结算，无法修改奖惩条件。如需修改，请先撤销结算。
                     </div>
                   )}
                   
@@ -3728,7 +3733,7 @@ function App() {
                 
                 {/* 保存/取消保存按钮 */}
                 <div style={{ marginTop: '16px', textAlign: 'center' }}>
-                  {selectedSession.status === 'ADDED' ? (
+                  {selectedSession.status === 'ADDED' && (
                     <button
                       onClick={() => updateSessionStatus(selectedSession.id, 'SAVED')}
                       style={{
@@ -3744,7 +3749,8 @@ function App() {
                     >
                       保存考勤记录
                     </button>
-                  ) : (
+                  )}
+                  {selectedSession.status === 'SAVED' && (
                     <button
                       onClick={() => updateSessionStatus(selectedSession.id, 'ADDED')}
                       style={{
@@ -3772,9 +3778,14 @@ function App() {
                   <h4 style={{ margin: '0 0 16px 0', color: '#fff' }}>调整参加考勤状态</h4>
                   
                   {/* 状态提示 */}
-                  {selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' && (
+                  {selectedSession.status === 'SAVED' && (
                     <div style={{ marginBottom: '16px', padding: '8px 12px', background: '#2d2d2d', border: '1px solid #ffc107', borderRadius: '4px', color: '#ffc107' }}>
                       <strong>提示：</strong>当前考勤记录已保存，无法调整参加考勤状态。请先取消保存状态。
+                    </div>
+                  )}
+                  {selectedSession.status === 'SETTLED' && (
+                    <div style={{ marginBottom: '16px', padding: '8px 12px', background: '#2d2d2d', border: '1px solid #dc3545', borderRadius: '4px', color: '#dc3545' }}>
+                      <strong>提示：</strong>当前考勤记录已结算，无法调整参加考勤状态。如需调整，请先撤销结算。
                     </div>
                   )}
                   
@@ -3829,17 +3840,17 @@ function App() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <button
                           onClick={updateTeamAttendance}
-                          disabled={!selectedTeam || isUpdatingTeamAttendance || selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED'}
+                          disabled={!selectedTeam || isUpdatingTeamAttendance || selectedSession.status !== 'ADDED'}
                           style={{
                             padding: '10px 20px',
-                            background: selectedTeam && !isUpdatingTeamAttendance && selectedSession.status !== 'SAVED' && selectedSession.status !== 'SETTLED' ? '#007bff' : '#6c757d',
+                            background: selectedTeam && !isUpdatingTeamAttendance && selectedSession.status === 'ADDED' ? '#007bff' : '#6c757d',
                             color: '#fff',
                             border: 'none',
                             borderRadius: '4px',
-                            cursor: selectedTeam && !isUpdatingTeamAttendance && selectedSession.status !== 'SAVED' && selectedSession.status !== 'SETTLED' ? 'pointer' : 'not-allowed',
+                            cursor: selectedTeam && !isUpdatingTeamAttendance && selectedSession.status === 'ADDED' ? 'pointer' : 'not-allowed',
                             fontSize: '14px',
                             fontWeight: 'bold',
-                            opacity: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 0.6 : 1
+                            opacity: selectedSession.status !== 'ADDED' ? 0.6 : 1
                           }}
                         >
                           {isUpdatingTeamAttendance ? '执行中...' : '执行批量更新'}
@@ -3992,17 +4003,17 @@ function App() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                         <button
                           onClick={updateMembersAttendance}
-                          disabled={selectedMembers.length === 0 || isUpdatingMemberAttendance || selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED'}
+                          disabled={selectedMembers.length === 0 || isUpdatingMemberAttendance || selectedSession.status !== 'ADDED'}
                           style={{
                             padding: '10px 20px',
-                            background: selectedMembers.length > 0 && !isUpdatingMemberAttendance && selectedSession.status !== 'SAVED' && selectedSession.status !== 'SETTLED' ? '#28a745' : '#6c757d',
+                            background: selectedMembers.length > 0 && !isUpdatingMemberAttendance && selectedSession.status === 'ADDED' ? '#28a745' : '#6c757d',
                             color: '#fff',
                             border: 'none',
                             borderRadius: '4px',
-                            cursor: selectedMembers.length > 0 && !isUpdatingMemberAttendance && selectedSession.status !== 'SAVED' && selectedSession.status !== 'SETTLED' ? 'pointer' : 'not-allowed',
+                            cursor: selectedMembers.length > 0 && !isUpdatingMemberAttendance && selectedSession.status === 'ADDED' ? 'pointer' : 'not-allowed',
                             fontSize: '14px',
                             fontWeight: 'bold',
-                            opacity: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 0.6 : 1
+                            opacity: selectedSession.status !== 'ADDED' ? 0.6 : 1
                           }}
                         >
                           {isUpdatingMemberAttendance ? '执行中...' : `批量更新 ${selectedMembers.length} 个成员`}
@@ -4019,11 +4030,17 @@ function App() {
               <div style={{ background: '#404040', padding: '16px', borderRadius: '8px', marginBottom: '16px' }}>
                 <h4 style={{ margin: '0 0 16px 0', color: '#fff' }}>奖惩结算</h4>
                 
-                {selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? (
+                {selectedSession.status === 'SAVED' && (
                   <div style={{ color: '#fff', marginBottom: '16px' }}>
                     <strong>提示：</strong>当前考勤记录已保存，可以进行奖惩结算。
                   </div>
-                ) : (
+                )}
+                {selectedSession.status === 'SETTLED' && (
+                  <div style={{ color: '#dc3545', marginBottom: '16px' }}>
+                    <strong>提示：</strong>当前考勤记录已结算，只能查看结算结果或撤销结算。
+                  </div>
+                )}
+                {selectedSession.status === 'ADDED' && (
                   <div style={{ color: '#fff', marginBottom: '16px' }}>
                     <strong>提示：</strong>当前考勤记录未保存，请先保存考勤记录后再进行奖惩结算。
                   </div>
@@ -4149,7 +4166,7 @@ function App() {
                       cursor: (selectedSession.status === 'SAVED' && settlementRewardConditions.length > 0) ? 'pointer' : 'not-allowed',
                       opacity: (selectedSession.status === 'SAVED' && settlementRewardConditions.length > 0) ? 1 : 0.6
                     }}
-                    title={selectedSession.status !== 'SAVED' ? '考勤记录未保存' : settlementRewardConditions.length === 0 ? '请先添加奖惩条件' : '计算结算结果'}
+                    title={selectedSession.status === 'ADDED' ? '考勤记录未保存' : selectedSession.status === 'SETTLED' ? '考勤记录已结算' : settlementRewardConditions.length === 0 ? '请先添加奖惩条件' : '计算结算结果'}
                   >
                     计算结算
                   </button>
@@ -4165,7 +4182,7 @@ function App() {
                       cursor: (selectedSession.status === 'SAVED' && settlementResults.length > 0 && !executingSettlement) ? 'pointer' : 'not-allowed',
                       opacity: (selectedSession.status === 'SAVED' && settlementResults.length > 0 && !executingSettlement) ? 1 : 0.6
                     }}
-                    title={selectedSession.status !== 'SAVED' ? '考勤记录未保存' : settlementResults.length === 0 ? '请先计算结算结果' : '执行结算'}
+                    title={selectedSession.status === 'ADDED' ? '考勤记录未保存' : selectedSession.status === 'SETTLED' ? '考勤记录已结算' : settlementResults.length === 0 ? '请先计算结算结果' : '执行结算'}
                   >
                     {executingSettlement ? '执行中...' : '执行结算'}
                   </button>
