@@ -73,15 +73,22 @@ function App() {
   // 组件加载时初始化码表数据
   useEffect(() => {
     const initializeCodeTables = async () => {
-      await loadCodeTables()
-      // 如果码表为空，则初始化
-      if (rewardCodes.length === 0 && penaltyCodes.length === 0) {
-        await initCodeTables()
+      try {
+        // 先尝试加载码表
+        await loadCodeTables()
+        
+        // 如果码表为空，则初始化
+        if (rewardCodes.length === 0 && penaltyCodes.length === 0) {
+          console.log('码表为空，开始初始化...')
+          await initCodeTables()
+        }
+      } catch (error) {
+        console.error('初始化码表失败:', error)
       }
     }
     
     initializeCodeTables()
-  }, [])
+  }, [rewardCodes.length, penaltyCodes.length])
 
   // 计算加成后出勤率的函数
   const calculateBonusAttendanceRate = (attendanceRate: number, memberCount: number): number => {
@@ -1033,16 +1040,23 @@ function App() {
   // 加载码表数据
   const loadCodeTables = async () => {
     try {
+      console.log('开始加载码表数据...')
       const [rewardResponse, penaltyResponse] = await Promise.all([
         fetch('http://localhost:8080/api/v1/attendance/code-tables?type=REWARD'),
         fetch('http://localhost:8080/api/v1/attendance/code-tables?type=PENALTY')
       ])
       
+      console.log('码表响应状态:', rewardResponse.status, penaltyResponse.status)
+      
       if (rewardResponse.ok && penaltyResponse.ok) {
         const rewardData = await rewardResponse.json()
         const penaltyData = await penaltyResponse.json()
+        console.log('加载到的奖励码表:', rewardData)
+        console.log('加载到的处罚码表:', penaltyData)
         setRewardCodes(rewardData)
         setPenaltyCodes(penaltyData)
+      } else {
+        console.error('码表加载失败:', rewardResponse.status, penaltyResponse.status)
       }
     } catch (error) {
       console.error('加载码表失败:', error)
@@ -1061,6 +1075,8 @@ function App() {
         console.log('码表初始化结果:', result)
         // 初始化成功后重新加载码表
         await loadCodeTables()
+      } else {
+        console.error('初始化码表失败:', response.status, response.statusText)
       }
     } catch (error) {
       console.error('初始化码表失败:', error)
@@ -1071,6 +1087,21 @@ function App() {
     <div style={{ padding: 16 }}>
       {/* 主导航菜单 */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 24, borderBottom: '2px solid #dee2e6', paddingBottom: 16 }}>
+        <button
+          onClick={loadCodeTables}
+          style={{
+            padding: '8px 16px',
+            border: 'none',
+            background: '#28a745',
+            color: '#fff',
+            cursor: 'pointer',
+            fontSize: '14px',
+            borderRadius: '4px',
+            marginLeft: 'auto'
+          }}
+        >
+          刷新码表
+        </button>
         <button
           onClick={() => setActiveTab('add')}
           style={{
