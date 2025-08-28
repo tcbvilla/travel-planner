@@ -710,6 +710,75 @@ public class AttendanceController {
     }
 
     /**
+     * 批量更新多个成员的参加考勤状态
+     */
+    @PutMapping("/sessions/{sessionId}/members-attendance")
+    public AttendanceSession updateMembersAttendance(@PathVariable Long sessionId, @RequestBody Map<String, Object> request) {
+        AttendanceSession session = attendanceSessionRepository.findById(sessionId)
+                .orElseThrow(() -> new RuntimeException("考勤记录不存在"));
+        
+        @SuppressWarnings("unchecked")
+        List<String> memberNames = (List<String>) request.get("memberNames");
+        Boolean isAttending = (Boolean) request.get("isAttending");
+        
+        if (memberNames == null || memberNames.isEmpty() || isAttending == null) {
+            throw new RuntimeException("成员名称列表和参加状态不能为空");
+        }
+        
+        try {
+            // 解析现有的memberData
+            ObjectMapper mapper = new ObjectMapper();
+            List<MemberData> memberDataList = mapper.readValue(session.getMemberData(), 
+                    mapper.getTypeFactory().constructCollectionType(List.class, MemberData.class));
+            
+            // 批量更新指定成员的参加考勤状态
+            Set<String> memberNameSet = new HashSet<>(memberNames);
+            boolean found = false;
+            int updatedCount = 0;
+            List<String> notFoundMembers = new ArrayList<>();
+            
+            for (MemberData member : memberDataList) {
+                if (memberNameSet.contains(member.get成员())) {
+                    member.set参加考勤(isAttending);
+                    found = true;
+                    updatedCount++;
+                }
+            }
+            
+            // 检查是否有未找到的成员
+            for (String memberName : memberNames) {
+                boolean memberFound = false;
+                for (MemberData member : memberDataList) {
+                    if (member.get成员().equals(memberName)) {
+                        memberFound = true;
+                        break;
+                    }
+                }
+                if (!memberFound) {
+                    notFoundMembers.add(memberName);
+                }
+            }
+            
+            if (!found) {
+                throw new RuntimeException("未找到任何指定成员");
+            }
+            
+            if (!notFoundMembers.isEmpty()) {
+                throw new RuntimeException("未找到以下成员: " + String.join(", ", notFoundMembers));
+            }
+            
+            // 保存更新后的memberData
+            session.setMemberData(mapper.writeValueAsString(memberDataList));
+            
+            // 保存更新后的数据
+            return attendanceSessionRepository.save(session);
+            
+        } catch (Exception e) {
+            throw new RuntimeException("批量更新成员参加状态失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 批量更新团队的参加考勤状态
      */
     @PutMapping("/sessions/{sessionId}/team-attendance")
@@ -737,7 +806,7 @@ public class AttendanceController {
                 if (member.get分组().equals(teamName)) {
                     member.set参加考勤(isAttending);
                     found = true;
-                    updatedCount++;
+                    updatedCount++; 
                 }
             }
             

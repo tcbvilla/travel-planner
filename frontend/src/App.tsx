@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import Papa from 'papaparse'
 import './App.css'
 
@@ -54,6 +54,22 @@ type PageResponse<T> = {
 }
 
 function App() {
+  // 添加点击外部关闭下拉菜单的功能
+  const memberDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (memberDropdownRef.current && !memberDropdownRef.current.contains(event.target as Node)) {
+        setShowMemberDropdown(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
+
   // 计算加成后出勤率的函数
   const calculateBonusAttendanceRate = (attendanceRate: number, memberCount: number): number => {
     let bonus = 0
@@ -109,6 +125,13 @@ function App() {
   const [selectedTeam, setSelectedTeam] = useState<string>('')
   const [teamAttendanceStatus, setTeamAttendanceStatus] = useState<boolean>(true)
   const [isUpdatingTeamAttendance, setIsUpdatingTeamAttendance] = useState<boolean>(false)
+  
+  // 个人处理状态
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([])
+  const [memberSearchTerm, setMemberSearchTerm] = useState<string>('')
+  const [showMemberDropdown, setShowMemberDropdown] = useState<boolean>(false)
+  const [memberAttendanceStatus, setMemberAttendanceStatus] = useState<boolean>(true)
+  const [isUpdatingMemberAttendance, setIsUpdatingMemberAttendance] = useState<boolean>(false)
 
 
 
@@ -288,6 +311,44 @@ function App() {
     }
   }
 
+  // 新增函数：获取成员列表
+  const getMemberList = (): string[] => {
+    if (!selectedSession?.memberData) return []
+    
+    try {
+      const memberData = JSON.parse(selectedSession.memberData)
+      return memberData.map((member: any) => member.成员).sort()
+    } catch (error) {
+      console.error('解析成员数据失败:', error)
+      return []
+    }
+  }
+
+  // 新增函数：过滤成员列表（用于搜索）
+  const getFilteredMembers = (): string[] => {
+    const allMembers = getMemberList()
+    if (!memberSearchTerm) return allMembers
+    
+    return allMembers.filter(member => 
+      member.toLowerCase().includes(memberSearchTerm.toLowerCase()) &&
+      !selectedMembers.includes(member)
+    )
+  }
+
+  // 新增函数：添加选中的成员
+  const addSelectedMember = (memberName: string) => {
+    if (!selectedMembers.includes(memberName)) {
+      setSelectedMembers([...selectedMembers, memberName])
+    }
+    setMemberSearchTerm('')
+    setShowMemberDropdown(false)
+  }
+
+  // 新增函数：移除选中的成员
+  const removeSelectedMember = (memberName: string) => {
+    setSelectedMembers(selectedMembers.filter(member => member !== memberName))
+  }
+
   // 新增函数：批量更新团队参加考勤状态
   const updateTeamAttendance = async () => {
     if (!selectedTeam || !selectedSession) {
@@ -314,6 +375,9 @@ function App() {
         // 重新获取数据以刷新界面
         await recalculateSessionData()
         
+        // 刷新查看考勤记录页面的会话列表
+        await loadSessions(currentPage)
+        
         alert(`已成功将"${selectedTeam}"设置为${teamAttendanceStatus ? '参加' : '不参加'}考勤`)
         
         // 重置表单
@@ -328,6 +392,53 @@ function App() {
       alert('批量更新团队参加考勤状态失败: ' + error)
     } finally {
       setIsUpdatingTeamAttendance(false)
+    }
+  }
+
+  // 新增函数：批量更新个人参加考勤状态
+  const updateMembersAttendance = async () => {
+    if (selectedMembers.length === 0 || !selectedSession) {
+      alert('请选择要更新的成员')
+      return
+    }
+    
+    setIsUpdatingMemberAttendance(true)
+    
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${selectedSession.id}/members-attendance`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          memberNames: selectedMembers,
+          isAttending: memberAttendanceStatus
+        })
+      })
+      
+      if (response.ok) {
+        const updatedSession = await response.json()
+        setSelectedSession(updatedSession)
+        
+        // 重新获取数据以刷新界面
+        await recalculateSessionData()
+        
+        // 刷新查看考勤记录页面的会话列表
+        await loadSessions(currentPage)
+        
+        alert(`已成功将${selectedMembers.length}个成员设置为${memberAttendanceStatus ? '参加' : '不参加'}考勤`)
+        
+        // 重置表单
+        setSelectedMembers([])
+        setMemberSearchTerm('')
+        setMemberAttendanceStatus(true)
+      } else {
+        const errorData = await response.json()
+        alert(`更新失败: ${errorData.message || '未知错误'}`)
+      }
+    } catch (error) {
+      console.error('批量更新个人参加考勤状态失败:', error)
+      alert('批量更新个人参加考勤状态失败: ' + error)
+    } finally {
+      setIsUpdatingMemberAttendance(false)
     }
   }
 
@@ -2018,12 +2129,166 @@ function App() {
                     </div>
                   </div>
                   
-                  {/* 个人处理（预留） */}
+                  {/* 个人处理 */}
                   <div style={{ marginBottom: '24px', padding: '16px', border: '2px solid #28a745', borderRadius: '4px', background: '#1a1a1a' }}>
                     <h5 style={{ margin: '0 0 16px 0', color: '#fff' }}>个人处理</h5>
-                    <p style={{ margin: '8px 0', color: '#fff' }}>
-                      个人参加考勤状态调整功能（待开发）
-                    </p>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {/* 成员搜索和选择 */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <label style={{ color: '#fff', fontWeight: 'bold' }}>选择成员:</label>
+                        <div style={{ position: 'relative' }} ref={memberDropdownRef}>
+                          <input
+                            type="text"
+                            value={memberSearchTerm}
+                            onChange={(e) => {
+                              setMemberSearchTerm(e.target.value)
+                              setShowMemberDropdown(true)
+                            }}
+                            onFocus={() => setShowMemberDropdown(true)}
+                            placeholder="输入成员姓名搜索..."
+                            style={{
+                              width: '100%',
+                              padding: '8px 12px',
+                              border: '2px solid #28a745',
+                              borderRadius: '4px',
+                              color: '#fff',
+                              background: '#2d2d2d',
+                              boxSizing: 'border-box'
+                            }}
+                          />
+                          
+                          {/* 搜索下拉菜单 */}
+                          {showMemberDropdown && getFilteredMembers().length > 0 && (
+                            <div style={{
+                              position: 'absolute',
+                              top: '100%',
+                              left: 0,
+                              right: 0,
+                              maxHeight: '200px',
+                              overflowY: 'auto',
+                              background: '#2d2d2d',
+                              border: '1px solid #28a745',
+                              borderRadius: '4px',
+                              zIndex: 1000,
+                              boxShadow: '0 4px 8px rgba(0,0,0,0.3)'
+                            }}>
+                              {getFilteredMembers().slice(0, 10).map((member) => (
+                                <div
+                                  key={member}
+                                  onClick={() => addSelectedMember(member)}
+                                  style={{
+                                    padding: '8px 12px',
+                                    cursor: 'pointer',
+                                    color: '#fff',
+                                    borderBottom: '1px solid #444',
+                                    ':hover': { background: '#444' }
+                                  }}
+                                  onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = '#444'
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = '#2d2d2d'
+                                  }}
+                                >
+                                  {member}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* 已选成员标签 */}
+                      {selectedMembers.length > 0 && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          <label style={{ color: '#fff', fontWeight: 'bold' }}>已选成员 ({selectedMembers.length}):</label>
+                          <div style={{ 
+                            display: 'flex', 
+                            flexWrap: 'wrap', 
+                            gap: '8px',
+                            padding: '8px',
+                            border: '1px solid #28a745',
+                            borderRadius: '4px',
+                            background: '#2d2d2d',
+                            minHeight: '40px'
+                          }}>
+                            {selectedMembers.map((member) => (
+                              <span
+                                key={member}
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  padding: '4px 8px',
+                                  background: '#28a745',
+                                  color: '#fff',
+                                  borderRadius: '12px',
+                                  fontSize: '12px',
+                                  gap: '4px'
+                                }}
+                              >
+                                {member}
+                                <button
+                                  onClick={() => removeSelectedMember(member)}
+                                  style={{
+                                    background: 'none',
+                                    border: 'none',
+                                    color: '#fff',
+                                    cursor: 'pointer',
+                                    fontSize: '14px',
+                                    fontWeight: 'bold',
+                                    padding: '0',
+                                    marginLeft: '4px'
+                                  }}
+                                >
+                                  ×
+                                </button>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* 参加状态选择 */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <label style={{ minWidth: '100px', color: '#fff', fontWeight: 'bold' }}>参加状态:</label>
+                        <select 
+                          value={memberAttendanceStatus ? 'true' : 'false'}
+                          onChange={(e) => setMemberAttendanceStatus(e.target.value === 'true')}
+                          style={{ 
+                            padding: '8px 12px', 
+                            border: '2px solid #28a745', 
+                            borderRadius: '4px', 
+                            color: '#fff',
+                            background: '#2d2d2d',
+                            minWidth: '200px'
+                          }}
+                        >
+                          <option value="true">参加考勤</option>
+                          <option value="false">不参加考勤</option>
+                        </select>
+                      </div>
+                      
+                      {/* 执行按钮 */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <button
+                          onClick={updateMembersAttendance}
+                          disabled={selectedMembers.length === 0 || isUpdatingMemberAttendance}
+                          style={{
+                            padding: '10px 20px',
+                            background: selectedMembers.length > 0 && !isUpdatingMemberAttendance ? '#28a745' : '#6c757d',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: selectedMembers.length > 0 && !isUpdatingMemberAttendance ? 'pointer' : 'not-allowed',
+                            fontSize: '14px',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          {isUpdatingMemberAttendance ? '执行中...' : `批量更新 ${selectedMembers.length} 个成员`}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
