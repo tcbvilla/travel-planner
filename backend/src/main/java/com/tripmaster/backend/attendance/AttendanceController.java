@@ -29,6 +29,9 @@ public class AttendanceController {
     
     @Autowired
     private RewardConditionRepository rewardConditionRepository;
+    
+    @Autowired
+    private CodeTableRepository codeTableRepository;
 
     @PostMapping(value = "/compare", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public AttendanceResponse compare(@RequestPart("start") MultipartFile start,
@@ -806,7 +809,7 @@ public class AttendanceController {
                 if (member.get分组().equals(teamName)) {
                     member.set参加考勤(isAttending);
                     found = true;
-                    updatedCount++; 
+                    updatedCount++;
                 }
             }
             
@@ -822,6 +825,80 @@ public class AttendanceController {
             
         } catch (Exception e) {
             throw new RuntimeException("批量更新团队参加状态失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取码表列表
+     */
+    @GetMapping("/code-tables")
+    public List<CodeTable> getCodeTables(@RequestParam(required = false) String type) {
+        if (type != null && !type.isEmpty()) {
+            return codeTableRepository.findByType(type);
+        }
+        return codeTableRepository.findAll();
+    }
+
+    /**
+     * 根据码表名称获取码表值
+     */
+    @GetMapping("/code-tables/name/{codeName}")
+    public CodeTable getCodeTableByName(@PathVariable String codeName) {
+        CodeTable codeTable = codeTableRepository.findByCodeName(codeName);
+        if (codeTable == null) {
+            throw new RuntimeException("未找到码表: " + codeName);
+        }
+        return codeTable;
+    }
+
+    /**
+     * 根据码表值获取码表名称
+     */
+    @GetMapping("/code-tables/value/{codeValue}")
+    public CodeTable getCodeTableByValue(@PathVariable Integer codeValue) {
+        CodeTable codeTable = codeTableRepository.findByCodeValue(codeValue);
+        if (codeTable == null) {
+            throw new RuntimeException("未找到码表值: " + codeValue);
+        }
+        return codeTable;
+    }
+
+    /**
+     * 初始化码表数据
+     */
+    @PostMapping("/code-tables/init")
+    public ResponseEntity<String> initCodeTables() {
+        try {
+            // 检查是否已经初始化
+            if (codeTableRepository.count() > 0) {
+                return ResponseEntity.ok("码表已经初始化过了");
+            }
+
+            // 初始化奖励码表
+            List<CodeTable> rewardCodes = Arrays.asList(
+                new CodeTable("花瓣", 72, "REWARD", "花瓣奖励"),
+                new CodeTable("双花瓣", 144, "REWARD", "双花瓣奖励"),
+                new CodeTable("花", 216, "REWARD", "花奖励"),
+                new CodeTable("双花", 432, "REWARD", "双花奖励"),
+                new CodeTable("钱袋", 648, "REWARD", "钱袋奖励")
+            );
+
+            // 初始化处罚码表
+            List<CodeTable> penaltyCodes = Arrays.asList(
+                new CodeTable("屎粒", -72, "PENALTY", "屎粒处罚"),
+                new CodeTable("双屎粒", -144, "PENALTY", "双屎粒处罚"),
+                new CodeTable("屎", -216, "PENALTY", "屎处罚"),
+                new CodeTable("双屎", -432, "PENALTY", "双屎处罚"),
+                new CodeTable("粪汤", -648, "PENALTY", "粪汤处罚")
+            );
+
+            // 保存所有码表
+            codeTableRepository.saveAll(rewardCodes);
+            codeTableRepository.saveAll(penaltyCodes);
+
+            return ResponseEntity.ok("码表初始化成功");
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("码表初始化失败: " + e.getMessage());
         }
     }
 }

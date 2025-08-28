@@ -70,6 +70,19 @@ function App() {
     }
   }, [])
 
+  // 组件加载时初始化码表数据
+  useEffect(() => {
+    const initializeCodeTables = async () => {
+      await loadCodeTables()
+      // 如果码表为空，则初始化
+      if (rewardCodes.length === 0 && penaltyCodes.length === 0) {
+        await initCodeTables()
+      }
+    }
+    
+    initializeCodeTables()
+  }, [])
+
   // 计算加成后出勤率的函数
   const calculateBonusAttendanceRate = (attendanceRate: number, memberCount: number): number => {
     let bonus = 0
@@ -110,12 +123,12 @@ function App() {
   const [attendanceRateSuccess, setAttendanceRateSuccess] = useState<number | ''>('')
   const [attendanceRankSuccess, setAttendanceRankSuccess] = useState<string>('')
   const [meritRankSuccess, setMeritRankSuccess] = useState<string>('')
-  const [rewardTypeSuccess, setRewardTypeSuccess] = useState<string>('648')
+  const [rewardTypeSuccess, setRewardTypeSuccess] = useState<string>('钱袋')
 
   // 新增状态：用于"失败"情况下的表单字段
   const [attendanceRateFailure, setAttendanceRateFailure] = useState<number | ''>('')
   const [attendanceRankFailure, setAttendanceRankFailure] = useState<string>('')
-  const [penaltyTypeFailure, setPenaltyTypeFailure] = useState<string>('-648') // 默认值
+  const [penaltyTypeFailure, setPenaltyTypeFailure] = useState<string>('粪汤') // 默认值
 
   // 新增状态：奖惩条件管理
   const [rewardConditions, setRewardConditions] = useState<any[]>([])
@@ -136,6 +149,10 @@ function App() {
   // 删除确认弹框状态
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<boolean>(false)
   const [sessionToDelete, setSessionToDelete] = useState<number | null>(null)
+  
+  // 码表状态
+  const [rewardCodes, setRewardCodes] = useState<any[]>([])
+  const [penaltyCodes, setPenaltyCodes] = useState<any[]>([])
 
 
 
@@ -158,12 +175,12 @@ function App() {
     if (status === '成功') {
       setAttendanceRateFailure('')
       setAttendanceRankFailure('')
-      setPenaltyTypeFailure('-648')
+      setPenaltyTypeFailure('粪汤')
     } else { // status === '失败'
       setAttendanceRateSuccess('')
       setAttendanceRankSuccess('')
       setMeritRankSuccess('')
-      setRewardTypeSuccess('648')
+      setRewardTypeSuccess('钱袋')
     }
   }
 
@@ -615,11 +632,11 @@ function App() {
       setAttendanceRateSuccess(condition.attendanceRateThreshold || '')
       setAttendanceRankSuccess(condition.attendanceRateRank ? String(condition.attendanceRateRank) : '')
       setMeritRankSuccess(condition.meritIncreaseRank ? String(condition.meritIncreaseRank) : '')
-      setRewardTypeSuccess(condition.rewardType || '648')
+              setRewardTypeSuccess(condition.rewardType || '钱袋')
     } else {
       setAttendanceRateFailure(condition.attendanceRateThreshold || '')
       setAttendanceRankFailure(condition.attendanceRateRank ? String(condition.attendanceRateRank) : '')
-      setPenaltyTypeFailure(condition.penaltyType || '-648')
+              setPenaltyTypeFailure(condition.penaltyType || '粪汤')
     }
   }
 
@@ -714,10 +731,10 @@ function App() {
     setAttendanceRateSuccess('')
     setAttendanceRankSuccess('')
     setMeritRankSuccess('')
-    setRewardTypeSuccess('648')
+    setRewardTypeSuccess('钱袋')
     setAttendanceRateFailure('')
     setAttendanceRankFailure('')
-    setPenaltyTypeFailure('-648')
+    setPenaltyTypeFailure('粪汤')
     setEditingCondition(null)
   }
 
@@ -1011,6 +1028,43 @@ function App() {
   const cancelDelete = () => {
     setShowDeleteConfirm(false)
     setSessionToDelete(null)
+  }
+
+  // 加载码表数据
+  const loadCodeTables = async () => {
+    try {
+      const [rewardResponse, penaltyResponse] = await Promise.all([
+        fetch('http://localhost:8080/api/v1/attendance/code-tables?type=REWARD'),
+        fetch('http://localhost:8080/api/v1/attendance/code-tables?type=PENALTY')
+      ])
+      
+      if (rewardResponse.ok && penaltyResponse.ok) {
+        const rewardData = await rewardResponse.json()
+        const penaltyData = await penaltyResponse.json()
+        setRewardCodes(rewardData)
+        setPenaltyCodes(penaltyData)
+      }
+    } catch (error) {
+      console.error('加载码表失败:', error)
+    }
+  }
+
+  // 初始化码表数据
+  const initCodeTables = async () => {
+    try {
+      const response = await fetch('http://localhost:8080/api/v1/attendance/code-tables/init', {
+        method: 'POST'
+      })
+      
+      if (response.ok) {
+        const result = await response.text()
+        console.log('码表初始化结果:', result)
+        // 初始化成功后重新加载码表
+        await loadCodeTables()
+      }
+    } catch (error) {
+      console.error('初始化码表失败:', error)
+    }
   }
 
   return (
@@ -1834,9 +1888,9 @@ function App() {
                               minWidth: '150px'
                             }}
                           >
-                            <option value="648">648</option>
-                            <option value="花">花</option>
-                            <option value="双花">双花</option>
+                            {rewardCodes.map((code) => (
+                              <option key={code.id} value={code.codeName}>{code.codeName}</option>
+                            ))}
                           </select>
                         </div>
                       </>
@@ -1904,9 +1958,9 @@ function App() {
                               minWidth: '150px'
                             }}
                           >
-                            <option value="-648">-648</option>
-                            <option value="屎">屎</option>
-                            <option value="双屎">双屎</option>
+                            {penaltyCodes.map((code) => (
+                              <option key={code.id} value={code.codeName}>{code.codeName}</option>
+                            ))}
                           </select>
                         </div>
                       </>
