@@ -2,7 +2,6 @@ package com.tripmaster.backend.attendance;
 
 import lombok.Data;
 import jakarta.persistence.*;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
@@ -16,21 +15,14 @@ public class SettlementRecord {
     @Column(name = "team_name", nullable = false)
     private String teamName;
     
-    @Column(name = "reward_description", nullable = false)
-    private String rewardDescription;
+    @Column(name = "code_value", nullable = false)
+    private String codeValue; // 具体的码表值，如"花"、"屎"
     
-    @Column(name = "amount", nullable = false, precision = 10, scale = 3)
-    private BigDecimal amount;
+    @Column(name = "quantity", nullable = false, precision = 10, scale = 3)
+    private Double quantity; // 数量，保留3位小数
     
-    @Column(name = "reward_type", nullable = false)
-    private String rewardType;
-    
-    @Column(name = "multiplier", nullable = false, precision = 10, scale = 3)
-    private BigDecimal multiplier;
-    
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "season_id", nullable = false)
-    private Season season;
+    @Column(name = "settlement_batch_id", nullable = false)
+    private String settlementBatchId; // 结算批次ID，用于关联特定的奖惩条件组合
     
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "attendance_session_id", nullable = false)

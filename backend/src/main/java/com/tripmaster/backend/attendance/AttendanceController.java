@@ -21,6 +21,7 @@ import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import com.tripmaster.backend.attendance.BattleResult;
+import com.tripmaster.backend.attendance.SessionStatus;
 import java.math.BigDecimal;
 
 @RestController
@@ -952,21 +953,24 @@ public class AttendanceController {
             throw new RuntimeException("未找到奖惩类型: " + rewardType);
         }
         
-        // 计算倍数
-        BigDecimal multiplier = BigDecimal.valueOf(1.0 / qualifiedTeams.size());
-        multiplier = multiplier.setScale(3, BigDecimal.ROUND_HALF_UP);
+        // 计算数量（每个队伍分得的数量），保留3位小数
+        BigDecimal quantity = BigDecimal.valueOf(1.0).divide(BigDecimal.valueOf(qualifiedTeams.size()), 3, BigDecimal.ROUND_HALF_UP);
         
-        // 计算金额
+        // 计算倍数（保持向后兼容）
+        BigDecimal multiplier = quantity;
+        
+        // 计算金额（保持向后兼容）
         BigDecimal amount = BigDecimal.valueOf(codeTable.getCodeValue()).multiply(multiplier);
         
         // 为每个队伍创建结算结果
         for (String teamName : qualifiedTeams) {
             SettlementResult result = new SettlementResult();
             result.setTeamName(teamName);
-            result.setRewardType(rewardType);
-            result.setMultiplier(multiplier);
+            result.setRewardType(rewardType); // 码表值，如"双花"、"花"、"屎"
+            result.setQuantity(quantity.doubleValue()); // 数量，转换为Double
+            result.setMultiplier(multiplier); // 保持向后兼容
             result.setRewardDescription(rewardType + "✖️" + multiplier);
-            result.setAmount(amount);
+            result.setAmount(amount); // 保持向后兼容
             results.add(result);
         }
     }
@@ -1360,6 +1364,9 @@ public class AttendanceController {
             
             System.out.println("开始执行结算，考勤记录ID: " + sessionId + ", 结算结果数量: " + settlementResults.size());
             
+            // 生成结算批次ID，基于当前时间和考勤记录ID
+            String settlementBatchId = "BATCH_" + sessionId + "_" + System.currentTimeMillis();
+            
             // 保存结算记录
             List<SettlementRecord> records = new ArrayList<>();
             StringBuilder settlementContent = new StringBuilder();
@@ -1367,19 +1374,17 @@ public class AttendanceController {
             for (SettlementResult result : settlementResults) {
                 SettlementRecord record = new SettlementRecord();
                 record.setTeamName(result.getTeamName());
-                record.setRewardDescription(result.getRewardDescription());
-                record.setAmount(result.getAmount());
-                record.setRewardType(result.getRewardType());
-                record.setMultiplier(result.getMultiplier());
-                record.setSeason(session.getSeason());
+                record.setCodeValue(result.getRewardType()); // 保存具体的码表值，如"花"、"屎"
+                record.setQuantity(result.getQuantity()); // 保存数量
+                record.setSettlementBatchId(settlementBatchId); // 设置结算批次ID
                 record.setAttendanceSession(session);
                 
                 records.add(record);
                 
                 // 构建日志内容
                 settlementContent.append(result.getTeamName())
-                        .append(": ").append(result.getRewardDescription())
-                        .append(", 金额: ").append(result.getAmount())
+                        .append(": ").append(result.getRewardType())
+                        .append(" x").append(result.getQuantity())
                         .append("; ");
             }
             
@@ -1397,7 +1402,7 @@ public class AttendanceController {
             System.out.println("保存结算日志成功");
             
             // 更新考勤记录状态为已结算
-            session.setStatus("SETTLED");
+            session.setStatus(SessionStatus.SETTLED);
             attendanceSessionRepository.save(session);
             System.out.println("更新考勤记录状态为已结算");
             
@@ -1453,27 +1458,50 @@ public class AttendanceController {
             AttendanceSession session = attendanceSessionRepository.findById(sessionId)
                     .orElseThrow(() -> new RuntimeException("未找到考勤记录: " + sessionId));
             
-            // 删除结算记录
-            List<SettlementRecord> records = settlementRecordRepository.findByAttendanceSessionId(sessionId);
+            // 检查考勤记录状态
+            if (session.getStatus() != SessionStatus.SETTLED) {
+                return ResponseEntity.badRequest().body("该考勤记录状态不是已结算，无法撤销结算");
+            }
+            
+            // 获取最新的结算批次ID
+            String latestBatchId = settlementRecordRepository.findLatestSettlementBatchIdByAttendanceSessionId(sessionId);
+            if (latestBatchId == null) {
+                return ResponseEntity.badRequest().body("该考勤记录没有结算记录可以撤销");
+            }
+            
+            // 只删除最新批次的结算记录
+            List<SettlementRecord> records = settlementRecordRepository.findBySettlementBatchId(latestBatchId);
             if (records.isEmpty()) {
                 return ResponseEntity.badRequest().body("该考勤记录没有结算记录可以撤销");
             }
             
+            System.out.println("开始撤销结算，考勤记录ID: " + sessionId + ", 批次ID: " + latestBatchId + ", 结算记录数量: " + records.size());
+            
             settlementRecordRepository.deleteAll(records);
-            System.out.println("删除了 " + records.size() + " 条结算记录");
+            System.out.println("删除了 " + records.size() + " 条结算记录（批次: " + latestBatchId + "）");
+            
+            // 构建撤销日志内容，体现具体的撤销内容
+            StringBuilder revokeContent = new StringBuilder();
+            revokeContent.append("撤销结算，删除了以下结算记录：");
+            for (SettlementRecord record : records) {
+                revokeContent.append(record.getTeamName())
+                        .append(": ").append(record.getCodeValue())
+                        .append(" x").append(record.getQuantity())
+                        .append("; ");
+            }
             
             // 记录撤销日志
             SettlementLog log = new SettlementLog();
             log.setAttendanceRecordName(session.getName());
             log.setSettlementSeason(session.getSeason() != null ? session.getSeason().getName() : "未知赛季");
-            log.setSettlementContent("撤销结算，删除了 " + records.size() + " 条结算记录");
+            log.setSettlementContent(revokeContent.toString());
             log.setAttendanceSession(session);
             
             settlementLogRepository.save(log);
             System.out.println("保存撤销日志成功");
             
             // 更新考勤记录状态为已保存
-            session.setStatus("SAVED");
+            session.setStatus(SessionStatus.SAVED);
             attendanceSessionRepository.save(session);
             System.out.println("更新考勤记录状态为已保存");
             
