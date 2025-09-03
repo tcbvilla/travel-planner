@@ -65,6 +65,8 @@ CREATE TABLE IF NOT EXISTS settlement_records (
     team_name VARCHAR(100) NOT NULL,
     code_value VARCHAR(50),  -- 允许NULL，用于现金奖励
     quantity NUMERIC(10,3) NOT NULL,  -- 数量，保留3位小数
+    cash_amount NUMERIC(10,2),  -- 现金金额，用于现金奖励
+    reward_mode VARCHAR(20) DEFAULT 'CODE_TABLE',  -- 奖励模式：CODE_TABLE 或 CASH
     settlement_batch_id VARCHAR(100) NOT NULL,  -- 结算批次ID，用于关联特定的奖惩条件组合
     attendance_session_id BIGINT NOT NULL REFERENCES attendance_sessions(id) ON DELETE CASCADE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -188,6 +190,8 @@ CREATE TABLE IF NOT EXISTS synthesis_chains (
     synthesis_type VARCHAR(20) NOT NULL,   -- 'UPGRADE' 或 'CASH_CONVERT'
     source_item_type VARCHAR(50),          -- 原始物品类型
     target_item_type VARCHAR(50),          -- 目标物品类型
+    trigger_settlement_batch_id VARCHAR(100),  -- 触发合成的结算批次ID
+    attendance_session_id BIGINT,          -- 关联的考勤会话ID
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -212,9 +216,12 @@ ALTER TABLE settlement_records ADD COLUMN IF NOT EXISTS record_status VARCHAR(20
 
 -- 创建索引
 CREATE INDEX IF NOT EXISTS idx_synthesis_chains_season_team ON synthesis_chains(season_id, team_name);
+CREATE INDEX IF NOT EXISTS idx_synthesis_chains_trigger_batch ON synthesis_chains(trigger_settlement_batch_id);
+CREATE INDEX IF NOT EXISTS idx_synthesis_chains_attendance_session ON synthesis_chains(attendance_session_id);
 CREATE INDEX IF NOT EXISTS idx_synthesis_logs_season_team ON synthesis_logs(season_name, team_name);
 CREATE INDEX IF NOT EXISTS idx_settlement_records_synthesis ON settlement_records(synthesis_chain_id);
 CREATE INDEX IF NOT EXISTS idx_settlement_records_status ON settlement_records(record_status);
+CREATE INDEX IF NOT EXISTS idx_settlement_records_reward_mode ON settlement_records(reward_mode);
 
 -- 提交事务
 COMMIT;
