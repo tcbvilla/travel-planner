@@ -19,9 +19,12 @@ public interface SettlementRecordRepository extends JpaRepository<SettlementReco
     @Query("SELECT sr FROM SettlementRecord sr WHERE sr.attendanceSession.season.id = :seasonId ORDER BY sr.createdAt DESC")
     Page<SettlementRecord> findBySeasonIdOrderByCreatedAtDesc(@Param("seasonId") Long seasonId, Pageable pageable);
     
+    @Query("SELECT sr FROM SettlementRecord sr WHERE sr.attendanceSession.season.id = :seasonId")
+    List<SettlementRecord> findBySeasonId(@Param("seasonId") Long seasonId);
+    
     boolean existsByAttendanceSessionId(Long attendanceSessionId);
     
-    // 获取最新的结算批次ID
-    @Query(value = "SELECT settlement_batch_id FROM settlement_records WHERE attendance_session_id = :attendanceSessionId ORDER BY created_at DESC LIMIT 1", nativeQuery = true)
+    // 获取最新的原始结算批次ID（排除合成记录）
+    @Query(value = "SELECT settlement_batch_id FROM settlement_records WHERE attendance_session_id = :attendanceSessionId AND settlement_batch_id LIKE 'BATCH_%' ORDER BY created_at DESC LIMIT 1", nativeQuery = true)
     String findLatestSettlementBatchIdByAttendanceSessionId(@Param("attendanceSessionId") Long attendanceSessionId);
 }

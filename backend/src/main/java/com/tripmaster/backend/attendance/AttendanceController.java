@@ -1,3 +1,4 @@
+
 package com.tripmaster.backend.attendance;
 
 import com.opencsv.CSVReader;
@@ -20,6 +21,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
 import com.tripmaster.backend.attendance.BattleResult;
 import com.tripmaster.backend.attendance.SessionStatus;
 import java.math.BigDecimal;
@@ -45,6 +47,12 @@ public class AttendanceController {
     
     @Autowired
     private SettlementLogRepository settlementLogRepository;
+    
+    @Autowired
+    private SynthesisService synthesisService;
+    
+    @Autowired
+    private CascadeRevocationService cascadeRevocationService;
 
     @PostMapping(value = "/compare", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public AttendanceResponse compare(@RequestPart("start") MultipartFile start,
@@ -315,6 +323,18 @@ public class AttendanceController {
         try {
             AttendanceSession session = attendanceSessionRepository.findById(id)
                     .orElseThrow(() -> new RuntimeException("考勤会话不存在"));
+            
+            // 检查是否已结算，如果已结算则不允许删除
+            if (session.getStatus() == SessionStatus.SETTLED) {
+                return ResponseEntity.badRequest().body("已结算的考勤记录不能直接删除，请先撤销结算后再删除");
+            }
+            
+            // 检查是否有结算记录，如果有则不允许删除
+            List<SettlementRecord> settlementRecords = settlementRecordRepository.findByAttendanceSessionId(id);
+            if (!settlementRecords.isEmpty()) {
+                return ResponseEntity.badRequest().body("该考勤记录存在结算记录，请先撤销结算后再删除");
+            }
+            
             attendanceSessionRepository.delete(session);
             return ResponseEntity.ok("删除成功");
         } catch (Exception e) {
@@ -581,6 +601,8 @@ public class AttendanceController {
         condition.setMeritIncreaseRank(request.getMeritIncreaseRank());
         condition.setRewardType(request.getRewardType());
         condition.setPenaltyType(request.getPenaltyType());
+        condition.setCashRewardAmount(request.getCashRewardAmount());
+        condition.setRewardMode(request.getRewardMode());
         return rewardConditionRepository.save(condition);
     }
     
@@ -606,6 +628,8 @@ public class AttendanceController {
         condition.setMeritIncreaseRank(request.getMeritIncreaseRank());
         condition.setRewardType(request.getRewardType());
         condition.setPenaltyType(request.getPenaltyType());
+        condition.setCashRewardAmount(request.getCashRewardAmount());
+        condition.setRewardMode(request.getRewardMode());
         
         return rewardConditionRepository.save(condition);
     }
@@ -849,11 +873,19 @@ public class AttendanceController {
     private void processMeritRanking(RewardCondition condition, List<GroupStat> groupStats, List<SettlementResult> results) {
         // 按人均战功增量（加成后）排序
         List<GroupStat> sortedStats = new ArrayList<>(groupStats);
-        sortedStats.sort((a, b) -> Long.compare(b.getAverageMeritIncreaseBonus(), a.getAverageMeritIncreaseBonus()));
+        
+        // 根据任务状态决定排序方向
+        if ("胜利".equals(condition.getTaskStatus())) {
+            // 胜利情况：按战功增量降序排列（高到低），第1名是战功最高的
+            sortedStats.sort((a, b) -> Long.compare(b.getAverageMeritIncreaseBonus(), a.getAverageMeritIncreaseBonus()));
+        } else {
+            // 失败情况：按战功增量升序排列（低到高），第1名是战功最低的（倒数第1名）
+            sortedStats.sort((a, b) -> Long.compare(a.getAverageMeritIncreaseBonus(), b.getAverageMeritIncreaseBonus()));
+        }
         
         // 计算密集排名
         Map<String, Integer> rankings = calculateDenseRanking(sortedStats, 
-            GroupStat::getAverageMeritIncreaseBonus, true);
+            GroupStat::getAverageMeritIncreaseBonus, "胜利".equals(condition.getTaskStatus()));
         
         // 找到符合排名要求的队伍
         int targetRank = condition.getMeritIncreaseRank();
@@ -891,11 +923,17 @@ public class AttendanceController {
         }
         
         // 按出勤率（加成后）排序
-        filteredStats.sort((a, b) -> Double.compare(b.getAttendanceRateBonus(), a.getAttendanceRateBonus()));
+        if ("胜利".equals(condition.getTaskStatus())) {
+            // 胜利情况：按出勤率降序排列（高到低），第1名是出勤率最高的
+            filteredStats.sort((a, b) -> Double.compare(b.getAttendanceRateBonus(), a.getAttendanceRateBonus()));
+        } else {
+            // 失败情况：按出勤率升序排列（低到高），第1名是出勤率最低的（倒数第1名）
+            filteredStats.sort((a, b) -> Double.compare(a.getAttendanceRateBonus(), b.getAttendanceRateBonus()));
+        }
         
         // 计算密集排名
         Map<String, Integer> rankings = calculateDenseRanking(filteredStats, 
-            GroupStat::getAttendanceRateBonus, true);
+            GroupStat::getAttendanceRateBonus, "胜利".equals(condition.getTaskStatus()));
         
         // 找到符合排名要求的队伍
         int targetRank = condition.getAttendanceRateRank();
@@ -945,19 +983,67 @@ public class AttendanceController {
      * 分配奖励
      */
     private void distributeReward(RewardCondition condition, List<String> qualifiedTeams, List<SettlementResult> results) {
-        String rewardType = "胜利".equals(condition.getTaskStatus()) ? condition.getRewardType() : condition.getPenaltyType();
-        
-        // 获取码表值
-        CodeTable codeTable = codeTableRepository.findByCodeName(rewardType);
-        if (codeTable == null) {
-            throw new RuntimeException("未找到奖惩类型: " + rewardType);
+        if ("CASH".equals(condition.getRewardMode())) {
+            // 现金奖励模式
+            distributeCashReward(condition, qualifiedTeams, results);
+        } else {
+            // 码表奖励模式（默认）
+            distributeCodeTableReward(condition, qualifiedTeams, results);
+        }
+    }
+    
+    /**
+     * 分配现金奖励
+     */
+    private void distributeCashReward(RewardCondition condition, List<String> qualifiedTeams, List<SettlementResult> results) {
+        BigDecimal totalCashAmount = condition.getCashRewardAmount();
+        if (totalCashAmount == null) {
+            throw new RuntimeException("现金奖励金额不能为空");
         }
         
-        // 计算数量（每个队伍分得的数量），保留3位小数
-        BigDecimal quantity = BigDecimal.valueOf(1.0).divide(BigDecimal.valueOf(qualifiedTeams.size()), 3, BigDecimal.ROUND_HALF_UP);
+        // 计算每个队伍分得的现金金额，保留2位小数
+        BigDecimal cashPerTeam = totalCashAmount.divide(BigDecimal.valueOf(qualifiedTeams.size()), 2, BigDecimal.ROUND_HALF_UP);
+        
+        // 为每个队伍创建结算结果
+        for (String teamName : qualifiedTeams) {
+            SettlementResult result = new SettlementResult();
+            result.setTeamName(teamName);
+            result.setRewardType("现金"); // 现金奖励标识
+            result.setQuantity(1.0); // 现金奖励数量固定为1
+            result.setMultiplier(cashPerTeam); // 使用multiplier存储现金金额
+            result.setRewardDescription("现金" + (cashPerTeam.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + cashPerTeam + "元");
+            result.setAmount(cashPerTeam); // 现金金额
+            results.add(result);
+        }
+    }
+    
+    /**
+     * 分配码表奖励（支持"双"前缀的数量翻倍）
+     */
+    private void distributeCodeTableReward(RewardCondition condition, List<String> qualifiedTeams, List<SettlementResult> results) {
+        String rewardType = "胜利".equals(condition.getTaskStatus()) ? condition.getRewardType() : condition.getPenaltyType();
+        
+        // 解析奖励类型和数量倍数
+        String baseRewardType = rewardType;
+        BigDecimal quantityMultiplier = BigDecimal.ONE;
+        
+        if (rewardType.startsWith("双")) {
+            baseRewardType = rewardType.substring(1); // 去掉"双"前缀
+            quantityMultiplier = BigDecimal.valueOf(2.0); // 数量翻倍
+        }
+        
+        // 获取基础码表值
+        CodeTable codeTable = codeTableRepository.findByCodeName(baseRewardType);
+        if (codeTable == null) {
+            throw new RuntimeException("未找到基础奖惩类型: " + baseRewardType);
+        }
+        
+        // 码表奖励：并列队伍不平分，每队都获得完整奖励
+        BigDecimal baseQuantity = BigDecimal.valueOf(1.0); // 基础数量
+        BigDecimal finalQuantity = baseQuantity.multiply(quantityMultiplier); // 最终数量
         
         // 计算倍数（保持向后兼容）
-        BigDecimal multiplier = quantity;
+        BigDecimal multiplier = finalQuantity;
         
         // 计算金额（保持向后兼容）
         BigDecimal amount = BigDecimal.valueOf(codeTable.getCodeValue()).multiply(multiplier);
@@ -966,10 +1052,10 @@ public class AttendanceController {
         for (String teamName : qualifiedTeams) {
             SettlementResult result = new SettlementResult();
             result.setTeamName(teamName);
-            result.setRewardType(rewardType); // 码表值，如"双花"、"花"、"屎"
-            result.setQuantity(quantity.doubleValue()); // 数量，转换为Double
+            result.setRewardType(baseRewardType); // 保存基础类型，如"花"、"屎"（用于数据库存储和合成）
+            result.setQuantity(finalQuantity.doubleValue()); // 保存最终数量，如2.0
             result.setMultiplier(multiplier); // 保持向后兼容
-            result.setRewardDescription(rewardType + "✖️" + multiplier);
+            result.setRewardDescription(rewardType); // 前端显示用原始类型，如"双花"、"花"
             result.setAmount(amount); // 保持向后兼容
             results.add(result);
         }
@@ -1200,20 +1286,14 @@ public class AttendanceController {
 
             // 初始化奖励码表
             List<CodeTable> rewardCodes = Arrays.asList(
-                new CodeTable("花瓣", 72, "REWARD", "花瓣奖励"),
-                new CodeTable("双花瓣", 144, "REWARD", "双花瓣奖励"),
-                new CodeTable("花", 216, "REWARD", "花奖励"),
-                new CodeTable("双花", 432, "REWARD", "双花奖励"),
-                new CodeTable("钱袋", 648, "REWARD", "钱袋奖励")
+                new CodeTable("花瓣", 0, "REWARD", "花瓣奖励"),
+                new CodeTable("花", 0, "REWARD", "花奖励")
             );
 
             // 初始化处罚码表
             List<CodeTable> penaltyCodes = Arrays.asList(
-                new CodeTable("屎粒", -72, "PENALTY", "屎粒处罚"),
-                new CodeTable("双屎粒", -144, "PENALTY", "双屎粒处罚"),
-                new CodeTable("屎", -216, "PENALTY", "屎处罚"),
-                new CodeTable("双屎", -432, "PENALTY", "双屎处罚"),
-                new CodeTable("粪汤", -648, "PENALTY", "粪汤处罚")
+                new CodeTable("屎粒", 0, "PENALTY", "屎粒处罚"),
+                new CodeTable("屎", 0, "PENALTY", "屎处罚")
             );
 
             // 保存所有码表
@@ -1374,18 +1454,44 @@ public class AttendanceController {
             for (SettlementResult result : settlementResults) {
                 SettlementRecord record = new SettlementRecord();
                 record.setTeamName(result.getTeamName());
-                record.setCodeValue(result.getRewardType()); // 保存具体的码表值，如"花"、"屎"
-                record.setQuantity(result.getQuantity()); // 保存数量
+                record.setCodeValue(result.getRewardType()); // 保存具体的码表值，如"花"、"屎"或"现金"
+                record.setQuantity(BigDecimal.valueOf(result.getQuantity())); // 保存数量，转换为BigDecimal
                 record.setSettlementBatchId(settlementBatchId); // 设置结算批次ID
                 record.setAttendanceSession(session);
+                
+                // 判断是否为现金奖励
+                if ("现金".equals(result.getRewardType())) {
+                    record.setCashAmount(result.getAmount()); // 保存现金金额
+                    record.setRewardMode("CASH"); // 设置为现金模式
+                } else {
+                    record.setRewardMode("CODE_TABLE"); // 设置为码表模式
+                }
                 
                 records.add(record);
                 
                 // 构建日志内容
                 settlementContent.append(result.getTeamName())
-                        .append(": ").append(result.getRewardType())
-                        .append(" x").append(result.getQuantity())
-                        .append("; ");
+                        .append(": ");
+                
+                if ("现金".equals(result.getRewardType())) {
+                    // 现金奖励显示具体金额
+                    BigDecimal amount = result.getAmount();
+                    if (amount != null) {
+                        settlementContent.append("现金")
+                                .append(amount.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
+                                .append(amount)
+                                .append("元");
+                    } else {
+                        settlementContent.append("现金 x").append(result.getQuantity());
+                    }
+                } else {
+                    // 码表奖励显示类型和数量
+                    settlementContent.append(result.getRewardType())
+                            .append(" x")
+                            .append(result.getQuantity());
+                }
+                
+                settlementContent.append("; ");
             }
             
             settlementRecordRepository.saveAll(records);
@@ -1405,6 +1511,20 @@ public class AttendanceController {
             session.setStatus(SessionStatus.SETTLED);
             attendanceSessionRepository.save(session);
             System.out.println("更新考勤记录状态为已结算");
+            
+            // 执行合成检查，传递触发批次ID和考勤会话ID
+            try {
+                synthesisService.checkAndPerformSynthesis(
+                    session.getSeason().getId(), 
+                    settlementBatchId, 
+                    session.getId()
+                );
+                System.out.println("合成检查完成");
+            } catch (Exception e) {
+                System.err.println("合成检查失败: " + e.getMessage());
+                e.printStackTrace();
+                // 合成失败不影响结算成功
+            }
             
             return ResponseEntity.ok("结算执行成功，共处理 " + records.size() + " 条记录");
         } catch (Exception e) {
@@ -1475,20 +1595,40 @@ public class AttendanceController {
                 return ResponseEntity.badRequest().body("该考勤记录没有结算记录可以撤销");
             }
             
-            System.out.println("开始撤销结算，考勤记录ID: " + sessionId + ", 批次ID: " + latestBatchId + ", 结算记录数量: " + records.size());
+            System.out.println("开始撤销结算，考勤记录ID: " + sessionId + ", 批次ID: " + latestBatchId);
             
-            settlementRecordRepository.deleteAll(records);
-            System.out.println("删除了 " + records.size() + " 条结算记录（批次: " + latestBatchId + "）");
+            // 分析撤销影响
+            CascadeRevocationService.RevocationImpactAnalysis analysis = 
+                cascadeRevocationService.analyzeRevocationImpact(latestBatchId);
             
             // 构建撤销日志内容，体现具体的撤销内容
             StringBuilder revokeContent = new StringBuilder();
             revokeContent.append("撤销结算，删除了以下结算记录：");
-            for (SettlementRecord record : records) {
+            
+            // 记录直接删除的记录
+            for (SettlementRecord record : analysis.getDirectRecords()) {
                 revokeContent.append(record.getTeamName())
-                        .append(": ").append(record.getCodeValue())
-                        .append(" x").append(record.getQuantity())
-                        .append("; ");
+                        .append(": ");
+                if ("CASH".equals(record.getRewardMode())) {
+                    revokeContent.append("现金").append(record.getCashAmount()).append("元");
+                } else {
+                    revokeContent.append(record.getCodeValue())
+                            .append(" x").append(record.getQuantity());
+                }
+                revokeContent.append("; ");
             }
+            
+            // 如果有级联影响，记录合成撤销信息
+            if (analysis.isHasImpact()) {
+                revokeContent.append(" 级联撤销合成：删除了")
+                        .append(analysis.getSynthesisRecordsToDelete().size())
+                        .append("条合成记录，恢复了")
+                        .append(analysis.getRecordsToRestore().size())
+                        .append("条原始记录");
+            }
+            
+            // 执行级联撤销
+            cascadeRevocationService.executeRevocationWithCascade(latestBatchId);
             
             // 记录撤销日志
             SettlementLog log = new SettlementLog();
@@ -1505,11 +1645,326 @@ public class AttendanceController {
             attendanceSessionRepository.save(session);
             System.out.println("更新考勤记录状态为已保存");
             
-            return ResponseEntity.ok("结算撤销成功，删除了 " + records.size() + " 条记录");
+            String resultMessage = "结算撤销成功，删除了 " + analysis.getDirectRecords().size() + " 条记录";
+            if (analysis.isHasImpact()) {
+                resultMessage += "，级联撤销了 " + analysis.getAffectedChains().size() + " 个合成链";
+            }
+            
+            return ResponseEntity.ok(resultMessage);
         } catch (Exception e) {
             System.err.println("撤销结算失败: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.badRequest().body("撤销结算失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取赛季榜单数据 - 按小组统计总奖金
+     */
+    @GetMapping("/seasons/{seasonId}/ranking")
+    public ResponseEntity<Map<String, Object>> getSeasonRanking(@PathVariable Long seasonId) {
+        try {
+            // 验证赛季是否存在
+            Season season = seasonRepository.findById(seasonId)
+                    .orElseThrow(() -> new RuntimeException("未找到赛季: " + seasonId));
+            
+            // 获取该赛季所有已结算的考勤记录的结算记录
+            List<SettlementRecord> settlementRecords = settlementRecordRepository.findBySeasonId(seasonId);
+            
+            if (settlementRecords.isEmpty()) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("seasonName", season.getName());
+                response.put("rankingData", new ArrayList<>());
+                response.put("totalTeams", 0);
+                return ResponseEntity.ok(response);
+            }
+            
+            // 按小组聚合计算总奖金
+            Map<String, Double> teamTotalRewards = new HashMap<>();
+            
+            for (SettlementRecord record : settlementRecords) {
+                String teamName = record.getTeamName();
+                double rewardAmount;
+                
+                if ("CASH".equals(record.getRewardMode())) {
+                    // 现金奖励：直接使用现金金额
+                    rewardAmount = record.getCashAmount() != null ? record.getCashAmount().doubleValue() : 0.0;
+                } else {
+                    // 码表奖励：数量 × 码表值
+                    String codeValue = record.getCodeValue();
+                    BigDecimal quantity = record.getQuantity();
+                    
+                    CodeTable codeTable = codeTableRepository.findByCodeName(codeValue);
+                    if (codeTable != null) {
+                        rewardAmount = quantity.doubleValue() * codeTable.getCodeValue();
+                    } else {
+                        rewardAmount = 0.0;
+                    }
+                }
+                
+                teamTotalRewards.merge(teamName, rewardAmount, Double::sum);
+            }
+            
+            // 转换为榜单数据格式并排序
+            List<Map<String, Object>> rankingData = teamTotalRewards.entrySet().stream()
+                    .map(entry -> {
+                        Map<String, Object> teamData = new HashMap<>();
+                        teamData.put("teamName", entry.getKey());
+                        teamData.put("totalReward", Math.round(entry.getValue() * 100.0) / 100.0); // 保留2位小数
+                        return teamData;
+                    })
+                    .sorted((a, b) -> Double.compare((Double) b.get("totalReward"), (Double) a.get("totalReward"))) // 按总奖金降序排列
+                    .collect(Collectors.toList());
+            
+            // 添加排名
+            for (int i = 0; i < rankingData.size(); i++) {
+                rankingData.get(i).put("rank", i + 1);
+            }
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("seasonName", season.getName());
+            response.put("rankingData", rankingData);
+            response.put("totalTeams", rankingData.size());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            System.err.println("获取赛季榜单失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(Map.of("error", "获取赛季榜单失败: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 获取赛季结算明细 - 显示所有结算记录的详细信息
+     */
+    @GetMapping("/seasons/{seasonId}/settlement-details")
+    public ResponseEntity<Map<String, Object>> getSeasonSettlementDetails(
+            @PathVariable Long seasonId,
+            @RequestParam(required = false) String teams,
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
+        try {
+            // 验证赛季是否存在
+            Season season = seasonRepository.findById(seasonId)
+                    .orElseThrow(() -> new RuntimeException("未找到赛季: " + seasonId));
+            
+            // 获取该赛季所有的结算记录
+            List<SettlementRecord> allSettlementRecords = settlementRecordRepository.findBySeasonId(seasonId);
+            
+            // 获取所有团队名称
+            Set<String> allTeamNamesSet = allSettlementRecords.stream()
+                    .map(SettlementRecord::getTeamName)
+                    .collect(Collectors.toSet());
+            List<String> allTeamNames = new ArrayList<>(allTeamNamesSet);
+            allTeamNames.sort(String::compareTo); // 按字母排序
+            
+            // 应用筛选条件
+            List<SettlementRecord> filteredRecords = allSettlementRecords.stream()
+                    .filter(record -> {
+                        // 团队筛选
+                        if (teams != null && !teams.trim().isEmpty()) {
+                            List<String> selectedTeams = Arrays.asList(teams.split(","));
+                            if (!selectedTeams.contains(record.getTeamName())) {
+                                return false;
+                            }
+                        }
+                        
+                        // 时间筛选
+                        LocalDateTime recordTime = record.getCreatedAt();
+                        
+                        if (startDate != null && !startDate.trim().isEmpty()) {
+                            try {
+                                LocalDate start = LocalDate.parse(startDate);
+                                LocalDateTime startDateTime = start.atStartOfDay(); // 00:00:00
+                                if (recordTime.isBefore(startDateTime)) {
+                                    return false;
+                                }
+                            } catch (Exception e) {
+                                System.err.println("解析开始日期失败: " + startDate);
+                            }
+                        }
+                        
+                        if (endDate != null && !endDate.trim().isEmpty()) {
+                            try {
+                                LocalDate end = LocalDate.parse(endDate);
+                                LocalDateTime endDateTime = end.atTime(23, 59, 59); // 23:59:59
+                                if (recordTime.isAfter(endDateTime)) {
+                                    return false;
+                                }
+                            } catch (Exception e) {
+                                System.err.println("解析结束日期失败: " + endDate);
+                            }
+                        }
+                        
+                        return true;
+                    })
+                    .sorted((a, b) -> b.getCreatedAt().compareTo(a.getCreatedAt())) // 按创建时间倒序排序
+                    .collect(Collectors.toList());
+            
+            // 转换为前端需要的格式
+            List<Map<String, Object>> detailsList = filteredRecords.stream()
+                    .map(record -> {
+                        Map<String, Object> detail = new HashMap<>();
+                        
+                        // 格式化结算时间
+                        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+                        detail.put("settlementTime", record.getCreatedAt().format(formatter));
+                        
+                        // 团队名称
+                        detail.put("teamName", record.getTeamName());
+                        
+                        // 奖惩详情
+                        if ("CASH".equals(record.getRewardMode())) {
+                            // 现金奖励显示具体金额
+                            BigDecimal cashAmount = record.getCashAmount();
+                            if (cashAmount != null) {
+                                detail.put("codeValue", "现金");
+                                detail.put("quantity", (cashAmount.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + cashAmount + "元");
+                            } else {
+                                detail.put("codeValue", record.getCodeValue());
+                                detail.put("quantity", record.getQuantity());
+                            }
+                        } else {
+                            // 码表奖励显示基础类型和数量，便于合成逻辑
+                            detail.put("codeValue", record.getCodeValue()); // 基础类型，如"花"
+                            detail.put("quantity", record.getQuantity()); // 数量，如2.0
+                        }
+                        
+                        // 标记记录类型
+                        detail.put("isSynthetic", record.getIsSynthetic());
+                        if (Boolean.TRUE.equals(record.getIsSynthetic())) {
+                            detail.put("synthesisType", "合成记录");
+                        } else if ("SYNTHESIZED".equals(record.getRecordStatus())) {
+                            detail.put("synthesisType", "已合成");
+                        } else {
+                            detail.put("synthesisType", "原始记录");
+                        }
+                        
+                        // 考勤名称
+                        detail.put("attendanceName", record.getAttendanceSession().getName());
+                        
+                        return detail;
+                    })
+                    .collect(Collectors.toList());
+            
+            // 构建响应数据
+            Map<String, Object> response = new HashMap<>();
+            response.put("details", detailsList);
+            response.put("allTeamNames", allTeamNames);
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            System.err.println("获取赛季结算明细失败: " + e.getMessage());
+            e.printStackTrace();
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("details", new ArrayList<>());
+            errorResponse.put("allTeamNames", new ArrayList<>());
+            return ResponseEntity.badRequest().body(errorResponse);
+        }
+    }
+    
+    /**
+     * 手动触发合成检查（用于调试）
+     */
+    @PostMapping("/seasons/{seasonId}/trigger-synthesis")
+    public ResponseEntity<String> triggerSynthesis(@PathVariable Long seasonId) {
+        try {
+            synthesisService.checkAndPerformSynthesis(seasonId);
+            return ResponseEntity.ok("合成检查完成");
+        } catch (Exception e) {
+            System.err.println("手动合成检查失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body("合成检查失败: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 获取赛季队伍物品统计 - 显示各队伍当前活跃的物品数量
+     */
+    @GetMapping("/seasons/{seasonId}/team-items-summary")
+    public ResponseEntity<Map<String, Object>> getTeamItemsSummary(@PathVariable Long seasonId) {
+        try {
+            // 验证赛季是否存在
+            Season season = seasonRepository.findById(seasonId)
+                    .orElseThrow(() -> new RuntimeException("未找到赛季: " + seasonId));
+            
+            // 获取该赛季所有活跃状态的结算记录
+            List<SettlementRecord> activeRecords = settlementRecordRepository.findBySeasonId(seasonId)
+                    .stream()
+                    .filter(record -> "ACTIVE".equals(record.getRecordStatus()))
+                    .collect(Collectors.toList());
+            
+            if (activeRecords.isEmpty()) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("seasonName", season.getName());
+                response.put("teamsSummary", new ArrayList<>());
+                response.put("totalTeams", 0);
+                return ResponseEntity.ok(response);
+            }
+            
+            // 按队伍分组统计
+            Map<String, Map<String, Double>> teamItemsMap = new HashMap<>();
+            
+            for (SettlementRecord record : activeRecords) {
+                String teamName = record.getTeamName();
+                
+                // 为每个队伍初始化物品统计
+                teamItemsMap.putIfAbsent(teamName, new HashMap<>());
+                Map<String, Double> itemsMap = teamItemsMap.get(teamName);
+                
+                // 初始化所有物品类型为0
+                itemsMap.putIfAbsent("花瓣", 0.0);
+                itemsMap.putIfAbsent("花", 0.0);
+                itemsMap.putIfAbsent("屎粒", 0.0);
+                itemsMap.putIfAbsent("屎", 0.0);
+                itemsMap.putIfAbsent("现金", 0.0);
+                
+                if ("CASH".equals(record.getRewardMode())) {
+                    // 现金奖励：累加现金金额
+                    BigDecimal cashAmount = record.getCashAmount();
+                    if (cashAmount != null) {
+                        itemsMap.put("现金", itemsMap.get("现金") + cashAmount.doubleValue());
+                    }
+                } else {
+                    // 码表奖励：累加数量
+                    String codeValue = record.getCodeValue();
+                    if (codeValue != null) {
+                        BigDecimal quantity = record.getQuantity();
+                        if (quantity != null) {
+                            itemsMap.put(codeValue, itemsMap.get(codeValue) + quantity.doubleValue());
+                        }
+                    }
+                }
+            }
+            
+            // 转换为前端需要的格式
+            List<Map<String, Object>> teamsSummary = teamItemsMap.entrySet().stream()
+                    .map(entry -> {
+                        Map<String, Object> teamSummary = new HashMap<>();
+                        teamSummary.put("teamName", entry.getKey());
+                        
+                        Map<String, Double> items = entry.getValue();
+                        teamSummary.put("花瓣", Math.round(items.get("花瓣") * 1000.0) / 1000.0); // 保留3位小数
+                        teamSummary.put("花", Math.round(items.get("花") * 1000.0) / 1000.0);
+                        teamSummary.put("屎粒", Math.round(items.get("屎粒") * 1000.0) / 1000.0);
+                        teamSummary.put("屎", Math.round(items.get("屎") * 1000.0) / 1000.0);
+                        teamSummary.put("现金", Math.round(items.get("现金") * 100.0) / 100.0); // 现金保留2位小数
+                        
+                        return teamSummary;
+                    })
+                    .sorted((a, b) -> ((String) a.get("teamName")).compareTo((String) b.get("teamName"))) // 按队伍名称排序
+                    .collect(Collectors.toList());
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("seasonName", season.getName());
+            response.put("teamsSummary", teamsSummary);
+            response.put("totalTeams", teamsSummary.size());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            System.err.println("获取队伍物品统计失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(Map.of("error", "获取队伍物品统计失败: " + e.getMessage()));
         }
     }
 }

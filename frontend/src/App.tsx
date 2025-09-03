@@ -672,12 +672,14 @@ function App() {
   const [attendanceRateSuccess, setAttendanceRateSuccess] = useState<number | ''>('')
   const [attendanceRankSuccess, setAttendanceRankSuccess] = useState<string>('')
   const [meritRankSuccess, setMeritRankSuccess] = useState<string>('')
-  const [rewardTypeSuccess, setRewardTypeSuccess] = useState<string>('钱袋')
+  const [rewardTypeSuccess, setRewardTypeSuccess] = useState<string>('花')
+  const [rewardMode, setRewardMode] = useState<string>('CODE_TABLE') // 奖励模式
+  const [cashRewardAmount, setCashRewardAmount] = useState<number>(0) // 现金奖励金额
 
   // 新增状态：用于"失败"情况下的表单字段
   const [attendanceRateFailure, setAttendanceRateFailure] = useState<number | ''>('')
   const [attendanceRankFailure, setAttendanceRankFailure] = useState<string>('')
-  const [penaltyTypeFailure, setPenaltyTypeFailure] = useState<string>('粪汤') // 默认值
+  const [penaltyTypeFailure, setPenaltyTypeFailure] = useState<string>('屎') // 默认值
 
   // 新增状态：奖惩条件管理
   const [rewardConditions, setRewardConditions] = useState<any[]>([])
@@ -742,6 +744,20 @@ function App() {
   const [rankingSeasonSearchTerm, setRankingSeasonSearchTerm] = useState('')
   const [showRankingSeasonDropdown, setShowRankingSeasonDropdown] = useState(false)
   
+  // 榜单数据相关状态
+  const [rankingData, setRankingData] = useState<any[]>([])
+  const [loadingRankingData, setLoadingRankingData] = useState(false)
+  const [rankingSeasonName, setRankingSeasonName] = useState('')
+  
+  // 结算明细相关状态
+  const [showDetailModal, setShowDetailModal] = useState(false)
+  const [settlementDetails, setSettlementDetails] = useState<any[]>([])
+  const [loadingDetails, setLoadingDetails] = useState(false)
+  const [allTeamNames, setAllTeamNames] = useState<string[]>([]) // 所有团队名称
+  const [selectedTeams, setSelectedTeams] = useState<string[]>([]) // 选中的团队
+  const [startDate, setStartDate] = useState('') // 开始日期
+  const [endDate, setEndDate] = useState('') // 结束日期
+  
   // 奖惩结算相关状态
   const [settlementRewardConditions, setSettlementRewardConditions] = useState<any[]>([])
   const [loadingSettlementConditions, setLoadingSettlementConditions] = useState(false)
@@ -752,6 +768,9 @@ function App() {
   
   // 查看日志相关状态
   const [showLogModal, setShowLogModal] = useState(false)
+  const [showTeamItemsModal, setShowTeamItemsModal] = useState(false)
+  const [teamItemsSummary, setTeamItemsSummary] = useState<any[]>([])
+  const [loadingTeamItems, setLoadingTeamItems] = useState(false)
   const [settlementLogs, setSettlementLogs] = useState<any[]>([])
   const [loadingLogs, setLoadingLogs] = useState(false)
   const [currentLogPage, setCurrentLogPage] = useState(0)
@@ -765,12 +784,12 @@ function App() {
     if (status === '胜利') {
       setAttendanceRateFailure('')
       setAttendanceRankFailure('')
-      setPenaltyTypeFailure('粪汤')
+      setPenaltyTypeFailure('屎')
     } else { // status === '失败'
       setAttendanceRateSuccess('')
       setAttendanceRankSuccess('')
       setMeritRankSuccess('')
-      setRewardTypeSuccess('钱袋')
+      setRewardTypeSuccess('花')
     }
   }
 
@@ -1132,8 +1151,12 @@ function App() {
         alert('出勤率排名和战功增量排名只能选择一个，不能同时选择两个排名')
         return false
       }
-      if (!rewardTypeSuccess) {
+      if (rewardMode === 'CODE_TABLE' && !rewardTypeSuccess) {
         alert('请选择奖励类型')
+        return false
+      }
+      if (rewardMode === 'CASH' && (!cashRewardAmount || cashRewardAmount === 0)) {
+        alert('请填写现金奖励金额')
         return false
       }
     } else {
@@ -1174,8 +1197,10 @@ function App() {
       attendanceRateThreshold: taskStatus === '胜利' ? attendanceRateSuccess : attendanceRateFailure,
       attendanceRateRank: taskStatus === '胜利' ? (attendanceRankSuccess || null) : attendanceRankFailure,
       meritIncreaseRank: taskStatus === '胜利' ? (meritRankSuccess || null) : null,
-      rewardType: taskStatus === '胜利' ? rewardTypeSuccess : null,
-      penaltyType: taskStatus === '失败' ? penaltyTypeFailure : null
+      rewardType: taskStatus === '胜利' ? (rewardMode === 'CODE_TABLE' ? rewardTypeSuccess : null) : null,
+      penaltyType: taskStatus === '失败' ? penaltyTypeFailure : null,
+      cashRewardAmount: taskStatus === '胜利' && rewardMode === 'CASH' ? cashRewardAmount : null,
+      rewardMode: taskStatus === '胜利' ? rewardMode : 'CODE_TABLE'
     }
 
     console.log('请求数据:', requestData)
@@ -1238,11 +1263,16 @@ function App() {
       setAttendanceRateSuccess(condition.attendanceRateThreshold || '')
       setAttendanceRankSuccess(condition.attendanceRateRank ? String(condition.attendanceRateRank) : '')
       setMeritRankSuccess(condition.meritIncreaseRank ? String(condition.meritIncreaseRank) : '')
-              setRewardTypeSuccess(condition.rewardType || '钱袋')
+      setRewardMode(condition.rewardMode || 'CODE_TABLE')
+      if (condition.rewardMode === 'CASH') {
+        setCashRewardAmount(condition.cashRewardAmount || 0)
+      } else {
+        setRewardTypeSuccess(condition.rewardType || '花')
+      }
     } else {
       setAttendanceRateFailure(condition.attendanceRateThreshold || '')
       setAttendanceRankFailure(condition.attendanceRateRank ? String(condition.attendanceRateRank) : '')
-              setPenaltyTypeFailure(condition.penaltyType || '粪汤')
+      setPenaltyTypeFailure(condition.penaltyType || '屎')
     }
   }
 
@@ -1261,8 +1291,10 @@ function App() {
       attendanceRateThreshold: taskStatus === '胜利' ? attendanceRateSuccess : attendanceRateFailure,
       attendanceRateRank: taskStatus === '胜利' ? (attendanceRankSuccess || null) : attendanceRankFailure,
       meritIncreaseRank: taskStatus === '胜利' ? (meritRankSuccess || null) : null,
-      rewardType: taskStatus === '胜利' ? rewardTypeSuccess : null,
-      penaltyType: taskStatus === '失败' ? penaltyTypeFailure : null
+      rewardType: taskStatus === '胜利' ? (rewardMode === 'CODE_TABLE' ? rewardTypeSuccess : null) : null,
+      penaltyType: taskStatus === '失败' ? penaltyTypeFailure : null,
+      cashRewardAmount: taskStatus === '胜利' && rewardMode === 'CASH' ? cashRewardAmount : null,
+      rewardMode: taskStatus === '胜利' ? rewardMode : 'CODE_TABLE'
     }
 
     try {
@@ -1337,10 +1369,10 @@ function App() {
     setAttendanceRateSuccess('')
     setAttendanceRankSuccess('')
     setMeritRankSuccess('')
-    setRewardTypeSuccess('钱袋')
+    setRewardTypeSuccess('花')
     setAttendanceRateFailure('')
     setAttendanceRankFailure('')
-    setPenaltyTypeFailure('粪汤')
+    setPenaltyTypeFailure('屎')
     setEditingCondition(null)
   }
 
@@ -1592,7 +1624,11 @@ function App() {
         method: 'DELETE'
       })
       
-      if (!resp.ok) throw new Error(`删除失败: ${resp.status}`)
+      if (!resp.ok) {
+        // 读取后端返回的具体错误信息
+        const errorMessage = await resp.text()
+        throw new Error(errorMessage || `删除失败: ${resp.status}`)
+      }
       
       setError(null)
       // 刷新会话列表
@@ -1602,6 +1638,9 @@ function App() {
       setSessionToDelete(null)
     } catch (err: any) {
       setError(err?.message ?? '删除失败')
+      // 删除失败时也关闭弹框，让用户能看到错误信息
+      setShowDeleteConfirm(false)
+      setSessionToDelete(null)
     }
   }
 
@@ -1812,6 +1851,9 @@ function App() {
     setRankingSeasonSearchTerm('') // 清空搜索词
     setShowRankingSeasonDropdown(false)
     
+    // 加载该赛季的榜单数据
+    loadRankingData(season.id)
+    
     // 如果日志弹窗是打开的，重新加载日志
     if (showLogModal) {
       loadSettlementLogs(0)
@@ -1953,6 +1995,36 @@ function App() {
   }
 
   // 加载结算日志
+  // 加载队伍物品统计
+  const loadTeamItemsSummary = async () => {
+    console.log('loadTeamItemsSummary 被调用，rankingSeasonId:', rankingSeasonId)
+    if (!rankingSeasonId) {
+      console.error('未选择赛季')
+      return
+    }
+    
+    setLoadingTeamItems(true)
+    try {
+      const url = `http://localhost:8080/api/v1/attendance/seasons/${rankingSeasonId}/team-items-summary`
+      console.log('请求URL:', url)
+      const response = await fetch(url)
+      console.log('响应状态:', response.status)
+      if (response.ok) {
+        const data = await response.json()
+        console.log('收到数据:', data)
+        setTeamItemsSummary(data.teamsSummary || [])
+      } else {
+        console.error('加载队伍物品统计失败:', response.status)
+        setTeamItemsSummary([])
+      }
+    } catch (error) {
+      console.error('加载队伍物品统计失败:', error)
+      setTeamItemsSummary([])
+    } finally {
+      setLoadingTeamItems(false)
+    }
+  }
+
   const loadSettlementLogs = async (page: number = 0) => {
     setLoadingLogs(true)
     try {
@@ -1986,6 +2058,107 @@ function App() {
   const openLogModal = () => {
     setShowLogModal(true)
     loadSettlementLogs(0)
+  }
+
+  // 加载榜单数据
+  const loadRankingData = async (seasonId: number) => {
+    setLoadingRankingData(true)
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/seasons/${seasonId}/ranking`)
+      if (response.ok) {
+        const data = await response.json()
+        setRankingData(data.rankingData || [])
+        setRankingSeasonName(data.seasonName || '')
+      } else {
+        console.error('获取榜单数据失败')
+        setRankingData([])
+        setRankingSeasonName('')
+      }
+    } catch (error) {
+      console.error('获取榜单数据失败:', error)
+      setRankingData([])
+      setRankingSeasonName('')
+    } finally {
+      setLoadingRankingData(false)
+    }
+  }
+
+  // 加载结算明细数据
+  const loadSettlementDetails = async (seasonId: number, teams: string[] = [], start: string = '', end: string = '') => {
+    setLoadingDetails(true)
+    try {
+      let url = `http://localhost:8080/api/v1/attendance/seasons/${seasonId}/settlement-details`
+      const params = new URLSearchParams()
+      
+      if (teams.length > 0) {
+        params.append('teams', teams.join(','))
+      }
+      if (start) {
+        params.append('startDate', start)
+      }
+      if (end) {
+        params.append('endDate', end)
+      }
+      
+      if (params.toString()) {
+        url += '?' + params.toString()
+      }
+      
+      const response = await fetch(url)
+      if (response.ok) {
+        const data = await response.json()
+        setSettlementDetails(data.details || [])
+        // 获取所有团队名称用于筛选
+        if (data.allTeamNames) {
+          setAllTeamNames(data.allTeamNames)
+        }
+      } else {
+        console.error('获取结算明细失败')
+        setSettlementDetails([])
+      }
+    } catch (error) {
+      console.error('获取结算明细失败:', error)
+      setSettlementDetails([])
+    } finally {
+      setLoadingDetails(false)
+    }
+  }
+
+  // 打开结算明细弹窗
+  const openDetailModal = () => {
+    if (rankingSeasonId) {
+      setShowDetailModal(true)
+      // 重置筛选条件
+      setSelectedTeams([])
+      setStartDate('')
+      setEndDate('')
+      loadSettlementDetails(rankingSeasonId)
+    }
+  }
+
+  // 应用筛选条件
+  const applyFilters = () => {
+    if (rankingSeasonId) {
+      loadSettlementDetails(rankingSeasonId, selectedTeams, startDate, endDate)
+    }
+  }
+
+  // 团队选择处理
+  const handleTeamSelection = (teamName: string, isSelected: boolean) => {
+    if (isSelected) {
+      setSelectedTeams([...selectedTeams, teamName])
+    } else {
+      setSelectedTeams(selectedTeams.filter(t => t !== teamName))
+    }
+  }
+
+  // 全选/取消全选团队
+  const toggleAllTeams = () => {
+    if (selectedTeams.length === allTeamNames.length) {
+      setSelectedTeams([])
+    } else {
+      setSelectedTeams([...allTeamNames])
+    }
   }
 
   // 处理日志分页
@@ -2186,6 +2359,20 @@ function App() {
       {activeTab === 'view' && (
       <div>
           <h2>查看考勤记录</h2>
+          
+          {/* 错误提示 */}
+          {error && (
+            <div style={{ 
+              color: '#ff6b6b', 
+              marginBottom: '12px', 
+              padding: '8px 12px', 
+              background: '#4a2d2d', 
+              borderRadius: '4px',
+              border: '1px solid #ff6b6b'
+            }}>
+              错误：{error}
+            </div>
+          )}
           
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -3391,8 +3578,8 @@ function App() {
                     </p>
                     <p style={{ margin: '8px 0', color: '#fff' }}>
                       <strong>战役结果：</strong>{selectedSession.battleResult === 'VICTORY' ? '胜利' : '失败'}
-                    </p>
-                  </div>
+        </p>
+      </div>
                 </div>
                 
                 {/* 奖惩条件表单 */}
@@ -3518,12 +3705,12 @@ function App() {
                           <span style={{ color: '#000' }}>名</span>
                         </div>
                         
-                        {/* 第五行：奖励 */}
+                        {/* 第五行：奖励模式 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>奖励</label>
+                          <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>奖励模式</label>
                           <select 
-                            value={rewardTypeSuccess}
-                            onChange={(e) => setRewardTypeSuccess(e.target.value)}
+                            value={rewardMode}
+                            onChange={(e) => setRewardMode(e.target.value)}
                             style={{ 
                               padding: '8px 12px', 
                               border: '2px solid #007bff', 
@@ -3533,10 +3720,55 @@ function App() {
                               minWidth: '150px'
                             }}
                           >
-                            {rewardCodes.map((code) => (
-                              <option key={code.id} value={code.codeName}>{code.codeName}</option>
-                            ))}
+                            <option value="CODE_TABLE">码表奖励</option>
+                            <option value="CASH">现金奖励</option>
                           </select>
+                        </div>
+                        
+                        {/* 第六行：具体奖励 */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>
+                            {rewardMode === 'CASH' ? '现金金额' : '奖励类型'}
+                          </label>
+                          {rewardMode === 'CASH' ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <input 
+                                type="number"
+                                value={cashRewardAmount}
+                                onChange={(e) => setCashRewardAmount(parseFloat(e.target.value) || 0)}
+                                placeholder="输入现金金额（可正可负）"
+                                style={{ 
+                                  padding: '8px 12px', 
+                                  border: '2px solid #007bff', 
+                                  borderRadius: '4px', 
+                                  color: '#dc3545', 
+                                  background: '#fff',
+                                  minWidth: '200px'
+                                }}
+                              />
+                              <span style={{ color: '#000' }}>元</span>
+                            </div>
+                          ) : (
+                            <select 
+                              value={rewardTypeSuccess}
+                              onChange={(e) => setRewardTypeSuccess(e.target.value)}
+                              style={{ 
+                                padding: '8px 12px', 
+                                border: '2px solid #007bff', 
+                                borderRadius: '4px', 
+                                color: '#dc3545', 
+                                background: '#fff',
+                                minWidth: '150px'
+                              }}
+                            >
+                              {rewardCodes.map((code) => (
+                                <option key={code.id} value={code.codeName}>{code.codeName}</option>
+                              ))}
+                              {/* 手动添加"双"前缀选项 */}
+                              <option value="双花瓣">双花瓣</option>
+                              <option value="双花">双花</option>
+                            </select>
+                          )}
                         </div>
                       </>
                     )}
@@ -3606,6 +3838,9 @@ function App() {
                             {penaltyCodes.map((code) => (
                               <option key={code.id} value={code.codeName}>{code.codeName}</option>
                             ))}
+                            {/* 手动添加"双"前缀选项 */}
+                            <option value="双屎粒">双屎粒</option>
+                            <option value="双屎">双屎</option>
                           </select>
                         </div>
                       </>
@@ -3688,7 +3923,11 @@ function App() {
                                 )}
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
-                                {condition.taskStatus === '胜利' ? condition.rewardType : condition.penaltyType}
+                                {condition.taskStatus === '胜利' ? (
+                                  condition.rewardMode === 'CASH' ? 
+                                    `现金${condition.cashRewardAmount > 0 ? '+' : ''}${condition.cashRewardAmount}元` : 
+                                    condition.rewardType
+                                ) : condition.penaltyType}
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
                                 <button
@@ -4101,7 +4340,11 @@ function App() {
                                 )}
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
-                                {condition.taskStatus === '胜利' ? condition.rewardType : condition.penaltyType}
+                                {condition.taskStatus === '胜利' ? (
+                                  condition.rewardMode === 'CASH' ? 
+                                    `现金${condition.cashRewardAmount > 0 ? '+' : ''}${condition.cashRewardAmount}元` : 
+                                    condition.rewardType
+                                ) : condition.penaltyType}
                               </td>
                             </tr>
                           ))}
@@ -4415,8 +4658,545 @@ function App() {
             </div>
           </div>
           
-          <div style={{ color: '#fff', textAlign: 'center', padding: '40px' }}>
-            <p>榜单功能正在开发中，敬请期待...</p>
+          {/* 榜单内容 */}
+          {loadingRankingData ? (
+            <div style={{ color: '#fff', textAlign: 'center', padding: '40px' }}>
+              <p>加载中...</p>
+            </div>
+          ) : !rankingSeasonId ? (
+            <div style={{ color: '#fff', textAlign: 'center', padding: '40px' }}>
+              <p>请选择赛季查看榜单</p>
+            </div>
+          ) : rankingData.length === 0 ? (
+            <div style={{ color: '#fff', textAlign: 'center', padding: '40px' }}>
+              <p>该赛季暂无结算数据</p>
+            </div>
+          ) : (
+            <div>
+              {/* 榜单标题 */}
+              <div style={{ marginBottom: '24px', textAlign: 'center' }}>
+                <h3 style={{ color: '#fff', margin: '0 0 8px 0' }}>
+                  {rankingSeasonName} - 小组奖金榜单
+                </h3>
+                <p style={{ color: '#ccc', margin: 0, fontSize: '14px' }}>
+                  共 {rankingData.length} 个小组参与结算
+                </p>
+              </div>
+
+              {/* 柱状图 */}
+              <div style={{ 
+                background: '#3d3d3d', 
+                padding: '20px', 
+                borderRadius: '8px',
+                marginBottom: '20px'
+              }}>
+                <h4 style={{ color: '#fff', margin: '0 0 20px 0', textAlign: 'center' }}>
+                  小组总奖金柱状图
+                </h4>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '8px',
+                  height: '400px',
+                  padding: '0 20px',
+                  overflowX: 'auto',
+                  position: 'relative'
+                }}>
+                  {/* 零轴线 */}
+                  <div style={{
+                    position: 'absolute',
+                    left: '20px',
+                    right: '20px',
+                    top: 'calc(20px + 150px)', // 20px(正值数值) + 150px(正值区域) = 170px，正好是柱子的交界处
+                    height: '1px',
+                    background: '#666',
+                    zIndex: 1
+                  }}></div>
+                  
+                  {rankingData.map((team, index) => {
+                    const maxReward = Math.max(...rankingData.map(t => Math.abs(t.totalReward)))
+                    // 限制柱子最大高度为140px，留10px边距
+                    const maxBarHeight = 140
+                    const barHeight = maxReward > 0 ? Math.min((Math.abs(team.totalReward) / maxReward) * maxBarHeight, maxBarHeight) : 0
+                    const isPositive = team.totalReward >= 0
+                    
+                    return (
+                      <div key={team.teamName} style={{ 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        alignItems: 'center',
+                        minWidth: '80px',
+                        height: '100%',
+                        position: 'relative',
+                        zIndex: 2
+                      }}>
+                        {/* 正值时的数值显示（顶部） */}
+                        <div style={{ 
+                          height: '20px',
+                          display: 'flex',
+                          alignItems: 'flex-end',
+                          justifyContent: 'center'
+                        }}>
+                          {isPositive && (
+                            <div style={{ 
+                              color: '#4caf50',
+                              fontSize: '11px',
+                              fontWeight: 'bold',
+                              textAlign: 'center'
+                            }}>
+                              +{team.totalReward}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* 柱子容器 - 固定300px高度，中间是零轴线 */}
+                        <div style={{
+                          height: '300px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          position: 'relative'
+                        }}>
+                          {/* 上半部分 - 正值区域 */}
+                          <div style={{
+                            height: '150px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'flex-end',
+                            alignItems: 'center'
+                          }}>
+                            {isPositive && (
+                              <div style={{
+                                width: '40px',
+                                height: `${barHeight}px`,
+                                background: `linear-gradient(to top, #4caf50, #81c784)`,
+                                borderRadius: '4px 4px 0 0',
+                                transition: 'all 0.3s ease'
+                              }}>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* 下半部分 - 负值区域 */}
+                          <div style={{
+                            height: '150px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'flex-start',
+                            alignItems: 'center'
+                          }}>
+                            {!isPositive && (
+                              <div style={{
+                                width: '40px',
+                                height: `${barHeight}px`,
+                                background: `linear-gradient(to bottom, #f44336, #e57373)`,
+                                borderRadius: '0 0 4px 4px',
+                                transition: 'all 0.3s ease'
+                              }}>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* 负值时的数值显示（底部） */}
+                        <div style={{ 
+                          height: '20px',
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          justifyContent: 'center'
+                        }}>
+                          {!isPositive && (
+                            <div style={{ 
+                              color: '#f44336',
+                              fontSize: '11px',
+                              fontWeight: 'bold',
+                              textAlign: 'center'
+                            }}>
+                              {team.totalReward}
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* 小组名称 - 始终在底部 */}
+                        <div style={{ 
+                          color: '#fff',
+                          fontSize: '11px',
+                          marginTop: '8px',
+                          textAlign: 'center',
+                          wordBreak: 'break-all',
+                          lineHeight: '1.2'
+                        }}>
+                          {team.teamName}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* 排行榜表格 */}
+              <div style={{ 
+                background: '#3d3d3d', 
+                borderRadius: '8px',
+                overflow: 'hidden'
+              }}>
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: '60px 1fr 120px', 
+                  gap: '0',
+                  background: '#4a4a4a',
+                  padding: '12px',
+                  fontWeight: 'bold',
+                  color: '#fff',
+                  fontSize: '14px'
+                }}>
+                  <div style={{ textAlign: 'center' }}>排名</div>
+                  <div>小组名称</div>
+                  <div style={{ textAlign: 'right' }}>总奖金</div>
+                </div>
+                
+                {rankingData.map((team, index) => (
+                  <div key={team.teamName} style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: '60px 1fr 120px', 
+                    gap: '0',
+                    padding: '12px',
+                    borderBottom: index < rankingData.length - 1 ? '1px solid #555' : 'none',
+                    background: index % 2 === 0 ? '#3d3d3d' : '#353535',
+                    color: '#fff'
+                  }}>
+                    <div style={{ 
+                      textAlign: 'center',
+                      fontWeight: 'bold',
+                      color: index < 3 ? '#ffd700' : '#fff'
+                    }}>
+                      #{team.rank}
+                    </div>
+                    <div>{team.teamName}</div>
+                    <div style={{ 
+                      textAlign: 'right',
+                      fontWeight: 'bold',
+                      color: team.totalReward >= 0 ? '#4caf50' : '#f44336'
+                    }}>
+                      {team.totalReward > 0 ? '+' : ''}{team.totalReward}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* 查看明细和榜单详情按钮 */}
+              <div style={{ 
+                textAlign: 'center', 
+                marginTop: '24px',
+                paddingTop: '20px',
+                borderTop: '1px solid #555',
+                display: 'flex',
+                gap: '16px',
+                justifyContent: 'center'
+              }}>
+                <button
+                  onClick={openDetailModal}
+                  style={{
+                    padding: '12px 24px',
+                    background: '#17a2b8',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  查看明细
+                </button>
+                <button
+                  onClick={() => {
+                    setShowTeamItemsModal(true)
+                    loadTeamItemsSummary()
+                  }}
+                  style={{
+                    padding: '12px 24px',
+                    background: '#28a745',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  榜单详情
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 结算明细弹窗 */}
+      {showDetailModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#2d2d2d',
+            padding: '24px',
+            borderRadius: '8px',
+            border: '1px solid #555',
+            maxWidth: '80%',
+            maxHeight: '80%',
+            width: '900px',
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            {/* 弹窗标题 */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '20px',
+              borderBottom: '1px solid #555',
+              paddingBottom: '16px'
+            }}>
+              <h3 style={{ color: '#fff', margin: 0 }}>
+                {rankingSeasonName} - 结算明细
+              </h3>
+              <button
+                onClick={() => setShowDetailModal(false)}
+                style={{
+                  background: '#f44336',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  padding: '8px 16px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                关闭
+              </button>
+            </div>
+
+            {/* 筛选条件 */}
+            <div style={{ 
+              background: '#3d3d3d', 
+              padding: '16px', 
+              borderRadius: '6px',
+              marginBottom: '16px' 
+            }}>
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: '1fr 1fr', 
+                gap: '16px',
+                marginBottom: '16px'
+              }}>
+                {/* 团队筛选 */}
+                <div>
+                  <label style={{ color: '#fff', fontSize: '14px', fontWeight: 'bold', marginBottom: '8px', display: 'block' }}>
+                    团队筛选
+                  </label>
+                  <div style={{ 
+                    maxHeight: '120px', 
+                    overflowY: 'auto',
+                    border: '1px solid #555',
+                    borderRadius: '4px',
+                    padding: '8px',
+                    background: '#2d2d2d'
+                  }}>
+                    {/* 全选选项 */}
+                    <label style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      padding: '4px 0',
+                      color: '#fff',
+                      fontSize: '13px',
+                      borderBottom: '1px solid #444',
+                      marginBottom: '4px'
+                    }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedTeams.length === allTeamNames.length && allTeamNames.length > 0}
+                        onChange={toggleAllTeams}
+                        style={{ marginRight: '8px' }}
+                      />
+                      全选
+                    </label>
+                    
+                    {/* 团队选项 */}
+                    {allTeamNames.map((teamName) => (
+                      <label key={teamName} style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        padding: '4px 0',
+                        color: '#fff',
+                        fontSize: '13px'
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedTeams.includes(teamName)}
+                          onChange={(e) => handleTeamSelection(teamName, e.target.checked)}
+                          style={{ marginRight: '8px' }}
+                        />
+                        {teamName}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 时间筛选 */}
+                <div>
+                  <label style={{ color: '#fff', fontSize: '14px', fontWeight: 'bold', marginBottom: '8px', display: 'block' }}>
+                    时间筛选
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div>
+                      <label style={{ color: '#ccc', fontSize: '12px', marginBottom: '4px', display: 'block' }}>
+                        开始日期
+                      </label>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          border: '1px solid #555',
+                          borderRadius: '4px',
+                          background: '#2d2d2d',
+                          color: '#fff',
+                          fontSize: '13px'
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ color: '#ccc', fontSize: '12px', marginBottom: '4px', display: 'block' }}>
+                        结束日期
+                      </label>
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          border: '1px solid #555',
+                          borderRadius: '4px',
+                          background: '#2d2d2d',
+                          color: '#fff',
+                          fontSize: '13px'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 筛选按钮 */}
+              <div style={{ textAlign: 'center' }}>
+                <button
+                  onClick={applyFilters}
+                  style={{
+                    padding: '8px 20px',
+                    background: '#28a745',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: 'bold'
+                  }}
+                >
+                  应用筛选
+                </button>
+              </div>
+            </div>
+
+            {/* 明细内容 */}
+            <div style={{ flex: 1, overflow: 'auto' }}>
+              {loadingDetails ? (
+                <div style={{ 
+                  textAlign: 'center', 
+                  padding: '40px',
+                  color: '#fff' 
+                }}>
+                  加载中...
+                </div>
+              ) : settlementDetails.length === 0 ? (
+                <div style={{ 
+                  textAlign: 'center', 
+                  padding: '40px',
+                  color: '#ccc' 
+                }}>
+                  暂无符合条件的结算记录
+                </div>
+              ) : (
+                <>
+                  {/* 表格头部 */}
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: '150px 120px 200px 120px 1fr', 
+                    gap: '12px',
+                    background: '#4a4a4a',
+                    padding: '12px',
+                    borderRadius: '4px',
+                    fontWeight: 'bold',
+                    color: '#fff',
+                    fontSize: '14px',
+                    marginBottom: '8px'
+                  }}>
+                    <div>结算时间</div>
+                    <div>团队</div>
+                    <div>奖惩详情</div>
+                    <div>记录类型</div>
+                    <div>考勤名称</div>
+                  </div>
+                  
+                  {/* 表格内容 */}
+                  <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                    {settlementDetails.map((detail, index) => (
+                      <div key={index} style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: '150px 120px 200px 120px 1fr', 
+                        gap: '12px',
+                        padding: '12px',
+                        background: index % 2 === 0 ? '#3d3d3d' : '#353535',
+                        color: '#fff',
+                        fontSize: '13px',
+                        borderRadius: '4px',
+                        marginBottom: '4px'
+                      }}>
+                        <div>{detail.settlementTime}</div>
+                        <div>{detail.teamName}</div>
+                        <div style={{ 
+                          color: detail.codeValue === '花' ? '#4caf50' : '#f44336',
+                          fontWeight: 'bold'
+                        }}>
+                          {detail.codeValue === '现金' ? detail.quantity : `${detail.codeValue} × ${detail.quantity}`}
+                        </div>
+                        <div style={{
+                          color: detail.isSynthetic ? '#ff9800' : '#2196f3',
+                          fontWeight: 'bold',
+                          fontSize: '12px'
+                        }}>
+                          {detail.synthesisType || '原始记录'}
+                        </div>
+                        <div>{detail.attendanceName}</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -4622,6 +5402,204 @@ function App() {
             <div style={{ textAlign: 'center', marginTop: '16px' }}>
               <button
                 onClick={() => setShowLogModal(false)}
+                style={{
+                  padding: '8px 16px',
+                  background: '#6c757d',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 榜单详情弹窗 */}
+      {showTeamItemsModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#2d2d2d',
+            borderRadius: '8px',
+            width: '90%',
+            maxWidth: '800px',
+            maxHeight: '80vh',
+            overflow: 'auto',
+            padding: '24px',
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, color: '#fff' }}>榜单详情 - 队伍物品统计</h3>
+              <button
+                onClick={() => setShowTeamItemsModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#fff',
+                  fontSize: '20px',
+                  cursor: 'pointer',
+                  padding: '0',
+                  width: '24px',
+                  height: '24px'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {loadingTeamItems ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#ccc' }}>
+                加载中...
+              </div>
+            ) : teamItemsSummary.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '40px', color: '#ccc' }}>
+                暂无数据
+              </div>
+            ) : (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ 
+                  width: '100%', 
+                  borderCollapse: 'collapse',
+                  backgroundColor: '#2d2d2d'
+                }}>
+                  <thead>
+                    <tr style={{ backgroundColor: '#404040' }}>
+                      <th style={{ 
+                        padding: '12px 8px', 
+                        border: '1px solid #555', 
+                        textAlign: 'left', 
+                        color: '#fff',
+                        fontWeight: 'bold'
+                      }}>
+                        队伍名称
+                      </th>
+                      <th style={{ 
+                        padding: '12px 8px', 
+                        border: '1px solid #555', 
+                        textAlign: 'center', 
+                        color: '#fff',
+                        fontWeight: 'bold'
+                      }}>
+                        花瓣
+                      </th>
+                      <th style={{ 
+                        padding: '12px 8px', 
+                        border: '1px solid #555', 
+                        textAlign: 'center', 
+                        color: '#fff',
+                        fontWeight: 'bold'
+                      }}>
+                        花
+                      </th>
+                      <th style={{ 
+                        padding: '12px 8px', 
+                        border: '1px solid #555', 
+                        textAlign: 'center', 
+                        color: '#fff',
+                        fontWeight: 'bold'
+                      }}>
+                        屎粒
+                      </th>
+                      <th style={{ 
+                        padding: '12px 8px', 
+                        border: '1px solid #555', 
+                        textAlign: 'center', 
+                        color: '#fff',
+                        fontWeight: 'bold'
+                      }}>
+                        屎
+                      </th>
+                      <th style={{ 
+                        padding: '12px 8px', 
+                        border: '1px solid #555', 
+                        textAlign: 'center', 
+                        color: '#fff',
+                        fontWeight: 'bold'
+                      }}>
+                        现金
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {teamItemsSummary.map((team: any, index: number) => (
+                      <tr key={team.teamName} style={{ 
+                        backgroundColor: index % 2 === 0 ? '#2d2d2d' : '#404040'
+                      }}>
+                        <td style={{ 
+                          padding: '12px 8px', 
+                          border: '1px solid #555', 
+                          color: '#fff',
+                          fontWeight: 'bold'
+                        }}>
+                          {team.teamName}
+                        </td>
+                        <td style={{ 
+                          padding: '12px 8px', 
+                          border: '1px solid #555', 
+                          textAlign: 'center', 
+                          color: team.花瓣 > 0 ? '#4caf50' : '#ccc'
+                        }}>
+                          {team.花瓣}
+                        </td>
+                        <td style={{ 
+                          padding: '12px 8px', 
+                          border: '1px solid #555', 
+                          textAlign: 'center', 
+                          color: team.花 > 0 ? '#4caf50' : '#ccc'
+                        }}>
+                          {team.花}
+                        </td>
+                        <td style={{ 
+                          padding: '12px 8px', 
+                          border: '1px solid #555', 
+                          textAlign: 'center', 
+                          color: team.屎粒 > 0 ? '#f44336' : '#ccc'
+                        }}>
+                          {team.屎粒}
+                        </td>
+                        <td style={{ 
+                          padding: '12px 8px', 
+                          border: '1px solid #555', 
+                          textAlign: 'center', 
+                          color: team.屎 > 0 ? '#f44336' : '#ccc'
+                        }}>
+                          {team.屎}
+                        </td>
+                        <td style={{ 
+                          padding: '12px 8px', 
+                          border: '1px solid #555', 
+                          textAlign: 'center', 
+                          color: team.现金 > 0 ? '#4caf50' : team.现金 < 0 ? '#f44336' : '#ccc',
+                          fontWeight: team.现金 !== 0 ? 'bold' : 'normal'
+                        }}>
+                          {team.现金 > 0 ? '+' : ''}{team.现金}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <div style={{ textAlign: 'center', marginTop: '16px' }}>
+              <button
+                onClick={() => setShowTeamItemsModal(false)}
                 style={{
                   padding: '8px 16px',
                   background: '#6c757d',

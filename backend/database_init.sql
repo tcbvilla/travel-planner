@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS code_tables (
 CREATE TABLE IF NOT EXISTS settlement_records (
     id BIGSERIAL PRIMARY KEY,
     team_name VARCHAR(100) NOT NULL,
-    code_value VARCHAR(50) NOT NULL,
+    code_value VARCHAR(50),  -- 允许NULL，用于现金奖励
     quantity NUMERIC(10,3) NOT NULL,  -- 数量，保留3位小数
     settlement_batch_id VARCHAR(100) NOT NULL,  -- 结算批次ID，用于关联特定的奖惩条件组合
     attendance_session_id BIGINT NOT NULL REFERENCES attendance_sessions(id) ON DELETE CASCADE,
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS settlement_logs (
     attendance_record_name VARCHAR(200) NOT NULL,
     settlement_season VARCHAR(100) NOT NULL,
     settlement_content TEXT NOT NULL,
-    attendance_session_id BIGINT NOT NULL REFERENCES attendance_sessions(id) ON DELETE CASCADE,
+    attendance_session_id BIGINT REFERENCES attendance_sessions(id) ON DELETE SET NULL,
     operation_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -92,17 +92,11 @@ CREATE INDEX IF NOT EXISTS idx_code_tables_type ON code_tables(type);
 -- 插入初始码表数据
 INSERT INTO code_tables (code_name, code_value, type, description) VALUES
 -- 奖励码表
-('花瓣', 72, 'REWARD', '花瓣奖励'),
-('双花瓣', 144, 'REWARD', '双花瓣奖励'),
-('花', 216, 'REWARD', '花奖励'),
-('双花', 432, 'REWARD', '双花奖励'),
-('钱袋', 648, 'REWARD', '钱袋奖励'),
+('花瓣', 0, 'REWARD', '花瓣奖励'),
+('花', 0, 'REWARD', '花奖励'),
 -- 处罚码表
-('屎粒', -72, 'PENALTY', '屎粒处罚'),
-('双屎粒', -144, 'PENALTY', '双屎粒处罚'),
-('屎', -216, 'PENALTY', '屎处罚'),
-('双屎', -432, 'PENALTY', '双屎处罚'),
-('粪汤', -648, 'PENALTY', '粪汤处罚')
+('屎粒', 0, 'PENALTY', '屎粒处罚'),
+('屎', 0, 'PENALTY', '屎处罚')
 ON CONFLICT (code_name) DO NOTHING;
 
 -- 插入示例赛季数据
@@ -182,6 +176,45 @@ BEGIN
     ORDER BY sr.team_name, sr.code_value;
 END;
 $$ LANGUAGE plpgsql;
+
+-- 7. 创建合成链表
+CREATE TABLE IF NOT EXISTS synthesis_chains (
+    id BIGSERIAL PRIMARY KEY,
+    season_id BIGINT NOT NULL,
+    team_name VARCHAR(100) NOT NULL,
+    source_batch_ids TEXT NOT NULL,        -- 原始批次ID列表 (JSON数组)
+    synthesis_record_ids TEXT NOT NULL,    -- 合成记录ID列表 (JSON数组)
+    synthesis_log_ids TEXT NOT NULL,       -- 合成日志ID列表 (JSON数组)
+    synthesis_type VARCHAR(20) NOT NULL,   -- 'UPGRADE' 或 'CASH_CONVERT'
+    source_item_type VARCHAR(50),          -- 原始物品类型
+    target_item_type VARCHAR(50),          -- 目标物品类型
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 8. 创建合成日志表
+CREATE TABLE IF NOT EXISTS synthesis_logs (
+    id BIGSERIAL PRIMARY KEY,
+    operation_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    team_name VARCHAR(100) NOT NULL,
+    season_name VARCHAR(100) NOT NULL,
+    synthesis_type VARCHAR(20) NOT NULL,   -- 'UPGRADE' 或 'CASH_CONVERT'
+    source_items TEXT NOT NULL,            -- 被合成的原始物品JSON
+    target_item TEXT NOT NULL,             -- 合成后的物品JSON
+    synthesis_content TEXT NOT NULL,       -- 合成描述
+    synthesis_chain_id BIGINT              -- 关联的合成链ID
+);
+
+-- 为settlement_records表添加合成相关字段
+ALTER TABLE settlement_records ADD COLUMN IF NOT EXISTS synthesis_chain_id BIGINT;
+ALTER TABLE settlement_records ADD COLUMN IF NOT EXISTS is_synthetic BOOLEAN DEFAULT FALSE;
+ALTER TABLE settlement_records ADD COLUMN IF NOT EXISTS parent_synthesis_id BIGINT;
+ALTER TABLE settlement_records ADD COLUMN IF NOT EXISTS record_status VARCHAR(20) DEFAULT 'ACTIVE';
+
+-- 创建索引
+CREATE INDEX IF NOT EXISTS idx_synthesis_chains_season_team ON synthesis_chains(season_id, team_name);
+CREATE INDEX IF NOT EXISTS idx_synthesis_logs_season_team ON synthesis_logs(season_name, team_name);
+CREATE INDEX IF NOT EXISTS idx_settlement_records_synthesis ON settlement_records(synthesis_chain_id);
+CREATE INDEX IF NOT EXISTS idx_settlement_records_status ON settlement_records(record_status);
 
 -- 提交事务
 COMMIT;

@@ -15,7 +15,7 @@ public interface SettlementLogRepository extends JpaRepository<SettlementLog, Lo
     @Query("SELECT sl FROM SettlementLog sl ORDER BY sl.operationTime DESC")
     Page<SettlementLog> findAllOrderByOperationTimeDesc(Pageable pageable);
     
-    @Query("SELECT sl FROM SettlementLog sl WHERE sl.attendanceSession.season.id = :seasonId ORDER BY sl.operationTime DESC")
+    @Query("SELECT sl FROM SettlementLog sl LEFT JOIN sl.attendanceSession a WHERE a.season.id = :seasonId OR (sl.attendanceSession IS NULL AND sl.settlementSeason = (SELECT s.name FROM Season s WHERE s.id = :seasonId)) ORDER BY sl.operationTime DESC")
     Page<SettlementLog> findBySeasonIdOrderByOperationTimeDesc(@Param("seasonId") Long seasonId, Pageable pageable);
     
     List<SettlementLog> findByAttendanceSessionId(Long attendanceSessionId);
