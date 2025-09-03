@@ -54,6 +54,12 @@ spring:
 - 需要手动处理，可能存在数据转换问题
 - 建议先备份数据，再执行修改
 
+#### 最新变更（2025年）
+- 新增 `settlement_records.cash_amount` 和 `reward_mode` 字段
+- 新增 `synthesis_chains.trigger_settlement_batch_id` 和 `attendance_session_id` 字段
+- 新增合成相关表：`synthesis_chains`、`synthesis_logs`
+- 更新码表数据：移除"钱袋"和"粪汤"，所有码表值设为0
+
 ### 4. 部署步骤
 
 #### 开发环境
@@ -104,6 +110,36 @@ WHERE created_at < CURRENT_DATE - INTERVAL '3 months';
 -- 清理过期的日志记录（保留最近6个月）
 DELETE FROM settlement_logs 
 WHERE operation_time < CURRENT_DATE - INTERVAL '6 months';
+
+-- 清理过期的合成记录（保留最近6个月）
+DELETE FROM synthesis_chains 
+WHERE created_at < CURRENT_DATE - INTERVAL '6 months';
+
+-- 清理过期的合成日志（保留最近6个月）
+DELETE FROM synthesis_logs 
+WHERE operation_time < CURRENT_DATE - INTERVAL '6 months';
+```
+
+#### 合成机制维护
+```sql
+-- 检查孤立的合成记录
+SELECT 
+    'synthesis_chains' as table_name,
+    COUNT(*) as orphaned_records
+FROM synthesis_chains sc
+LEFT JOIN seasons s ON sc.season_id = s.id
+WHERE s.id IS NULL;
+
+-- 检查结算记录状态一致性
+SELECT 
+    record_status,
+    COUNT(*) as count
+FROM settlement_records 
+GROUP BY record_status;
+
+-- 清理无效的合成链
+DELETE FROM synthesis_chains 
+WHERE season_id NOT IN (SELECT id FROM seasons);
 ```
 
 ### 6. 故障恢复
