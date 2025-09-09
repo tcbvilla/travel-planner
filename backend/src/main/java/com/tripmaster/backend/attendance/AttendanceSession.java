@@ -48,6 +48,9 @@ public class AttendanceSession {
     @JoinColumn(name = "season_id")
     private Season season; // 关联的赛季
     
+    @Column(nullable = false)
+    private String attendanceType = "压秒考勤"; // 考勤类型
+    
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

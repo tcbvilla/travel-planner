@@ -32,11 +32,18 @@ if ! psql -h $DB_HOST -U $DB_USER -lqt | cut -d \| -f 1 | grep -qw $DB_NAME; the
     createdb -h $DB_HOST -U $DB_USER $DB_NAME
 fi
 
-# 执行数据库初始化脚本
-echo "执行数据库初始化脚本..."
-psql -h $DB_HOST -U $DB_USER -d $DB_NAME -f database_init.sql
+# 检查数据库迁移状态
+echo "检查数据库迁移状态..."
 
-echo "数据库初始化完成！"
+# 如果数据库为空，执行初始化脚本
+if [ "$ENVIRONMENT" = "dev" ] && [ ! -f "database_initialized.flag" ]; then
+    echo "执行数据库初始化脚本..."
+    psql -h $DB_HOST -U $DB_USER -d $DB_NAME -f database_init.sql
+    touch database_initialized.flag
+    echo "数据库初始化完成！"
+else
+    echo "数据库已初始化或使用Liquibase管理，跳过手动初始化..."
+fi
 
 # 根据环境选择不同的启动方式
 if [ "$ENVIRONMENT" = "prod" ]; then
@@ -55,3 +62,9 @@ else
 fi
 
 echo "部署完成！"
+
+# 显示Liquibase迁移状态
+if [ "$ENVIRONMENT" = "prod" ]; then
+    echo "检查Liquibase迁移状态..."
+    ./mvnw liquibase:status
+fi

@@ -4,7 +4,7 @@
 
 ### 基础管理
 - **Season 赛季**: { id, name, startDate, endDate, status(未开始/进行中/已完结) }
-- **AttendanceSession 考勤会话**: { id, name, startTime, endTime, battleResult, threshold, status(ADDED/SAVED/SETTLED), memberData, groupData, seasonId }
+- **AttendanceSession 考勤会话**: { id, name, attendanceType, startTime, endTime, battleResult, threshold, status(ADDED/SAVED/SETTLED), memberData, groupData, seasonId }
 
 ### 奖惩系统
 - **RewardCondition 奖惩条件**: { id, attendanceSessionId, taskStatus, attendanceRateThreshold, attendanceRateRank, meritIncreaseRank, rewardType, penaltyType }

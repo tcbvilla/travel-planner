@@ -167,6 +167,13 @@ public class AttendanceController {
         session.setStatus(SessionStatus.ADDED);
         session.setThreshold(request.getThreshold());
         
+        // 设置考勤类型：如果为空则使用默认类型
+        String attendanceType = request.getAttendanceType();
+        if (attendanceType == null || attendanceType.trim().isEmpty()) {
+            attendanceType = "压秒考勤";
+        }
+        session.setAttendanceType(attendanceType);
+        
         // 设置赛季关联
         if (request.getSeasonId() != null) {
             Season season = seasonRepository.findById(request.getSeasonId())
@@ -746,6 +753,17 @@ public class AttendanceController {
                     session.setBattleResult(BattleResult.valueOf(battleResult));
                 } catch (IllegalArgumentException e) {
                     throw new RuntimeException("战役结果只能是 VICTORY 或 DEFEAT");
+                }
+            }
+        }
+        
+        // 更新考勤类型
+        if (request.containsKey("attendanceType")) {
+            Object attendanceTypeObj = request.get("attendanceType");
+            if (attendanceTypeObj instanceof String) {
+                String attendanceType = (String) attendanceTypeObj;
+                if (attendanceType != null && !attendanceType.trim().isEmpty()) {
+                    session.setAttendanceType(attendanceType);
                 }
             }
         }

@@ -10,9 +10,14 @@ spring:
     password: postgres 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate  # 改为validate，由Liquibase管理数据库结构
     show-sql: true
     properties:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
+  liquibase:
+    enabled: true
+    change-log: classpath:db/changelog/db.changelog-master.xml
+    contexts: default
+    drop-first: false  # 生产环境禁用drop-first

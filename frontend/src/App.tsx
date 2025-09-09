@@ -37,6 +37,7 @@ type AttendanceResponse = {
 type AttendanceSession = {
   id: number
   name: string
+  attendanceType?: string
   battleResult: 'VICTORY' | 'DEFEAT'
   status: 'ADDED' | 'SAVED' | 'SETTLED'
   createdAt: string
@@ -616,8 +617,11 @@ function App() {
   const [threshold, setThreshold] = useState<number>(1)
   const [rows, setRows] = useState<DisplayRow[]>([])
   const [groupStats, setGroupStats] = useState<GroupStat[]>([])
-  const [activeTab, setActiveTab] = useState<'add' | 'view' | 'season' | 'ranking'>('add')
+  const [activeTab, setActiveTab] = useState<'add' | 'view' | 'season' | 'ranking' | 'statistics'>('add')
   const [activeSubTab, setActiveSubTab] = useState<'members' | 'groups'>('members')
+  const [activeStatsTab, setActiveStatsTab] = useState<'team' | 'individual'>('team')
+  const [attendanceType, setAttendanceType] = useState('压秒考勤')
+  const [customAttendanceType, setCustomAttendanceType] = useState('')
   const [filteredCount, setFilteredCount] = useState<number>(0)
   const [error, setError] = useState<string | null>(null)
 
@@ -732,6 +736,8 @@ function App() {
   // 新增状态：编辑会话基本信息
   const [editingSession, setEditingSession] = useState<boolean>(false)
   const [editingSessionName, setEditingSessionName] = useState<string>('')
+  const [editingAttendanceType, setEditingAttendanceType] = useState<string>('压秒考勤')
+  const [editingCustomAttendanceType, setEditingCustomAttendanceType] = useState<string>('')
   const [editingBattleResult, setEditingBattleResult] = useState<'VICTORY' | 'DEFEAT'>('VICTORY')
   const [editingStartTime, setEditingStartTime] = useState<string>('')
   const [editingEndTime, setEditingEndTime] = useState<string>('')
@@ -798,6 +804,14 @@ function App() {
     if (!selectedSession) return
     
     setEditingSessionName(selectedSession.name || '')
+    const currentAttendanceType = selectedSession.attendanceType || '压秒考勤'
+    if (['压秒考勤', '区间战功考勤', '区间助攻考勤', '晨练考勤', '夜战考勤'].includes(currentAttendanceType)) {
+      setEditingAttendanceType(currentAttendanceType)
+      setEditingCustomAttendanceType('')
+    } else {
+      setEditingAttendanceType('其他')
+      setEditingCustomAttendanceType(currentAttendanceType)
+    }
     setEditingBattleResult(selectedSession.battleResult || 'VICTORY')
     
     // 处理时间，转换为本地时间（UTC+8）
@@ -834,6 +848,14 @@ function App() {
       if (editingSessionName !== selectedSession.name) {
         updateData.name = editingSessionName
       }
+      
+      // 处理考勤类型
+      const finalEditingAttendanceType = editingAttendanceType === '其他' ? editingCustomAttendanceType : editingAttendanceType
+      const currentAttendanceType = selectedSession.attendanceType || '压秒考勤'
+      if (finalEditingAttendanceType !== currentAttendanceType) {
+        updateData.attendanceType = finalEditingAttendanceType
+      }
+      
       if (editingBattleResult !== selectedSession.battleResult) {
         updateData.battleResult = editingBattleResult
       }
@@ -1511,6 +1533,8 @@ function App() {
     }
     
     try {
+      const finalAttendanceType = attendanceType === '其他' ? customAttendanceType : attendanceType;
+      
       const requestBody = {
         name: finalSessionName,
         battleResult: battleResult,
@@ -1519,7 +1543,8 @@ function App() {
         threshold: threshold,
         startTime: startFile?.name || '',
         endTime: endFile?.name || '',
-        seasonId: selectedSeasonId
+        seasonId: selectedSeasonId,
+        attendanceType: finalAttendanceType
       }
       
       const resp = await fetch(`http://localhost:8080/api/v1/attendance/save-session`, {
@@ -2276,6 +2301,22 @@ function App() {
         >
           查看榜单
         </button>
+        <button
+          onClick={() => setActiveTab('statistics')}
+          style={{
+            padding: '12px 24px',
+            border: 'none',
+            background: activeTab === 'statistics' ? '#007bff' : '#555555',
+            color: '#fff',
+            cursor: 'pointer',
+            fontSize: '16px',
+            fontWeight: activeTab === 'statistics' ? 'bold' : 'normal',
+            borderRadius: '4px',
+            transition: 'all 0.3s ease'
+          }}
+        >
+          数据统计
+        </button>
       </div>
 
       {/* 页面内容区域 */}
@@ -2371,7 +2412,7 @@ function App() {
               border: '1px solid #ff6b6b'
             }}>
               错误：{error}
-            </div>
+      </div>
           )}
           
           <div style={{ overflowX: 'auto' }}>
@@ -2379,6 +2420,7 @@ function App() {
               <thead>
                 <tr style={{ background: '#f8f9fa' }}>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>考勤名称</th>
+                  <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>考勤类型</th>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>赛季</th>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>战役结果</th>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>出勤标准</th>
@@ -2393,6 +2435,9 @@ function App() {
                 {sessions.map((session) => (
                   <tr key={session.id}>
                     <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>{session.name}</td>
+                    <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                      {session.attendanceType || '压秒考勤'}
+                    </td>
                     <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                       {session.season?.name || '未设置'}
                     </td>
@@ -2423,7 +2468,7 @@ function App() {
                           style={{ padding: '4px 8px', background: '#007bff', color: '#fff', border: 'none', cursor: 'pointer' }}
                         >
                           查看
-                        </button>
+        </button>
                         <button
                           onClick={() => showDeleteConfirmation(session.id)}
                           style={{ padding: '4px 8px', background: '#dc3545', color: '#fff', border: 'none', cursor: 'pointer' }}
@@ -2821,6 +2866,49 @@ function App() {
                   />
                 </label>
                 <label style={{ color: '#fff', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  考勤类型：
+                  <select
+                    value={attendanceType}
+                    onChange={(e) => setAttendanceType(e.target.value)}
+                    style={{ 
+                      width: 200,
+                      padding: '8px 12px',
+                      border: '1px solid #555',
+                      borderRadius: '4px',
+                      background: '#2d2d2d',
+                      color: '#fff',
+                      minHeight: '36px'
+                    }}
+                  >
+                    <option value="压秒考勤">压秒考勤</option>
+                    <option value="区间战功考勤">区间战功考勤</option>
+                    <option value="区间助攻考勤">区间助攻考勤</option>
+                    <option value="晨练考勤">晨练考勤</option>
+                    <option value="夜战考勤">夜战考勤</option>
+                    <option value="其他">其他</option>
+                  </select>
+                </label>
+                {attendanceType === '其他' && (
+                  <label style={{ color: '#fff', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    自定义类型：
+                    <input
+                      type="text"
+                      value={customAttendanceType}
+                      onChange={(e) => setCustomAttendanceType(e.target.value)}
+                      placeholder="请输入自定义考勤类型"
+                      style={{ 
+                        width: 200,
+                        padding: '8px 12px',
+                        border: '1px solid #555',
+                        borderRadius: '4px',
+                        background: '#2d2d2d',
+                        color: '#fff',
+                        minHeight: '36px'
+                      }}
+                    />
+                  </label>
+                )}
+                <label style={{ color: '#fff', display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   战役结果：
                   <select
                     value={battleResult}
@@ -3110,6 +3198,47 @@ function App() {
                       />
                     </div>
                     <div>
+                      <label style={{ display: 'block', marginBottom: '4px', color: '#fff' }}>考勤类型：</label>
+                      <select
+                        value={editingAttendanceType}
+                        onChange={(e) => setEditingAttendanceType(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          border: '1px solid #007bff',
+                          borderRadius: '4px',
+                          background: '#2d2d2d',
+                          color: '#fff'
+                        }}
+                      >
+                        <option value="压秒考勤">压秒考勤</option>
+                        <option value="区间战功考勤">区间战功考勤</option>
+                        <option value="区间助攻考勤">区间助攻考勤</option>
+                        <option value="晨练考勤">晨练考勤</option>
+                        <option value="夜战考勤">夜战考勤</option>
+                        <option value="其他">其他</option>
+                      </select>
+                    </div>
+                    {editingAttendanceType === '其他' && (
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '4px', color: '#fff' }}>自定义类型：</label>
+                        <input
+                          type="text"
+                          value={editingCustomAttendanceType}
+                          onChange={(e) => setEditingCustomAttendanceType(e.target.value)}
+                          placeholder="请输入自定义考勤类型"
+                          style={{
+                            width: '100%',
+                            padding: '8px',
+                            border: '1px solid #007bff',
+                            borderRadius: '4px',
+                            background: '#2d2d2d',
+                            color: '#fff'
+                          }}
+                        />
+                      </div>
+                    )}
+                    <div>
                       <label style={{ display: 'block', marginBottom: '4px', color: '#fff' }}>战役结果：</label>
                       <select
                         value={editingBattleResult}
@@ -3312,6 +3441,7 @@ function App() {
                 // 显示模式
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px', fontSize: '14px', color: '#fff' }}>
                   <div><strong>考勤名称：</strong>{selectedSession.name}</div>
+                  <div><strong>考勤类型：</strong>{selectedSession.attendanceType || '压秒考勤'}</div>
                   <div><strong>战役结果：</strong>{selectedSession.battleResult === 'VICTORY' ? '胜利' : '失败'}</div>
                   <div><strong>赛季：</strong>{selectedSession.season?.name || '未设置'}</div>
                   <div><strong>起始时间：</strong>{selectedSession.startTime ? new Date(selectedSession.startTime).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '未设置'}</div>
@@ -4672,7 +4802,7 @@ function App() {
               <p>该赛季暂无结算数据</p>
             </div>
           ) : (
-            <div>
+      <div>
               {/* 榜单标题 */}
               <div style={{ marginBottom: '24px', textAlign: 'center' }}>
                 <h3 style={{ color: '#fff', margin: '0 0 8px 0' }}>
@@ -4681,7 +4811,7 @@ function App() {
                 <p style={{ color: '#ccc', margin: 0, fontSize: '14px' }}>
                   共 {rankingData.length} 个小组参与结算
                 </p>
-              </div>
+      </div>
 
               {/* 柱状图 */}
               <div style={{ 
@@ -4908,7 +5038,7 @@ function App() {
                   }}
                 >
                   查看明细
-                </button>
+        </button>
                 <button
                   onClick={() => {
                     setShowTeamItemsModal(true)
@@ -4927,6 +5057,93 @@ function App() {
                 >
                   榜单详情
                 </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 数据统计页面 */}
+      {activeTab === 'statistics' && (
+        <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2 style={{ color: '#fff', margin: 0 }}>数据统计</h2>
+          </div>
+          
+          {/* 页签切换 */}
+          <div style={{ 
+            display: 'flex', 
+            gap: '8px', 
+            marginBottom: '20px',
+            borderBottom: '1px solid #555',
+            paddingBottom: '16px'
+          }}>
+            <button
+              onClick={() => setActiveStatsTab('team')}
+              style={{
+                padding: '8px 16px',
+                border: 'none',
+                background: activeStatsTab === 'team' ? '#007bff' : '#555555',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: activeStatsTab === 'team' ? 'bold' : 'normal',
+                borderRadius: '4px',
+                transition: 'all 0.3s ease'
+              }}
+            >
+              团队统计
+            </button>
+            <button
+              onClick={() => setActiveStatsTab('individual')}
+              style={{
+                padding: '8px 16px',
+                border: 'none',
+                background: activeStatsTab === 'individual' ? '#007bff' : '#555555',
+                color: '#fff',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: activeStatsTab === 'individual' ? 'bold' : 'normal',
+                borderRadius: '4px',
+                transition: 'all 0.3s ease'
+              }}
+            >
+              个人统计
+            </button>
+          </div>
+
+          {/* 团队统计内容 */}
+          {activeStatsTab === 'team' && (
+            <div style={{ color: '#fff' }}>
+              <h3 style={{ margin: '0 0 16px 0' }}>团队统计</h3>
+              <div style={{ 
+                background: '#3d3d3d', 
+                padding: '20px', 
+                borderRadius: '8px',
+                textAlign: 'center'
+              }}>
+                <p style={{ margin: 0, color: '#ccc' }}>团队统计功能正在开发中...</p>
+                <p style={{ margin: '8px 0 0 0', color: '#999', fontSize: '14px' }}>
+                  将包含团队出勤率、平均战功、奖惩统计等数据
+        </p>
+      </div>
+            </div>
+          )}
+
+          {/* 个人统计内容 */}
+          {activeStatsTab === 'individual' && (
+            <div style={{ color: '#fff' }}>
+              <h3 style={{ margin: '0 0 16px 0' }}>个人统计</h3>
+              <div style={{ 
+                background: '#3d3d3d', 
+                padding: '20px', 
+                borderRadius: '8px',
+                textAlign: 'center'
+              }}>
+                <p style={{ margin: 0, color: '#ccc' }}>个人统计功能正在开发中...</p>
+                <p style={{ margin: '8px 0 0 0', color: '#999', fontSize: '14px' }}>
+                  将包含个人战功变化、出勤记录、奖惩历史等数据
+                </p>
               </div>
             </div>
           )}

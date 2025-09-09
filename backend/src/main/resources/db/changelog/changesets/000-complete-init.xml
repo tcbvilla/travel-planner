@@ -1,0 +1,601 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <changeSet id="000-001" author="dev-team">
+        <comment>完整数据库初始化 - 创建所有表结构</comment>
+        
+        <!-- 创建赛季表 -->
+        <createTable tableName="seasons">
+            <column name="id" type="BIGSERIAL">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(100)">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="start_date" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="end_date" type="DATE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP"/>
+            <column name="updated_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP"/>
+        </createTable>
+
+        <!-- 创建考勤会话表 -->
+        <createTable tableName="attendance_sessions">
+            <column name="id" type="BIGSERIAL">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="battle_result" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="member_data" type="TEXT"/>
+            <column name="group_data" type="TEXT"/>
+            <column name="threshold" type="INTEGER"/>
+            <column name="start_time" type="TIMESTAMP"/>
+            <column name="end_time" type="TIMESTAMP"/>
+            <column name="season_id" type="BIGINT"/>
+            <column name="attendance_type" type="VARCHAR(50)" defaultValue="压秒考勤">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- 创建成员表 -->
+        <createTable tableName="members">
+            <column name="id" type="BIGSERIAL">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(100)">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="group_name" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="total_merit" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="attendance_count" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="total_sessions" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="attendance_rate" type="DOUBLE PRECISION">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_updated" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- 创建奖惩条件表 -->
+        <createTable tableName="reward_conditions">
+            <column name="id" type="BIGSERIAL">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="attendance_session_id" type="BIGINT"/>
+            <column name="task_status" type="VARCHAR(20)"/>
+            <column name="attendance_rate_threshold" type="INTEGER"/>
+            <column name="attendance_rate_rank" type="INTEGER"/>
+            <column name="merit_increase_rank" type="INTEGER"/>
+            <column name="reward_type" type="VARCHAR(50)"/>
+            <column name="penalty_type" type="VARCHAR(50)"/>
+            <column name="cash_reward_amount" type="NUMERIC(15,2)"/>
+            <column name="reward_mode" type="VARCHAR(20)" defaultValue="CODE_TABLE"/>
+            <column name="created_at" type="TIMESTAMP"/>
+            <column name="updated_at" type="TIMESTAMP"/>
+        </createTable>
+
+        <!-- 创建码表 -->
+        <createTable tableName="code_tables">
+            <column name="id" type="BIGSERIAL">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="code_name" type="VARCHAR(50)">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="code_value" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="type" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="description" type="VARCHAR(200)"/>
+        </createTable>
+
+        <!-- 创建结算记录表 -->
+        <createTable tableName="settlement_records">
+            <column name="id" type="BIGSERIAL">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="team_name" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="code_value" type="VARCHAR(50)"/>
+            <column name="quantity" type="NUMERIC(10,3)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cash_amount" type="NUMERIC(15,2)"/>
+            <column name="reward_mode" type="VARCHAR(20)" defaultValue="CODE_TABLE"/>
+            <column name="settlement_batch_id" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="attendance_session_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="synthesis_chain_id" type="BIGINT"/>
+            <column name="is_synthetic" type="BOOLEAN" defaultValue="false"/>
+            <column name="parent_synthesis_id" type="BIGINT"/>
+            <column name="record_status" type="VARCHAR(20)" defaultValue="ACTIVE"/>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- 创建结算日志表 -->
+        <createTable tableName="settlement_logs">
+            <column name="id" type="BIGSERIAL">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="operation_time" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="attendance_record_name" type="VARCHAR(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="settlement_season" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="settlement_content" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="attendance_session_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- 创建合成链表 -->
+        <createTable tableName="synthesis_chains">
+            <column name="id" type="BIGSERIAL">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="season_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="team_name" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="source_batch_ids" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="synthesis_record_ids" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="synthesis_log_ids" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="synthesis_type" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="source_item_type" type="VARCHAR(50)"/>
+            <column name="target_item_type" type="VARCHAR(50)"/>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="trigger_settlement_batch_id" type="VARCHAR(100)"/>
+            <column name="attendance_session_id" type="BIGINT"/>
+        </createTable>
+
+        <!-- 创建合成日志表 -->
+        <createTable tableName="synthesis_logs">
+            <column name="id" type="BIGSERIAL">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="operation_time" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="team_name" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="season_name" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="synthesis_type" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="source_items" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="target_item" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="synthesis_content" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="synthesis_chain_id" type="BIGINT"/>
+        </createTable>
+
+        <!-- 创建奖惩记录表 -->
+        <createTable tableName="reward_records">
+            <column name="id" type="BIGSERIAL">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="member_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="type" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="reason" type="VARCHAR(200)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="points" type="INTEGER">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="session_id" type="VARCHAR(100)"/>
+        </createTable>
+
+    </changeSet>
+
+    <changeSet id="000-002" author="dev-team">
+        <comment>创建外键约束</comment>
+        
+        <!-- 考勤会话 -> 赛季 -->
+        <addForeignKeyConstraint baseTableName="attendance_sessions" baseColumnNames="season_id"
+                                 constraintName="fk_attendance_sessions_season"
+                                 referencedTableName="seasons" referencedColumnNames="id"/>
+        
+        <!-- 奖惩条件 -> 考勤会话 -->
+        <addForeignKeyConstraint baseTableName="reward_conditions" baseColumnNames="attendance_session_id"
+                                 constraintName="fk_reward_conditions_session"
+                                 referencedTableName="attendance_sessions" referencedColumnNames="id"
+                                 onDelete="CASCADE"/>
+        
+        <!-- 结算记录 -> 考勤会话 -->
+        <addForeignKeyConstraint baseTableName="settlement_records" baseColumnNames="attendance_session_id"
+                                 constraintName="fk_settlement_records_session"
+                                 referencedTableName="attendance_sessions" referencedColumnNames="id"
+                                 onDelete="CASCADE"/>
+        
+        <!-- 结算日志 -> 考勤会话 -->
+        <addForeignKeyConstraint baseTableName="settlement_logs" baseColumnNames="attendance_session_id"
+                                 constraintName="fk_settlement_logs_session"
+                                 referencedTableName="attendance_sessions" referencedColumnNames="id"
+                                 onDelete="CASCADE"/>
+        
+        <!-- 合成链 -> 赛季 -->
+        <addForeignKeyConstraint baseTableName="synthesis_chains" baseColumnNames="season_id"
+                                 constraintName="fk_synthesis_chains_season"
+                                 referencedTableName="seasons" referencedColumnNames="id"
+                                 onDelete="CASCADE"/>
+        
+        <!-- 合成链 -> 考勤会话 -->
+        <addForeignKeyConstraint baseTableName="synthesis_chains" baseColumnNames="attendance_session_id"
+                                 constraintName="fk_synthesis_chains_attendance_session"
+                                 referencedTableName="attendance_sessions" referencedColumnNames="id"
+                                 onDelete="SET NULL"/>
+        
+        <!-- 合成日志 -> 合成链 -->
+        <addForeignKeyConstraint baseTableName="synthesis_logs" baseColumnNames="synthesis_chain_id"
+                                 constraintName="fk_synthesis_logs_chain"
+                                 referencedTableName="synthesis_chains" referencedColumnNames="id"
+                                 onDelete="SET NULL"/>
+        
+        <!-- 奖惩记录 -> 成员 -->
+        <addForeignKeyConstraint baseTableName="reward_records" baseColumnNames="member_id"
+                                 constraintName="fk_reward_records_member"
+                                 referencedTableName="members" referencedColumnNames="id"
+                                 onDelete="CASCADE"/>
+
+    </changeSet>
+
+    <changeSet id="000-003" author="dev-team">
+        <comment>创建索引</comment>
+        
+        <!-- 赛季表索引 -->
+        <createIndex tableName="seasons" indexName="idx_seasons_dates">
+            <column name="start_date"/>
+            <column name="end_date"/>
+        </createIndex>
+        
+        <!-- 考勤会话表索引 -->
+        <createIndex tableName="attendance_sessions" indexName="idx_attendance_sessions_season">
+            <column name="season_id"/>
+        </createIndex>
+        <createIndex tableName="attendance_sessions" indexName="idx_attendance_sessions_status">
+            <column name="status"/>
+        </createIndex>
+        <createIndex tableName="attendance_sessions" indexName="idx_attendance_sessions_type">
+            <column name="attendance_type"/>
+        </createIndex>
+        <createIndex tableName="attendance_sessions" indexName="idx_attendance_sessions_battle_result">
+            <column name="battle_result"/>
+        </createIndex>
+        
+        <!-- 成员表索引 -->
+        <createIndex tableName="members" indexName="idx_members_name">
+            <column name="name"/>
+        </createIndex>
+        <createIndex tableName="members" indexName="idx_members_group_name">
+            <column name="group_name"/>
+        </createIndex>
+        
+        <!-- 奖惩条件表索引 -->
+        <createIndex tableName="reward_conditions" indexName="idx_reward_conditions_session">
+            <column name="attendance_session_id"/>
+        </createIndex>
+        
+        <!-- 码表索引 -->
+        <createIndex tableName="code_tables" indexName="idx_code_tables_type">
+            <column name="type"/>
+        </createIndex>
+        
+        <!-- 结算记录表索引 -->
+        <createIndex tableName="settlement_records" indexName="idx_settlement_records_session">
+            <column name="attendance_session_id"/>
+        </createIndex>
+        <createIndex tableName="settlement_records" indexName="idx_settlement_records_batch">
+            <column name="settlement_batch_id"/>
+        </createIndex>
+        <createIndex tableName="settlement_records" indexName="idx_settlement_records_status">
+            <column name="record_status"/>
+        </createIndex>
+        <createIndex tableName="settlement_records" indexName="idx_settlement_records_reward_mode">
+            <column name="reward_mode"/>
+        </createIndex>
+        <createIndex tableName="settlement_records" indexName="idx_settlement_records_team">
+            <column name="team_name"/>
+        </createIndex>
+        
+        <!-- 结算日志表索引 -->
+        <createIndex tableName="settlement_logs" indexName="idx_settlement_logs_session">
+            <column name="attendance_session_id"/>
+        </createIndex>
+        <createIndex tableName="settlement_logs" indexName="idx_settlement_logs_time">
+            <column name="operation_time"/>
+        </createIndex>
+        
+        <!-- 合成链表索引 -->
+        <createIndex tableName="synthesis_chains" indexName="idx_synthesis_chains_season">
+            <column name="season_id"/>
+        </createIndex>
+        <createIndex tableName="synthesis_chains" indexName="idx_synthesis_chains_team">
+            <column name="team_name"/>
+        </createIndex>
+        <createIndex tableName="synthesis_chains" indexName="idx_synthesis_chains_batch">
+            <column name="trigger_settlement_batch_id"/>
+        </createIndex>
+        <createIndex tableName="synthesis_chains" indexName="idx_synthesis_chains_session">
+            <column name="attendance_session_id"/>
+        </createIndex>
+        
+        <!-- 合成日志表索引 -->
+        <createIndex tableName="synthesis_logs" indexName="idx_synthesis_logs_chain">
+            <column name="synthesis_chain_id"/>
+        </createIndex>
+        <createIndex tableName="synthesis_logs" indexName="idx_synthesis_logs_time">
+            <column name="operation_time"/>
+        </createIndex>
+        <createIndex tableName="synthesis_logs" indexName="idx_synthesis_logs_team">
+            <column name="team_name"/>
+        </createIndex>
+        
+        <!-- 奖惩记录表索引 -->
+        <createIndex tableName="reward_records" indexName="idx_reward_records_member">
+            <column name="member_id"/>
+        </createIndex>
+        <createIndex tableName="reward_records" indexName="idx_reward_records_type">
+            <column name="type"/>
+        </createIndex>
+        <createIndex tableName="reward_records" indexName="idx_reward_records_session">
+            <column name="session_id"/>
+        </createIndex>
+        <createIndex tableName="reward_records" indexName="idx_reward_records_created_at">
+            <column name="created_at"/>
+        </createIndex>
+
+    </changeSet>
+
+    <changeSet id="000-004" author="dev-team">
+        <comment>添加约束和检查</comment>
+        
+        <!-- 现金奖励约束 -->
+        <sql>
+            ALTER TABLE settlement_records 
+            ADD CONSTRAINT chk_cash_reward_mode 
+            CHECK ((reward_mode = 'CASH' AND cash_amount IS NOT NULL) OR (reward_mode = 'CODE_TABLE' AND code_value IS NOT NULL));
+        </sql>
+        
+        <!-- 赛季日期约束 -->
+        <sql>
+            ALTER TABLE seasons 
+            ADD CONSTRAINT chk_seasons_dates 
+            CHECK (start_date &lt;= end_date);
+        </sql>
+        
+        <!-- 考勤类型注释 -->
+        <sql>
+            COMMENT ON COLUMN attendance_sessions.attendance_type IS '考勤类型：压秒考勤、区间战功考勤、区间助攻考勤、晨练考勤、夜战考勤、其他';
+        </sql>
+
+    </changeSet>
+
+    <changeSet id="000-005" author="dev-team">
+        <comment>创建视图和函数</comment>
+        
+        <!-- 活跃结算记录视图 -->
+        <sql>
+            CREATE OR REPLACE VIEW active_settlement_records AS
+            SELECT 
+                sr.*,
+                s.name as season_name,
+                as1.name as attendance_session_name
+            FROM settlement_records sr
+            LEFT JOIN attendance_sessions as1 ON sr.attendance_session_id = as1.id
+            LEFT JOIN seasons s ON as1.season_id = s.id
+            WHERE sr.record_status = 'ACTIVE';
+        </sql>
+        
+        <!-- 赛季状态视图 -->
+        <sql>
+            CREATE OR REPLACE VIEW season_status_view AS
+            SELECT 
+                id,
+                name,
+                start_date,
+                end_date,
+                CASE 
+                    WHEN start_date &gt; CURRENT_DATE THEN '未开始'
+                    WHEN end_date &lt; CURRENT_DATE THEN '已完结'
+                    ELSE '进行中'
+                END as status,
+                created_at,
+                updated_at
+            FROM seasons;
+        </sql>
+        
+        <!-- 团队物品汇总函数 -->
+        <sql>
+            CREATE OR REPLACE FUNCTION get_team_items_summary(season_id_param BIGINT)
+            RETURNS TABLE (
+                team_name VARCHAR(100),
+                item_type VARCHAR(50),
+                total_quantity NUMERIC(10,3),
+                total_cash NUMERIC(15,2)
+            ) AS $$
+            BEGIN
+                RETURN QUERY
+                SELECT 
+                    sr.team_name,
+                    COALESCE(sr.code_value, '现金') as item_type,
+                    SUM(sr.quantity) as total_quantity,
+                    SUM(COALESCE(sr.cash_amount, 0)) as total_cash
+                FROM settlement_records sr
+                LEFT JOIN attendance_sessions as1 ON sr.attendance_session_id = as1.id
+                WHERE as1.season_id = season_id_param 
+                    AND sr.record_status = 'ACTIVE'
+                GROUP BY sr.team_name, COALESCE(sr.code_value, '现金')
+                ORDER BY sr.team_name, item_type;
+            END
+            $$ LANGUAGE plpgsql;
+        </sql>
+        
+        <!-- 更新时间触发器函数 -->
+        <sql>
+            CREATE OR REPLACE FUNCTION update_updated_at_column()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                NEW.updated_at = CURRENT_TIMESTAMP;
+                RETURN NEW;
+            END
+            $$ LANGUAGE plpgsql;
+        </sql>
+        
+        <!-- 为需要的表创建更新时间触发器 -->
+        <sql>
+            CREATE TRIGGER trigger_seasons_updated_at
+                BEFORE UPDATE ON seasons
+                FOR EACH ROW
+                EXECUTE FUNCTION update_updated_at_column();
+                
+            CREATE TRIGGER trigger_attendance_sessions_updated_at
+                BEFORE UPDATE ON attendance_sessions
+                FOR EACH ROW
+                EXECUTE FUNCTION update_updated_at_column();
+                
+            CREATE TRIGGER trigger_reward_conditions_updated_at
+                BEFORE UPDATE ON reward_conditions
+                FOR EACH ROW
+                EXECUTE FUNCTION update_updated_at_column();
+        </sql>
+
+    </changeSet>
+
+    <changeSet id="000-006" author="dev-team">
+        <comment>插入初始数据</comment>
+        
+        <!-- 插入码表数据 -->
+        <insert tableName="code_tables">
+            <column name="code_name" value="花瓣"/>
+            <column name="code_value" value="0"/>
+            <column name="type" value="REWARD"/>
+            <column name="description" value="花瓣奖励"/>
+        </insert>
+        <insert tableName="code_tables">
+            <column name="code_name" value="花"/>
+            <column name="code_value" value="0"/>
+            <column name="type" value="REWARD"/>
+            <column name="description" value="花奖励"/>
+        </insert>
+        <insert tableName="code_tables">
+            <column name="code_name" value="屎粒"/>
+            <column name="code_value" value="0"/>
+            <column name="type" value="PENALTY"/>
+            <column name="description" value="屎粒处罚"/>
+        </insert>
+        <insert tableName="code_tables">
+            <column name="code_name" value="屎"/>
+            <column name="code_value" value="0"/>
+            <column name="type" value="PENALTY"/>
+            <column name="description" value="屎处罚"/>
+        </insert>
+        <insert tableName="code_tables">
+            <column name="code_name" value="双花瓣"/>
+            <column name="code_value" value="0"/>
+            <column name="type" value="REWARD"/>
+            <column name="description" value="双花瓣奖励"/>
+        </insert>
+        <insert tableName="code_tables">
+            <column name="code_name" value="双花"/>
+            <column name="code_value" value="0"/>
+            <column name="type" value="REWARD"/>
+            <column name="description" value="双花奖励"/>
+        </insert>
+        <insert tableName="code_tables">
+            <column name="code_name" value="双屎粒"/>
+            <column name="code_value" value="0"/>
+            <column name="type" value="PENALTY"/>
+            <column name="description" value="双屎粒处罚"/>
+        </insert>
+        <insert tableName="code_tables">
+            <column name="code_name" value="双屎"/>
+            <column name="code_value" value="0"/>
+            <column name="type" value="PENALTY"/>
+            <column name="description" value="双屎处罚"/>
+        </insert>
+        
+        <!-- 插入示例赛季数据 -->
+        <insert tableName="seasons">
+            <column name="name" value="2024赛季第一期"/>
+            <column name="start_date" value="2024-01-01"/>
+            <column name="end_date" value="2024-06-30"/>
+        </insert>
+        <insert tableName="seasons">
+            <column name="name" value="2024赛季第二期"/>
+            <column name="start_date" value="2024-07-01"/>
+            <column name="end_date" value="2024-12-31"/>
+        </insert>
+
+    </changeSet>
+
+</databaseChangeLog>
