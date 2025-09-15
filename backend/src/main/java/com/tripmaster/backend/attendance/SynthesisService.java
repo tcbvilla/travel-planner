@@ -376,10 +376,10 @@ public class SynthesisService {
         chain.setTriggerSettlementBatchId(triggerBatchId);
         chain.setAttendanceSessionId(attendanceSessionId);
         
-        // 关键修复：只记录原始批次ID（以BATCH_开头），不记录合成批次ID
+        // 关键修复：记录原始批次ID（以BATCH_或MANUAL_开头），不记录合成批次ID
         List<String> originalBatchIds = sourceRecords.stream()
                 .map(SettlementRecord::getSettlementBatchId)
-                .filter(batchId -> batchId.startsWith("BATCH_")) // 只保留原始批次ID
+                .filter(batchId -> batchId.startsWith("BATCH_") || batchId.startsWith("MANUAL_")) // 保留原始批次ID和手动批次ID
                 .distinct()
                 .collect(Collectors.toList());
         
@@ -407,8 +407,8 @@ public class SynthesisService {
         Set<String> originalBatchIds = new HashSet<>();
         
         for (SettlementRecord record : sourceRecords) {
-            if (record.getSettlementBatchId().startsWith("BATCH_")) {
-                // 如果是原始批次，直接添加
+            if (record.getSettlementBatchId().startsWith("BATCH_") || record.getSettlementBatchId().startsWith("MANUAL_")) {
+                // 如果是原始批次或手动批次，直接添加
                 originalBatchIds.add(record.getSettlementBatchId());
             } else if (record.getSynthesisChainId() != null) {
                 // 如果是合成记录，查找其源合成链的原始批次

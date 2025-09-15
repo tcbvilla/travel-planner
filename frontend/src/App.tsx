@@ -793,6 +793,13 @@ function App() {
   const [manualRewardQuantity, setManualRewardQuantity] = useState<number>(1)
   const [manualRewardDescription, setManualRewardDescription] = useState<string>('')
   const [selectedManualTeam, setSelectedManualTeam] = useState<string>('')
+  
+  // 撤销手动奖惩相关状态
+  const [showRevokeConfirm, setShowRevokeConfirm] = useState(false)
+  const [revokeRecordId, setRevokeRecordId] = useState<number | null>(null)
+  const [revokeRecordInfo, setRevokeRecordInfo] = useState<{teamName: string, codeValue: string} | null>(null)
+  const [revokingRecord, setRevokingRecord] = useState(false)
+  
   const [loadingLogs, setLoadingLogs] = useState(false)
   const [currentLogPage, setCurrentLogPage] = useState(0)
   const [totalLogPages, setTotalLogPages] = useState(0)
@@ -2204,7 +2211,18 @@ function App() {
         alert('手动添加奖惩成功')
         setShowManualRewardModal(false)
         resetManualRewardForm()
-        // 刷新结算明细
+        
+        // 刷新榜单数据和结算明细
+        if (rankingSeasonId) {
+          loadRankingData(rankingSeasonId)
+          
+          // 如果结算明细弹窗是打开的，也要刷新
+          if (showDetailModal) {
+            loadSettlementDetails(rankingSeasonId, selectedTeams, startDate, endDate)
+          }
+        }
+        
+        // 刷新结算明细（兼容原有逻辑）
         if (selectedSession) {
           calculateSettlementResults()
         }
@@ -2228,13 +2246,68 @@ function App() {
     setManualRewardDescription('')
   }
 
+  // 处理撤销手动奖惩
+  const handleRevokeManualSettlement = (recordId: number, teamName: string, codeValue: string) => {
+    setRevokeRecordId(recordId)
+    setRevokeRecordInfo({ teamName, codeValue })
+    setShowRevokeConfirm(true)
+  }
+
+  // 确认撤销手动奖惩
+  const confirmRevokeManualSettlement = async () => {
+    if (!revokeRecordId) return
+    
+    setRevokingRecord(true)
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/settlement/manual/${revokeRecordId}`, {
+        method: 'DELETE'
+      })
+      
+      if (response.ok) {
+        const result = await response.json()
+        alert(`撤销成功！${result.impactDetails || ''}`)
+        
+        // 刷新相关数据
+        if (rankingSeasonId) {
+          loadSettlementDetails(rankingSeasonId, selectedTeams, startDate, endDate)
+          loadRankingData(rankingSeasonId)
+        }
+        
+        setShowRevokeConfirm(false)
+        setRevokeRecordId(null)
+        setRevokeRecordInfo(null)
+      } else {
+        const errorData = await response.json()
+        alert('撤销失败: ' + (errorData.error || '未知错误'))
+      }
+    } catch (error) {
+      console.error('撤销手动奖惩失败:', error)
+      alert('撤销失败: 网络错误')
+    } finally {
+      setRevokingRecord(false)
+    }
+  }
+
+  // 取消撤销
+  const cancelRevokeManualSettlement = () => {
+    setShowRevokeConfirm(false)
+    setRevokeRecordId(null)
+    setRevokeRecordInfo(null)
+  }
+
   // 加载榜单数据
   const loadRankingData = async (seasonId: number) => {
     setLoadingRankingData(true)
+    setLoadingTeamItems(true)
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/seasons/${seasonId}/ranking`)
-      if (response.ok) {
-        const data = await response.json()
+      // 并行加载榜单数据和队伍物品统计
+      const [rankingResponse, itemsResponse] = await Promise.all([
+        fetch(`http://localhost:8080/api/v1/attendance/seasons/${seasonId}/ranking`),
+        fetch(`http://localhost:8080/api/v1/attendance/seasons/${seasonId}/team-items-summary`)
+      ])
+      
+      if (rankingResponse.ok) {
+        const data = await rankingResponse.json()
         setRankingData(data.rankingData || [])
         setRankingSeasonName(data.seasonName || '')
       } else {
@@ -2242,12 +2315,22 @@ function App() {
         setRankingData([])
         setRankingSeasonName('')
       }
+      
+      if (itemsResponse.ok) {
+        const itemsData = await itemsResponse.json()
+        setTeamItemsSummary(itemsData.teamsSummary || [])
+      } else {
+        console.error('获取队伍物品统计失败')
+        setTeamItemsSummary([])
+      }
     } catch (error) {
       console.error('获取榜单数据失败:', error)
       setRankingData([])
       setRankingSeasonName('')
+      setTeamItemsSummary([])
     } finally {
       setLoadingRankingData(false)
+      setLoadingTeamItems(false)
     }
   }
 
@@ -5103,7 +5186,7 @@ function App() {
                     position: 'absolute',
                     left: '20px',
                     right: '20px',
-                    top: 'calc(20px + 150px)', // 20px(正值数值) + 150px(正值区域) = 170px，正好是柱子的交界处
+                    top: 'calc(35px + 150px)', // 35px(正值数值) + 150px(正值区域) = 185px，正好是柱子的交界处
                     height: '1px',
                     background: '#666',
                     zIndex: 1
@@ -5115,6 +5198,10 @@ function App() {
                     const maxBarHeight = 140
                     const barHeight = maxReward > 0 ? Math.min((Math.abs(team.totalReward) / maxReward) * maxBarHeight, maxBarHeight) : 0
                     const isPositive = team.totalReward >= 0
+                    
+                    // 计算百分比：当前小组 / 总和
+                    const totalSum = rankingData.reduce((sum, t) => sum + t.totalReward, 0)
+                    const percentage = totalSum !== 0 ? Math.round((team.totalReward / totalSum) * 100) : 0
                     
                     return (
                       <div key={team.teamName} style={{ 
@@ -5128,7 +5215,7 @@ function App() {
                       }}>
                         {/* 正值时的数值显示（顶部） */}
                         <div style={{ 
-                          height: '20px',
+                          height: '35px',
                           display: 'flex',
                           alignItems: 'flex-end',
                           justifyContent: 'center'
@@ -5141,6 +5228,13 @@ function App() {
                               textAlign: 'center'
                             }}>
                               +{team.totalReward}
+                              <div style={{ 
+                                fontSize: '9px',
+                                color: '#81c784',
+                                marginTop: '2px'
+                              }}>
+                                {percentage}%
+                              </div>
                             </div>
                           )}
                         </div>
@@ -5196,7 +5290,7 @@ function App() {
                         
                         {/* 负值时的数值显示（底部） */}
                         <div style={{ 
-                          height: '20px',
+                          height: '35px',
                           display: 'flex',
                           alignItems: 'flex-start',
                           justifyContent: 'center'
@@ -5209,6 +5303,13 @@ function App() {
                               textAlign: 'center'
                             }}>
                               {team.totalReward}
+                              <div style={{ 
+                                fontSize: '9px',
+                                color: '#e57373',
+                                marginTop: '2px'
+                              }}>
+                                {percentage}%
+                              </div>
                             </div>
                           )}
                         </div>
@@ -5230,11 +5331,162 @@ function App() {
                 </div>
               </div>
 
+              {/* 队伍物品统计表格 */}
+              <div style={{ 
+                background: '#3d3d3d', 
+                borderRadius: '8px',
+                overflow: 'hidden',
+                marginBottom: '20px'
+              }}>
+                <div style={{ 
+                  background: '#4a4a4a',
+                  padding: '16px',
+                  borderBottom: '1px solid #555'
+                }}>
+                  <h4 style={{ margin: 0, color: '#fff' }}>队伍物品统计</h4>
+                </div>
+
+                {loadingTeamItems ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: '#ccc' }}>
+                    加载中...
+                  </div>
+                ) : teamItemsSummary.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '40px', color: '#ccc' }}>
+                    暂无数据
+                  </div>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ 
+                      width: '100%', 
+                      borderCollapse: 'collapse',
+                      backgroundColor: '#3d3d3d'
+                    }}>
+                      <thead>
+                        <tr style={{ backgroundColor: '#4a4a4a' }}>
+                          <th style={{ 
+                            padding: '12px 8px', 
+                            border: '1px solid #555', 
+                            textAlign: 'left', 
+                            color: '#fff',
+                            fontWeight: 'bold'
+                          }}>
+                            队伍名称
+                          </th>
+                          <th style={{ 
+                            padding: '12px 8px', 
+                            border: '1px solid #555', 
+                            textAlign: 'center', 
+                            color: '#fff',
+                            fontWeight: 'bold'
+                          }}>
+                            花瓣
+                          </th>
+                          <th style={{ 
+                            padding: '12px 8px', 
+                            border: '1px solid #555', 
+                            textAlign: 'center', 
+                            color: '#fff',
+                            fontWeight: 'bold'
+                          }}>
+                            花
+                          </th>
+                          <th style={{ 
+                            padding: '12px 8px', 
+                            border: '1px solid #555', 
+                            textAlign: 'center', 
+                            color: '#fff',
+                            fontWeight: 'bold'
+                          }}>
+                            屎粒
+                          </th>
+                          <th style={{ 
+                            padding: '12px 8px', 
+                            border: '1px solid #555', 
+                            textAlign: 'center', 
+                            color: '#fff',
+                            fontWeight: 'bold'
+                          }}>
+                            屎
+                          </th>
+                          <th style={{ 
+                            padding: '12px 8px', 
+                            border: '1px solid #555', 
+                            textAlign: 'center', 
+                            color: '#fff',
+                            fontWeight: 'bold'
+                          }}>
+                            现金
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {teamItemsSummary.map((team: any, index: number) => (
+                          <tr key={team.teamName} style={{ 
+                            backgroundColor: index % 2 === 0 ? '#3d3d3d' : '#454545'
+                          }}>
+                            <td style={{ 
+                              padding: '12px 8px', 
+                              border: '1px solid #555', 
+                              color: '#fff',
+                              fontWeight: 'bold'
+                            }}>
+                              {team.teamName}
+                            </td>
+                            <td style={{ 
+                              padding: '12px 8px', 
+                              border: '1px solid #555', 
+                              textAlign: 'center', 
+                              color: team.花瓣 > 0 ? '#4caf50' : '#ccc'
+                            }}>
+                              {team.花瓣}
+                            </td>
+                            <td style={{ 
+                              padding: '12px 8px', 
+                              border: '1px solid #555', 
+                              textAlign: 'center', 
+                              color: team.花 > 0 ? '#4caf50' : '#ccc'
+                            }}>
+                              {team.花}
+                            </td>
+                            <td style={{ 
+                              padding: '12px 8px', 
+                              border: '1px solid #555', 
+                              textAlign: 'center', 
+                              color: team.屎粒 > 0 ? '#f44336' : '#ccc'
+                            }}>
+                              {team.屎粒}
+                            </td>
+                            <td style={{ 
+                              padding: '12px 8px', 
+                              border: '1px solid #555', 
+                              textAlign: 'center', 
+                              color: team.屎 > 0 ? '#f44336' : '#ccc'
+                            }}>
+                              {team.屎}
+                            </td>
+                            <td style={{ 
+                              padding: '12px 8px', 
+                              border: '1px solid #555', 
+                              textAlign: 'center', 
+                              color: team.现金 > 0 ? '#4caf50' : team.现金 < 0 ? '#f44336' : '#ccc',
+                              fontWeight: team.现金 !== 0 ? 'bold' : 'normal'
+                            }}>
+                              {team.现金 > 0 ? '+' : ''}{team.现金}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
               {/* 排行榜表格 */}
               <div style={{ 
                 background: '#3d3d3d', 
                 borderRadius: '8px',
-                overflow: 'hidden'
+                overflow: 'hidden',
+                marginBottom: '20px'
               }}>
                 <div style={{ 
                   display: 'grid', 
@@ -5305,24 +5557,6 @@ function App() {
                 >
                   查看明细
         </button>
-                <button
-                  onClick={() => {
-                    setShowTeamItemsModal(true)
-                    loadTeamItemsSummary()
-                  }}
-                  style={{
-                    padding: '12px 24px',
-                    background: '#28a745',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: 'bold'
-                  }}
-                >
-                  榜单详情
-                </button>
               </div>
             </div>
           )}
@@ -5627,7 +5861,7 @@ function App() {
                   {/* 表格头部 */}
                   <div style={{ 
                     display: 'grid', 
-                    gridTemplateColumns: '150px 120px 200px 120px 1fr', 
+                    gridTemplateColumns: '150px 120px 200px 120px 1fr 80px', 
                     gap: '12px',
                     background: '#4a4a4a',
                     padding: '12px',
@@ -5642,6 +5876,7 @@ function App() {
                     <div>奖惩详情</div>
                     <div>记录类型</div>
                     <div>考勤名称</div>
+                    <div>操作</div>
                   </div>
                   
                   {/* 表格内容 */}
@@ -5649,14 +5884,15 @@ function App() {
                     {settlementDetails.map((detail, index) => (
                       <div key={index} style={{ 
                         display: 'grid', 
-                        gridTemplateColumns: '150px 120px 200px 120px 1fr', 
+                        gridTemplateColumns: '150px 120px 200px 120px 1fr 80px', 
                         gap: '12px',
                         padding: '12px',
                         background: index % 2 === 0 ? '#3d3d3d' : '#353535',
                         color: '#fff',
                         fontSize: '13px',
                         borderRadius: '4px',
-                        marginBottom: '4px'
+                        marginBottom: '4px',
+                        alignItems: 'center'
                       }}>
                         <div>{detail.settlementTime}</div>
                         <div>{detail.teamName}</div>
@@ -5674,11 +5910,99 @@ function App() {
                           {detail.synthesisType || '原始记录'}
                         </div>
                         <div>{detail.attendanceName}</div>
+                        <div>
+                          {detail.isManual && detail.recordStatus !== 'DELETED' && (
+                            <button
+                              onClick={() => handleRevokeManualSettlement(detail.recordId, detail.teamName, detail.codeValue)}
+                              style={{
+                                padding: '4px 8px',
+                                background: detail.recordStatus === 'SYNTHESIZED' ? '#ff9800' : '#dc3545',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '3px',
+                                cursor: 'pointer',
+                                fontSize: '11px',
+                                fontWeight: 'bold'
+                              }}
+                              onMouseOver={(e) => e.target.style.background = detail.recordStatus === 'SYNTHESIZED' ? '#f57c00' : '#c82333'}
+                              onMouseOut={(e) => e.target.style.background = detail.recordStatus === 'SYNTHESIZED' ? '#ff9800' : '#dc3545'}
+                              title={detail.recordStatus === 'SYNTHESIZED' ? '撤销此手动记录及其所有合成产物' : '撤销此手动记录'}
+                            >
+                              撤销
+                            </button>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 撤销确认对话框 */}
+      {showRevokeConfirm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#2d2d2d',
+            borderRadius: '8px',
+            padding: '24px',
+            maxWidth: '400px',
+            width: '90%'
+          }}>
+            <h3 style={{ margin: '0 0 16px 0', color: '#fff' }}>确认撤销</h3>
+            <p style={{ color: '#ccc', margin: '0 0 16px 0', lineHeight: '1.5' }}>
+              确定要撤销 <strong style={{ color: '#fff' }}>{revokeRecordInfo?.teamName}</strong> 的 
+              <strong style={{ color: '#fff' }}>{revokeRecordInfo?.codeValue}</strong> 记录吗？
+            </p>
+            <p style={{ color: '#ff9800', margin: '0 0 20px 0', fontSize: '14px' }}>
+              ⚠️ 此操作可能会级联撤销相关的合成记录，并恢复被合成的原始记录
+            </p>
+            
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={cancelRevokeManualSettlement}
+                disabled={revokingRecord}
+                style={{
+                  padding: '8px 16px',
+                  background: '#6c757d',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: revokingRecord ? 'not-allowed' : 'pointer',
+                  opacity: revokingRecord ? 0.6 : 1
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmRevokeManualSettlement}
+                disabled={revokingRecord}
+                style={{
+                  padding: '8px 16px',
+                  background: '#dc3545',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: revokingRecord ? 'not-allowed' : 'pointer',
+                  opacity: revokingRecord ? 0.6 : 1
+                }}
+              >
+                {revokingRecord ? '撤销中...' : '确认撤销'}
+              </button>
             </div>
           </div>
         </div>

@@ -53,6 +53,9 @@ public class AttendanceController {
     
     @Autowired
     private CascadeRevocationService cascadeRevocationService;
+    
+    @Autowired
+    private SynthesisChainRepository synthesisChainRepository;
 
     @PostMapping(value = "/compare", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public AttendanceResponse compare(@RequestPart("start") MultipartFile start,
@@ -1928,6 +1931,15 @@ public class AttendanceController {
                             detail.put("attendanceName", "手动添加");
                         }
                         
+                        // 撤销功能需要的额外字段
+                        detail.put("recordId", record.getId());
+                        detail.put("settlementBatchId", record.getSettlementBatchId());
+                        detail.put("recordStatus", record.getRecordStatus());
+                        
+                        // 只有直接的手动记录才显示撤销按钮（无论是否已合成），撤销时会级联删除相关合成记录
+                        boolean isDirectManualRecord = record.getSettlementBatchId().startsWith("MANUAL_");
+                        detail.put("isManual", isDirectManualRecord);
+                        
                         return detail;
                     })
                     .collect(Collectors.toList());
@@ -2171,9 +2183,14 @@ public class AttendanceController {
             
             // 触发合成逻辑
             try {
-                synthesisService.checkAndPerformSynthesis(savedRecord.getId());
+                synthesisService.checkAndPerformSynthesis(
+                    season.getId(), 
+                    savedRecord.getSettlementBatchId(), 
+                    savedRecord.getAttendanceSession().getId()
+                );
             } catch (Exception e) {
                 System.err.println("触发合成逻辑失败: " + e.getMessage());
+                e.printStackTrace();
                 // 合成失败不影响主流程，只记录错误
             }
             
@@ -2187,6 +2204,69 @@ public class AttendanceController {
             System.err.println("手动添加结算记录失败: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.badRequest().body(Map.of("error", "手动添加结算记录失败: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * 撤销手动添加的结算记录
+     */
+    @DeleteMapping("/settlement/manual/{recordId}")
+    public ResponseEntity<Map<String, Object>> revokeManualSettlement(@PathVariable Long recordId) {
+        try {
+            // 1. 查找手动记录
+            SettlementRecord record = settlementRecordRepository.findById(recordId)
+                    .orElseThrow(() -> new RuntimeException("记录不存在: " + recordId));
+            
+            // 2. 验证只能撤销直接的手动记录
+            if (!record.getSettlementBatchId().startsWith("MANUAL_")) {
+                return ResponseEntity.badRequest().body(Map.of("error", "只能撤销直接的手动添加记录"));
+            }
+            
+            String targetBatchId = record.getSettlementBatchId();
+            
+            // 3. 验证记录状态（只有已删除的记录不能撤销）
+            if ("DELETED".equals(record.getRecordStatus())) {
+                return ResponseEntity.badRequest().body(Map.of("error", "该记录已被删除"));
+            }
+            
+            // 4. 分析撤销影响
+            CascadeRevocationService.RevocationImpactAnalysis analysis = 
+                cascadeRevocationService.analyzeRevocationImpact(targetBatchId);
+            
+            System.out.println("撤销手动记录: " + recordId + ", 目标批次: " + targetBatchId);
+            System.out.println("影响分析 - 直接记录: " + analysis.getDirectRecords().size() + 
+                             ", 受影响合成链: " + analysis.getAffectedChains().size());
+            
+            // 5. 执行级联撤销
+            cascadeRevocationService.executeRevocationWithCascade(targetBatchId);
+            
+            // 6. 构建响应数据
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "手动奖惩撤销成功");
+            response.put("affectedRecords", analysis.getDirectRecords().size() + 
+                                          analysis.getSynthesisRecordsToDelete().size());
+            response.put("restoredRecords", analysis.getRecordsToRestore().size());
+            
+            // 7. 添加详细影响信息
+            if (analysis.isHasImpact()) {
+                response.put("hasImpact", true);
+                response.put("impactDetails", String.format(
+                    "撤销了 %d 条直接记录，%d 条合成记录，恢复了 %d 条原始记录",
+                    analysis.getDirectRecords().size(),
+                    analysis.getSynthesisRecordsToDelete().size(),
+                    analysis.getRecordsToRestore().size()
+                ));
+            } else {
+                response.put("hasImpact", false);
+                response.put("impactDetails", "仅撤销了当前记录，无级联影响");
+            }
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            System.err.println("撤销手动结算记录失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(Map.of("error", "撤销失败: " + e.getMessage()));
         }
     }
 }
