@@ -40,6 +40,12 @@ public class RewardCondition {
     @Column(name = "reward_mode")
     private String rewardMode = "CODE_TABLE"; // 奖励模式："CODE_TABLE" 或 "CASH"
     
+    @Column(name = "penalty_mode")
+    private String penaltyMode = "CODE_TABLE"; // 惩罚模式："CODE_TABLE" 或 "CASH"
+    
+    @Column(name = "cash_penalty_amount", precision = 15, scale = 2)
+    private BigDecimal cashPenaltyAmount; // 现金惩罚金额（负数）
+    
     @Column(name = "created_at")
     private LocalDateTime createdAt;
     

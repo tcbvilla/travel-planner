@@ -7,5 +7,11 @@
 
     <!-- 完整数据库初始化 -->
     <include file="changesets/000-complete-init.xml" relativeToChangelogFile="true"/>
+    
+    <!-- 添加惩罚相关字段 -->
+    <include file="changesets/001-add-penalty-fields.xml" relativeToChangelogFile="true"/>
+    
+    <!-- 允许 settlement_records 的 attendance_session_id 为空 -->
+    <include file="changesets/002-allow-null-attendance-session-id.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

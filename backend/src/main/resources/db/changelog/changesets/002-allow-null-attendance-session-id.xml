@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="002-allow-null-attendance-session-id" author="system">
+        <comment>允许 settlement_records 表的 attendance_session_id 字段为空，以支持手动添加的结算记录</comment>
+        
+        <!-- 先删除依赖的视图 -->
+        <dropView viewName="active_settlement_records"/>
+        
+        <!-- 修改 attendance_session_id 字段，允许为空 -->
+        <sql>
+            ALTER TABLE settlement_records ALTER COLUMN attendance_session_id DROP NOT NULL;
+        </sql>
+        
+        <!-- 重新创建视图 -->
+        <createView viewName="active_settlement_records">
+            SELECT * FROM settlement_records WHERE record_status = 'ACTIVE'
+        </createView>
+        
+        <!-- 添加注释说明 -->
+        <sql>
+            COMMENT ON COLUMN settlement_records.attendance_session_id IS '关联的考勤记录ID，手动添加的记录可以为空';
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>

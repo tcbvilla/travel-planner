@@ -684,6 +684,9 @@ function App() {
   const [attendanceRateFailure, setAttendanceRateFailure] = useState<number | ''>('')
   const [attendanceRankFailure, setAttendanceRankFailure] = useState<string>('')
   const [penaltyTypeFailure, setPenaltyTypeFailure] = useState<string>('屎') // 默认值
+  const [penaltyMode, setPenaltyMode] = useState<string>('CODE_TABLE') // 处罚模式
+  const [cashPenaltyAmount, setCashPenaltyAmount] = useState<number>(0) // 现金处罚金额
+  const [rewardPenaltyType, setRewardPenaltyType] = useState<string>('reward') // 奖惩类型选择
 
   // 新增状态：奖惩条件管理
   const [rewardConditions, setRewardConditions] = useState<any[]>([])
@@ -778,6 +781,18 @@ function App() {
   const [teamItemsSummary, setTeamItemsSummary] = useState<any[]>([])
   const [loadingTeamItems, setLoadingTeamItems] = useState(false)
   const [settlementLogs, setSettlementLogs] = useState<any[]>([])
+  
+  // 手动添加奖惩相关状态
+  const [showManualRewardModal, setShowManualRewardModal] = useState(false)
+  const [manualRewardTeams, setManualRewardTeams] = useState<string[]>([])
+  const [loadingManualRewardTeams, setLoadingManualRewardTeams] = useState(false)
+  const [manualRewardType, setManualRewardType] = useState<string>('reward') // reward 或 penalty
+  const [manualRewardMode, setManualRewardMode] = useState<string>('CODE_TABLE') // CODE_TABLE 或 CASH
+  const [manualRewardCodeValue, setManualRewardCodeValue] = useState<string>('花')
+  const [manualRewardCashAmount, setManualRewardCashAmount] = useState<number>(0)
+  const [manualRewardQuantity, setManualRewardQuantity] = useState<number>(1)
+  const [manualRewardDescription, setManualRewardDescription] = useState<string>('')
+  const [selectedManualTeam, setSelectedManualTeam] = useState<string>('')
   const [loadingLogs, setLoadingLogs] = useState(false)
   const [currentLogPage, setCurrentLogPage] = useState(0)
   const [totalLogPages, setTotalLogPages] = useState(0)
@@ -1159,8 +1174,8 @@ function App() {
 
   // 新增函数：验证表单数据
   const validateForm = () => {
-          if (taskStatus === '胜利') {
-        // 胜利情况：必须填写出勤率阈值，出勤率排名和战功增量排名只能选择一个
+    if (rewardPenaltyType === 'reward') {
+      // 奖励情况：必须填写出勤率阈值，出勤率排名和战功增量排名只能选择一个
       if (!attendanceRateSuccess) {
         alert('请填写出勤率阈值')
         return false
@@ -1182,7 +1197,7 @@ function App() {
         return false
       }
     } else {
-      // 失败情况：必须填写出勤率阈值和排名
+      // 惩罚情况：必须填写出勤率阈值和排名
       if (!attendanceRateFailure) {
         alert('请填写出勤率阈值')
         return false
@@ -1191,8 +1206,12 @@ function App() {
         alert('请选择出勤率排名')
         return false
       }
-      if (!penaltyTypeFailure) {
-        alert('请选择处罚类型')
+      if (penaltyMode === 'CODE_TABLE' && !penaltyTypeFailure) {
+        alert('请选择惩罚类型')
+        return false
+      }
+      if (penaltyMode === 'CASH' && (!cashPenaltyAmount || cashPenaltyAmount === 0)) {
+        alert('请填写现金惩罚金额')
         return false
       }
     }
@@ -1216,13 +1235,15 @@ function App() {
     const requestData = {
       attendanceSessionId: selectedSession.id,
       taskStatus: taskStatus,
-      attendanceRateThreshold: taskStatus === '胜利' ? attendanceRateSuccess : attendanceRateFailure,
-      attendanceRateRank: taskStatus === '胜利' ? (attendanceRankSuccess || null) : attendanceRankFailure,
-      meritIncreaseRank: taskStatus === '胜利' ? (meritRankSuccess || null) : null,
-      rewardType: taskStatus === '胜利' ? (rewardMode === 'CODE_TABLE' ? rewardTypeSuccess : null) : null,
-      penaltyType: taskStatus === '失败' ? penaltyTypeFailure : null,
-      cashRewardAmount: taskStatus === '胜利' && rewardMode === 'CASH' ? cashRewardAmount : null,
-      rewardMode: taskStatus === '胜利' ? rewardMode : 'CODE_TABLE'
+      attendanceRateThreshold: rewardPenaltyType === 'reward' ? attendanceRateSuccess : attendanceRateFailure,
+      attendanceRateRank: rewardPenaltyType === 'reward' ? (attendanceRankSuccess || null) : attendanceRankFailure,
+      meritIncreaseRank: rewardPenaltyType === 'reward' ? (meritRankSuccess || null) : null,
+      rewardType: rewardPenaltyType === 'reward' ? (rewardMode === 'CODE_TABLE' ? rewardTypeSuccess : null) : null,
+      penaltyType: rewardPenaltyType === 'penalty' ? (penaltyMode === 'CODE_TABLE' ? penaltyTypeFailure : null) : null,
+      rewardMode: rewardPenaltyType === 'reward' ? rewardMode : null,
+      cashRewardAmount: rewardPenaltyType === 'reward' && rewardMode === 'CASH' ? cashRewardAmount : null,
+      penaltyMode: rewardPenaltyType === 'penalty' ? penaltyMode : null,
+      cashPenaltyAmount: rewardPenaltyType === 'penalty' && penaltyMode === 'CASH' ? -Math.abs(cashPenaltyAmount) : null
     }
 
     console.log('请求数据:', requestData)
@@ -1281,20 +1302,33 @@ function App() {
     setEditingCondition(condition)
     setTaskStatus(condition.taskStatus)
     
-    if (condition.taskStatus === '胜利') {
+    // 判断是奖励还是惩罚
+    const isReward = condition.rewardType || (condition.rewardMode === 'CASH' && condition.cashRewardAmount)
+    setRewardPenaltyType(isReward ? 'reward' : 'penalty')
+    
+    if (isReward) {
+      // 奖励情况：设置奖励相关字段
       setAttendanceRateSuccess(condition.attendanceRateThreshold || '')
       setAttendanceRankSuccess(condition.attendanceRateRank ? String(condition.attendanceRateRank) : '')
       setMeritRankSuccess(condition.meritIncreaseRank ? String(condition.meritIncreaseRank) : '')
       setRewardMode(condition.rewardMode || 'CODE_TABLE')
+      
       if (condition.rewardMode === 'CASH') {
         setCashRewardAmount(condition.cashRewardAmount || 0)
       } else {
         setRewardTypeSuccess(condition.rewardType || '花')
       }
     } else {
+      // 惩罚情况：设置惩罚相关字段
       setAttendanceRateFailure(condition.attendanceRateThreshold || '')
       setAttendanceRankFailure(condition.attendanceRateRank ? String(condition.attendanceRateRank) : '')
-      setPenaltyTypeFailure(condition.penaltyType || '屎')
+      setPenaltyMode(condition.penaltyMode || 'CODE_TABLE')
+      
+      if (condition.penaltyMode === 'CASH') {
+        setCashPenaltyAmount(Math.abs(condition.cashPenaltyAmount) || 0)
+      } else {
+        setPenaltyTypeFailure(condition.penaltyType || '屎')
+      }
     }
   }
 
@@ -1310,13 +1344,15 @@ function App() {
     const requestData = {
       attendanceSessionId: selectedSession?.id,
       taskStatus: taskStatus,
-      attendanceRateThreshold: taskStatus === '胜利' ? attendanceRateSuccess : attendanceRateFailure,
-      attendanceRateRank: taskStatus === '胜利' ? (attendanceRankSuccess || null) : attendanceRankFailure,
-      meritIncreaseRank: taskStatus === '胜利' ? (meritRankSuccess || null) : null,
-      rewardType: taskStatus === '胜利' ? (rewardMode === 'CODE_TABLE' ? rewardTypeSuccess : null) : null,
-      penaltyType: taskStatus === '失败' ? penaltyTypeFailure : null,
-      cashRewardAmount: taskStatus === '胜利' && rewardMode === 'CASH' ? cashRewardAmount : null,
-      rewardMode: taskStatus === '胜利' ? rewardMode : 'CODE_TABLE'
+      attendanceRateThreshold: rewardPenaltyType === 'reward' ? attendanceRateSuccess : attendanceRateFailure,
+      attendanceRateRank: rewardPenaltyType === 'reward' ? (attendanceRankSuccess || null) : attendanceRankFailure,
+      meritIncreaseRank: rewardPenaltyType === 'reward' ? (meritRankSuccess || null) : null,
+      rewardType: rewardPenaltyType === 'reward' ? (rewardMode === 'CODE_TABLE' ? rewardTypeSuccess : null) : null,
+      penaltyType: rewardPenaltyType === 'penalty' ? (penaltyMode === 'CODE_TABLE' ? penaltyTypeFailure : null) : null,
+      rewardMode: rewardPenaltyType === 'reward' ? rewardMode : null,
+      cashRewardAmount: rewardPenaltyType === 'reward' && rewardMode === 'CASH' ? cashRewardAmount : null,
+      penaltyMode: rewardPenaltyType === 'penalty' ? penaltyMode : null,
+      cashPenaltyAmount: rewardPenaltyType === 'penalty' && penaltyMode === 'CASH' ? -Math.abs(cashPenaltyAmount) : null
     }
 
     try {
@@ -1392,9 +1428,14 @@ function App() {
     setAttendanceRankSuccess('')
     setMeritRankSuccess('')
     setRewardTypeSuccess('花')
+    setRewardMode('CODE_TABLE')
+    setCashRewardAmount(0)
     setAttendanceRateFailure('')
     setAttendanceRankFailure('')
     setPenaltyTypeFailure('屎')
+    setPenaltyMode('CODE_TABLE')
+    setCashPenaltyAmount(0)
+    setRewardPenaltyType('reward')
     setEditingCondition(null)
   }
 
@@ -1427,7 +1468,7 @@ function App() {
         
         // 自动生成默认考勤名称
         const defaultName = generateDefaultSessionName();
-        if (defaultName && !sessionName.trim()) {
+        if (defaultName) {
           setSessionName(defaultName);
         }
         
@@ -1468,12 +1509,8 @@ function App() {
         }
         
         const startGroup = (s['分组'] ?? '').toString()
-        const endGroup = (e['分组'] ?? '').toString()
-        // 边界值处理：分组不一致的成员不加入统计
-        if (startGroup !== endGroup) {
-          filtered++
-          continue
-        }
+        // 边界值处理：分组不一致的成员归属于起始分组
+        // 不再过滤，而是使用起始分组进行统计
         
         const prev = numberize(s['战功总量'])
         const next = numberize(e['战功总量'])
@@ -1505,7 +1542,7 @@ function App() {
       
       // 自动生成默认考勤名称
       const defaultName = generateDefaultSessionName();
-      if (defaultName && !sessionName.trim()) {
+      if (defaultName) {
         setSessionName(defaultName);
       }
     } catch (err: any) {
@@ -2084,6 +2121,112 @@ function App() {
     setShowLogModal(true)
     loadSettlementLogs(0)
   }
+  
+  // 手动添加奖惩相关函数
+  const openManualRewardModal = () => {
+    if (!rankingSeasonId) {
+      alert('请先选择赛季')
+      return
+    }
+    setShowManualRewardModal(true)
+    loadManualRewardTeams()
+  }
+  
+  const loadManualRewardTeams = async () => {
+    if (!rankingSeasonId) {
+      console.log('loadManualRewardTeams: 没有选择赛季')
+      return
+    }
+    
+    console.log('loadManualRewardTeams: 开始加载团队列表，赛季ID:', rankingSeasonId)
+    setLoadingManualRewardTeams(true)
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/teams/${rankingSeasonId}`)
+      console.log('loadManualRewardTeams: 响应状态:', response.status)
+      if (response.ok) {
+        const teams = await response.json()
+        console.log('loadManualRewardTeams: 获取到的团队列表:', teams)
+        setManualRewardTeams(teams)
+      } else {
+        console.error('加载团队列表失败，状态码:', response.status)
+        setManualRewardTeams([])
+      }
+    } catch (error) {
+      console.error('加载团队列表失败:', error)
+      setManualRewardTeams([])
+    } finally {
+      setLoadingManualRewardTeams(false)
+    }
+  }
+  
+  const submitManualReward = async () => {
+    if (!selectedManualTeam) {
+      alert('请选择团队')
+      return
+    }
+    
+    if (manualRewardMode === 'CASH' && (!manualRewardCashAmount || manualRewardCashAmount === 0)) {
+      alert('请输入现金金额')
+      return
+    }
+    
+    if (manualRewardMode === 'CODE_TABLE' && !manualRewardCodeValue) {
+      alert('请选择奖惩类型')
+      return
+    }
+    
+    try {
+      // 处理现金金额：惩罚时转换为负数
+      let finalCashAmount = manualRewardCashAmount
+      if (manualRewardMode === 'CASH' && manualRewardType === 'penalty' && finalCashAmount > 0) {
+        finalCashAmount = -finalCashAmount
+      }
+      
+      const requestData = {
+        teamName: selectedManualTeam,
+        rewardType: manualRewardMode === 'CASH' ? '现金' : manualRewardCodeValue,
+        quantity: manualRewardQuantity,
+        codeValue: manualRewardMode === 'CODE_TABLE' ? manualRewardCodeValue : null,
+        cashAmount: manualRewardMode === 'CASH' ? finalCashAmount : null,
+        seasonId: rankingSeasonId, // 添加赛季ID
+        rewardDescription: manualRewardDescription || `${manualRewardType === 'reward' ? '奖励' : '惩罚'}: ${manualRewardMode === 'CASH' ? `现金${finalCashAmount > 0 ? '+' : ''}${finalCashAmount}元` : manualRewardCodeValue}`
+      }
+      
+      const response = await fetch('http://localhost:8080/api/v1/attendance/settlement/manual', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData)
+      })
+      
+      if (response.ok) {
+        alert('手动添加奖惩成功')
+        setShowManualRewardModal(false)
+        resetManualRewardForm()
+        // 刷新结算明细
+        if (selectedSession) {
+          calculateSettlementResults()
+        }
+      } else {
+        const errorData = await response.json()
+        alert('添加失败: ' + (errorData.error || '未知错误'))
+      }
+    } catch (error) {
+      console.error('提交手动奖惩失败:', error)
+      alert('提交失败: ' + error)
+    }
+  }
+  
+  const resetManualRewardForm = () => {
+    setSelectedManualTeam('')
+    setManualRewardType('reward')
+    setManualRewardMode('CODE_TABLE')
+    setManualRewardCodeValue('花')
+    setManualRewardCashAmount(0)
+    setManualRewardQuantity(1)
+    setManualRewardDescription('')
+  }
 
   // 加载榜单数据
   const loadRankingData = async (seasonId: number) => {
@@ -2390,7 +2533,7 @@ function App() {
 
       {filteredCount > 0 && (
         <div style={{ color: 'orange', marginTop: 12 }}>
-          提示：已过滤 {filteredCount} 个成员（只出现一次或分组不一致）
+          提示：已过滤 {filteredCount} 个成员（只出现在一次CSV中）
         </div>
       )}
 
@@ -3753,10 +3896,30 @@ function App() {
                       </select>
                     </div>
                     
-                                            {/* 胜利情况下的表单字段 */}
-                        {taskStatus === '胜利' && (
+                    {/* 奖惩类型选择 */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>奖惩类型</label>
+                      <select 
+                        value={rewardPenaltyType}
+                        onChange={(e) => setRewardPenaltyType(e.target.value)}
+                        style={{ 
+                          padding: '8px 12px', 
+                          border: '2px solid #007bff', 
+                          borderRadius: '4px', 
+                          color: '#28a745', 
+                          background: '#fff',
+                          minWidth: '150px'
+                        }}
+                      >
+                        <option value="reward">奖励</option>
+                        <option value="penalty">惩罚</option>
+                      </select>
+                    </div>
+                    
+                    {/* 奖励情况下的表单字段 */}
+                    {rewardPenaltyType === 'reward' && (
                       <>
-                        {/* 第二行：出勤率大于 */}
+                        {/* 出勤率大于 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>出勤率大于</label>
                           <input 
@@ -3768,14 +3931,14 @@ function App() {
                               padding: '8px 12px', 
                               border: '2px solid #007bff', 
                               borderRadius: '4px', 
-                              color: '#dc3545', 
+                              color: '#28a745', 
                               background: '#fff',
                               minWidth: '150px'
                             }}
                           />
                         </div>
                         
-                        {/* 第三行：出勤率第 */}
+                        {/* 出勤率第 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>出勤率第</label>
                           <select 
@@ -3790,7 +3953,7 @@ function App() {
                               padding: '8px 12px', 
                               border: '2px solid #007bff', 
                               borderRadius: '4px', 
-                              color: '#dc3545', 
+                              color: '#28a745', 
                               background: '#fff',
                               minWidth: '150px'
                             }}
@@ -3805,7 +3968,7 @@ function App() {
                           <span style={{ color: '#000' }}>名</span>
                         </div>
                         
-                        {/* 第四行：战功增量第 */}
+                        {/* 战功增量第 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>战功增量第</label>
                           <select 
@@ -3820,7 +3983,7 @@ function App() {
                               padding: '8px 12px', 
                               border: '2px solid #007bff', 
                               borderRadius: '4px', 
-                              color: '#dc3545', 
+                              color: '#28a745', 
                               background: '#fff',
                               minWidth: '150px'
                             }}
@@ -3835,7 +3998,7 @@ function App() {
                           <span style={{ color: '#000' }}>名</span>
                         </div>
                         
-                        {/* 第五行：奖励模式 */}
+                        {/* 奖励模式 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>奖励模式</label>
                           <select 
@@ -3845,7 +4008,7 @@ function App() {
                               padding: '8px 12px', 
                               border: '2px solid #007bff', 
                               borderRadius: '4px', 
-                              color: '#dc3545', 
+                              color: '#28a745', 
                               background: '#fff',
                               minWidth: '150px'
                             }}
@@ -3855,7 +4018,7 @@ function App() {
                           </select>
                         </div>
                         
-                        {/* 第六行：具体奖励 */}
+                        {/* 具体奖励 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>
                             {rewardMode === 'CASH' ? '现金金额' : '奖励类型'}
@@ -3871,7 +4034,7 @@ function App() {
                                   padding: '8px 12px', 
                                   border: '2px solid #007bff', 
                                   borderRadius: '4px', 
-                                  color: '#dc3545', 
+                                  color: '#28a745', 
                                   background: '#fff',
                                   minWidth: '200px'
                                 }}
@@ -3886,7 +4049,7 @@ function App() {
                                 padding: '8px 12px', 
                                 border: '2px solid #007bff', 
                                 borderRadius: '4px', 
-                                color: '#dc3545', 
+                                color: '#28a745', 
                                 background: '#fff',
                                 minWidth: '150px'
                               }}
@@ -3903,10 +4066,10 @@ function App() {
                       </>
                     )}
                     
-                    {/* 失败情况下的表单字段 */}
-                    {taskStatus === '失败' && (
+                    {/* 惩罚情况下的表单字段 */}
+                    {rewardPenaltyType === 'penalty' && (
                       <>
-                        {/* 第二行：出勤率小于 */}
+                        {/* 出勤率小于 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>出勤率小于</label>
                           <input 
@@ -3925,7 +4088,7 @@ function App() {
                           />
                         </div>
                         
-                        {/* 第三行：出勤率倒数第 */}
+                        {/* 出勤率倒数第 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                           <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>出勤率倒数第</label>
                           <select 
@@ -3950,12 +4113,12 @@ function App() {
                           <span style={{ color: '#000' }}>名</span>
                         </div>
                         
-                        {/* 第四行：处罚 */}
+                        {/* 惩罚模式 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>处罚</label>
+                          <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>惩罚模式</label>
                           <select 
-                            value={penaltyTypeFailure}
-                            onChange={(e) => setPenaltyTypeFailure(e.target.value)}
+                            value={penaltyMode}
+                            onChange={(e) => setPenaltyMode(e.target.value)}
                             style={{ 
                               padding: '8px 12px', 
                               border: '2px solid #007bff', 
@@ -3965,17 +4128,58 @@ function App() {
                               minWidth: '150px'
                             }}
                           >
-                            {penaltyCodes.map((code) => (
-                              <option key={code.id} value={code.codeName}>{code.codeName}</option>
-                            ))}
-                            {/* 手动添加"双"前缀选项 */}
-                            <option value="双屎粒">双屎粒</option>
-                            <option value="双屎">双屎</option>
+                            <option value="CODE_TABLE">码表惩罚</option>
+                            <option value="CASH">现金惩罚</option>
                           </select>
+                        </div>
+                        
+                        {/* 具体惩罚 */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>
+                            {penaltyMode === 'CASH' ? '现金金额' : '惩罚类型'}
+                          </label>
+                          {penaltyMode === 'CASH' ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <input 
+                                type="number"
+                                value={cashPenaltyAmount}
+                                onChange={(e) => setCashPenaltyAmount(parseFloat(e.target.value) || 0)}
+                                placeholder="输入现金金额（负数）"
+                                style={{ 
+                                  padding: '8px 12px', 
+                                  border: '2px solid #007bff', 
+                                  borderRadius: '4px', 
+                                  color: '#dc3545', 
+                                  background: '#fff',
+                                  minWidth: '200px'
+                                }}
+                              />
+                              <span style={{ color: '#000' }}>元</span>
+                            </div>
+                          ) : (
+                            <select 
+                              value={penaltyTypeFailure}
+                              onChange={(e) => setPenaltyTypeFailure(e.target.value)}
+                              style={{ 
+                                padding: '8px 12px', 
+                                border: '2px solid #007bff', 
+                                borderRadius: '4px', 
+                                color: '#dc3545', 
+                                background: '#fff',
+                                minWidth: '150px'
+                              }}
+                            >
+                              {penaltyCodes.map((code) => (
+                                <option key={code.id} value={code.codeName}>{code.codeName}</option>
+                              ))}
+                              {/* 手动添加"双"前缀选项 */}
+                              <option value="双屎粒">双屎粒</option>
+                              <option value="双屎">双屎</option>
+                            </select>
+                          )}
                         </div>
                       </>
                     )}
-                    
                     {/* 操作按钮 */}
                     <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
                       <button
@@ -4039,25 +4243,48 @@ function App() {
                                 {condition.taskStatus}
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
-                                {condition.taskStatus === '胜利' ? '大于' : '小于'} {condition.attendanceRateThreshold}%
+                                {(() => {
+                                  const isReward = condition.rewardType || (condition.rewardMode === 'CASH' && condition.cashRewardAmount);
+                                  return isReward ? '大于' : '小于';
+                                })()} {condition.attendanceRateThreshold}%
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
-                                {condition.taskStatus === '胜利' ? (
-                                  condition.meritIncreaseRank && condition.meritIncreaseRank !== '' ? (
-                                    <>战功增量第{condition.meritIncreaseRank}名</>
-                                  ) : (
-                                    <>出勤率第{condition.attendanceRateRank}名</>
-                                  )
-                                ) : (
-                                  <>出勤率倒数第{condition.attendanceRateRank}名</>
-                                )}
+                                {(() => {
+                                  const isReward = condition.rewardType || (condition.rewardMode === 'CASH' && condition.cashRewardAmount);
+                                  if (isReward) {
+                                    // 奖励情况
+                                    if (condition.meritIncreaseRank && condition.meritIncreaseRank !== '') {
+                                      return <>战功增量第{condition.meritIncreaseRank}名</>;
+                                    } else {
+                                      return <>出勤率第{condition.attendanceRateRank}名</>;
+                                    }
+                                  } else {
+                                    // 惩罚情况
+                                    return <>出勤率倒数第{condition.attendanceRateRank}名</>;
+                                  }
+                                })()}
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
-                                {condition.taskStatus === '胜利' ? (
-                                  condition.rewardMode === 'CASH' ? 
-                                    `现金${condition.cashRewardAmount > 0 ? '+' : ''}${condition.cashRewardAmount}元` : 
-                                    condition.rewardType
-                                ) : condition.penaltyType}
+                                {(() => {
+                                  // 判断是奖励还是惩罚
+                                  const isReward = condition.rewardType || (condition.rewardMode === 'CASH' && condition.cashRewardAmount);
+                                  
+                                  if (isReward) {
+                                    // 奖励类型
+                                    if (condition.rewardMode === 'CASH') {
+                                      return `现金${condition.cashRewardAmount > 0 ? '+' : ''}${condition.cashRewardAmount}元`;
+                                    } else {
+                                      return condition.rewardType || '未知奖励';
+                                    }
+                                  } else {
+                                    // 惩罚类型
+                                    if (condition.penaltyMode === 'CASH') {
+                                      return `现金${condition.cashPenaltyAmount}元`;
+                                    } else {
+                                      return condition.penaltyType || '未知惩罚';
+                                    }
+                                  }
+                                })()}
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
                                 <button
@@ -4456,25 +4683,46 @@ function App() {
                                 {condition.taskStatus}
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
-                                {condition.taskStatus === '胜利' ? '大于' : '小于'} {condition.attendanceRateThreshold}%
+                                {(() => {
+                                  const isReward = condition.rewardType || (condition.rewardMode === 'CASH' && condition.cashRewardAmount);
+                                  return isReward ? '大于' : '小于';
+                                })()} {condition.attendanceRateThreshold}%
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
-                                {condition.taskStatus === '胜利' ? (
-                                  condition.meritIncreaseRank && condition.meritIncreaseRank !== '' ? (
-                                    <>战功增量第{condition.meritIncreaseRank}名</>
-                                  ) : (
-                                    <>出勤率第{condition.attendanceRateRank}名</>
-                                  )
-                                ) : (
-                                  <>出勤率倒数第{condition.attendanceRateRank}名</>
-                                )}
+                                {(() => {
+                                  const isReward = condition.rewardType || (condition.rewardMode === 'CASH' && condition.cashRewardAmount);
+                                  if (isReward) {
+                                    // 奖励情况
+                                    if (condition.meritIncreaseRank && condition.meritIncreaseRank !== '') {
+                                      return <>战功增量第{condition.meritIncreaseRank}名</>;
+                                    } else {
+                                      return <>出勤率第{condition.attendanceRateRank}名</>;
+                                    }
+                                  } else {
+                                    // 惩罚情况
+                                    return <>出勤率倒数第{condition.attendanceRateRank}名</>;
+                                  }
+                                })()}
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
-                                {condition.taskStatus === '胜利' ? (
-                                  condition.rewardMode === 'CASH' ? 
-                                    `现金${condition.cashRewardAmount > 0 ? '+' : ''}${condition.cashRewardAmount}元` : 
-                                    condition.rewardType
-                                ) : condition.penaltyType}
+                                {(() => {
+                                  const isReward = condition.rewardType || (condition.rewardMode === 'CASH' && condition.cashRewardAmount);
+                                  if (isReward) {
+                                    // 奖励类型
+                                    if (condition.rewardMode === 'CASH') {
+                                      return `现金${condition.cashRewardAmount > 0 ? '+' : ''}${condition.cashRewardAmount}元`;
+                                    } else {
+                                      return condition.rewardType || '未知奖励';
+                                    }
+                                  } else {
+                                    // 惩罚类型
+                                    if (condition.penaltyMode === 'CASH') {
+                                      return `现金${condition.cashPenaltyAmount}元`;
+                                    } else {
+                                      return condition.penaltyType || '未知惩罚';
+                                    }
+                                  }
+                                })()}
                               </td>
                             </tr>
                           ))}
@@ -4668,20 +4916,38 @@ function App() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
               <h2 style={{ color: '#fff', margin: 0 }}>查看榜单</h2>
-              <button
-                onClick={openLogModal}
-                style={{
-                  padding: '8px 16px',
-                  background: '#17a2b8',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px'
-                }}
-              >
-                查看日志
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={openLogModal}
+                  style={{
+                    padding: '8px 16px',
+                    background: '#17a2b8',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '14px'
+                  }}
+                >
+                  查看日志
+                </button>
+                {rankingSeasonId && (
+                  <button
+                    onClick={openManualRewardModal}
+                    style={{
+                      padding: '8px 16px',
+                      background: '#28a745',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '14px'
+                    }}
+                  >
+                    手动添加奖惩
+                  </button>
+                )}
+              </div>
             </div>
             
             {/* 赛季选择下拉框 */}
@@ -4843,7 +5109,7 @@ function App() {
                     zIndex: 1
                   }}></div>
                   
-                  {rankingData.map((team, index) => {
+                  {rankingData.map((team) => {
                     const maxReward = Math.max(...rankingData.map(t => Math.abs(t.totalReward)))
                     // 限制柱子最大高度为140px，留10px边距
                     const maxBarHeight = 140
@@ -5827,6 +6093,224 @@ function App() {
                 }}
               >
                 关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 手动添加奖惩弹窗 */}
+      {showManualRewardModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#2d2d2d',
+            padding: '24px',
+            borderRadius: '8px',
+            width: '500px',
+            maxHeight: '80vh',
+            overflowY: 'auto'
+          }}>
+            <h3 style={{ color: '#fff', margin: '0 0 20px 0' }}>手动添加奖惩</h3>
+            
+            {/* 团队选择 */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: '#fff', marginBottom: '8px' }}>选择团队</label>
+              {loadingManualRewardTeams ? (
+                <div style={{ color: '#ccc' }}>加载团队列表中...</div>
+              ) : (
+                <select
+                  value={selectedManualTeam}
+                  onChange={(e) => setSelectedManualTeam(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    background: '#404040',
+                    color: '#fff',
+                    border: '1px solid #555',
+                    borderRadius: '4px'
+                  }}
+                >
+                  <option value="">请选择团队</option>
+                  {manualRewardTeams.map(team => (
+                    <option key={team} value={team}>{team}</option>
+                  ))}
+                </select>
+              )}
+            </div>
+            
+            {/* 奖惩类型 */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: '#fff', marginBottom: '8px' }}>奖惩类型</label>
+              <div style={{ display: 'flex', gap: '16px' }}>
+                <label style={{ display: 'flex', alignItems: 'center', color: '#fff' }}>
+                  <input
+                    type="radio"
+                    value="reward"
+                    checked={manualRewardType === 'reward'}
+                    onChange={(e) => setManualRewardType(e.target.value)}
+                    style={{ marginRight: '8px' }}
+                  />
+                  奖励
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', color: '#fff' }}>
+                  <input
+                    type="radio"
+                    value="penalty"
+                    checked={manualRewardType === 'penalty'}
+                    onChange={(e) => setManualRewardType(e.target.value)}
+                    style={{ marginRight: '8px' }}
+                  />
+                  惩罚
+                </label>
+              </div>
+            </div>
+            
+            {/* 奖惩模式 */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: '#fff', marginBottom: '8px', fontWeight: 'bold' }}>奖惩模式</label>
+              <select
+                value={manualRewardMode}
+                onChange={(e) => setManualRewardMode(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  background: '#404040',
+                  color: '#fff',
+                  border: '1px solid #555',
+                  borderRadius: '4px'
+                }}
+              >
+                <option value="CODE_TABLE">码表</option>
+                <option value="CASH">现金</option>
+              </select>
+            </div>
+            
+            {/* 具体内容 */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', color: '#fff', marginBottom: '8px', fontWeight: 'bold' }}>
+                {manualRewardMode === 'CASH' ? '现金金额' : '奖惩类型'}
+              </label>
+              {manualRewardMode === 'CASH' ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <input
+                    type="number"
+                    value={manualRewardCashAmount}
+                    onChange={(e) => setManualRewardCashAmount(parseFloat(e.target.value) || 0)}
+                    placeholder={manualRewardType === 'reward' ? '输入现金金额（可正可负）' : '输入现金金额（负数）'}
+                    style={{
+                      flex: 1,
+                      padding: '8px 12px',
+                      background: '#404040',
+                      color: manualRewardType === 'reward' ? '#28a745' : '#dc3545',
+                      border: '2px solid #007bff',
+                      borderRadius: '4px'
+                    }}
+                  />
+                  <span style={{ color: '#fff' }}>元</span>
+                </div>
+              ) : (
+                <select
+                  value={manualRewardCodeValue}
+                  onChange={(e) => setManualRewardCodeValue(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    background: '#404040',
+                    color: '#fff',
+                    border: '1px solid #555',
+                    borderRadius: '4px'
+                  }}
+                >
+                  <option value="花">花</option>
+                  <option value="花瓣">花瓣</option>
+                  <option value="屎">屎</option>
+                  <option value="屎粒">屎粒</option>
+                </select>
+              )}
+            </div>
+            
+            {/* 数量 */}
+            {/* 数量 - 只有码表模式才显示 */}
+            {manualRewardMode === 'CODE_TABLE' && (
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', color: '#fff', marginBottom: '8px' }}>数量</label>
+                <input
+                  type="number"
+                  value={manualRewardQuantity}
+                  onChange={(e) => setManualRewardQuantity(Number(e.target.value))}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    background: '#404040',
+                    color: '#fff',
+                    border: '1px solid #555',
+                    borderRadius: '4px'
+                  }}
+                  min="1"
+                />
+              </div>
+            )}
+            
+            {/* 描述 */}
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', color: '#fff', marginBottom: '8px' }}>描述（可选）</label>
+              <input
+                type="text"
+                value={manualRewardDescription}
+                onChange={(e) => setManualRewardDescription(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  background: '#404040',
+                  color: '#fff',
+                  border: '1px solid #555',
+                  borderRadius: '4px'
+                }}
+                placeholder="请输入描述"
+              />
+            </div>
+            
+            {/* 按钮 */}
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowManualRewardModal(false)
+                  resetManualRewardForm()
+                }}
+                style={{
+                  padding: '8px 16px',
+                  background: '#6c757d',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={submitManualReward}
+                style={{
+                  padding: '8px 16px',
+                  background: '#28a745',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                确认添加
               </button>
             </div>
           </div>

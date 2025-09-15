@@ -81,11 +81,8 @@ public class AttendanceController {
             String startGroup = s.getOrDefault("分组", "");
             String endGroup = t.getOrDefault("分组", "");
             
-            // 边界值处理：分组不一致的成员不加入统计
-            if (!startGroup.equals(endGroup)) {
-                filteredCount++;
-                continue;
-            }
+            // 边界值处理：分组不一致的成员归属于起始分组
+            // 不再过滤，而是使用起始分组进行统计
             
             long prev = parseLong(s.getOrDefault("战功总量", "0"));
             long next = parseLong(t.getOrDefault("战功总量", "0"));
@@ -610,6 +607,8 @@ public class AttendanceController {
         condition.setPenaltyType(request.getPenaltyType());
         condition.setCashRewardAmount(request.getCashRewardAmount());
         condition.setRewardMode(request.getRewardMode());
+        condition.setPenaltyMode(request.getPenaltyMode());
+        condition.setCashPenaltyAmount(request.getCashPenaltyAmount());
         return rewardConditionRepository.save(condition);
     }
     
@@ -637,6 +636,8 @@ public class AttendanceController {
         condition.setPenaltyType(request.getPenaltyType());
         condition.setCashRewardAmount(request.getCashRewardAmount());
         condition.setRewardMode(request.getRewardMode());
+        condition.setPenaltyMode(request.getPenaltyMode());
+        condition.setCashPenaltyAmount(request.getCashPenaltyAmount());
         
         return rewardConditionRepository.save(condition);
     }
@@ -892,18 +893,21 @@ public class AttendanceController {
         // 按人均战功增量（加成后）排序
         List<GroupStat> sortedStats = new ArrayList<>(groupStats);
         
-        // 根据任务状态决定排序方向
-        if ("胜利".equals(condition.getTaskStatus())) {
-            // 胜利情况：按战功增量降序排列（高到低），第1名是战功最高的
+        // 判断是奖励还是惩罚
+        boolean isReward = condition.getRewardType() != null || 
+                          (condition.getRewardMode() != null && "CASH".equals(condition.getRewardMode()) && condition.getCashRewardAmount() != null);
+        
+        if (isReward) {
+            // 奖励情况：按战功增量降序排列（高到低），第1名是战功最高的
             sortedStats.sort((a, b) -> Long.compare(b.getAverageMeritIncreaseBonus(), a.getAverageMeritIncreaseBonus()));
         } else {
-            // 失败情况：按战功增量升序排列（低到高），第1名是战功最低的（倒数第1名）
+            // 惩罚情况：按战功增量升序排列（低到高），第1名是战功最低的（倒数第1名）
             sortedStats.sort((a, b) -> Long.compare(a.getAverageMeritIncreaseBonus(), b.getAverageMeritIncreaseBonus()));
         }
         
         // 计算密集排名
         Map<String, Integer> rankings = calculateDenseRanking(sortedStats, 
-            GroupStat::getAverageMeritIncreaseBonus, "胜利".equals(condition.getTaskStatus()));
+            GroupStat::getAverageMeritIncreaseBonus, isReward);
         
         // 找到符合排名要求的队伍
         int targetRank = condition.getMeritIncreaseRank();
@@ -923,13 +927,17 @@ public class AttendanceController {
         double threshold = condition.getAttendanceRateThreshold();
         
         for (GroupStat stat : groupStats) {
-            if ("胜利".equals(condition.getTaskStatus())) {
-                // 胜利情况：出勤率（加成后）大于阈值
+            // 判断是奖励还是惩罚
+            boolean isReward = condition.getRewardType() != null || 
+                              (condition.getRewardMode() != null && "CASH".equals(condition.getRewardMode()) && condition.getCashRewardAmount() != null);
+            
+            if (isReward) {
+                // 奖励情况：出勤率（加成后）大于阈值
                 if (stat.getAttendanceRateBonus() > threshold) {
                     filteredStats.add(stat);
                 }
             } else {
-                // 失败情况：出勤率（加成后）小于阈值
+                // 惩罚情况：出勤率（加成后）小于阈值
                 if (stat.getAttendanceRateBonus() < threshold) {
                     filteredStats.add(stat);
                 }
@@ -941,17 +949,21 @@ public class AttendanceController {
         }
         
         // 按出勤率（加成后）排序
-        if ("胜利".equals(condition.getTaskStatus())) {
-            // 胜利情况：按出勤率降序排列（高到低），第1名是出勤率最高的
+        // 判断是奖励还是惩罚
+        boolean isReward = condition.getRewardType() != null || 
+                          (condition.getRewardMode() != null && "CASH".equals(condition.getRewardMode()) && condition.getCashRewardAmount() != null);
+        
+        if (isReward) {
+            // 奖励情况：按出勤率降序排列（高到低），第1名是出勤率最高的
             filteredStats.sort((a, b) -> Double.compare(b.getAttendanceRateBonus(), a.getAttendanceRateBonus()));
         } else {
-            // 失败情况：按出勤率升序排列（低到高），第1名是出勤率最低的（倒数第1名）
+            // 惩罚情况：按出勤率升序排列（低到高），第1名是出勤率最低的（倒数第1名）
             filteredStats.sort((a, b) -> Double.compare(a.getAttendanceRateBonus(), b.getAttendanceRateBonus()));
         }
         
         // 计算密集排名
         Map<String, Integer> rankings = calculateDenseRanking(filteredStats, 
-            GroupStat::getAttendanceRateBonus, "胜利".equals(condition.getTaskStatus()));
+            GroupStat::getAttendanceRateBonus, isReward);
         
         // 找到符合排名要求的队伍
         int targetRank = condition.getAttendanceRateRank();
@@ -1001,26 +1013,51 @@ public class AttendanceController {
      * 分配奖励
      */
     private void distributeReward(RewardCondition condition, List<String> qualifiedTeams, List<SettlementResult> results) {
-        if ("CASH".equals(condition.getRewardMode())) {
-            // 现金奖励模式
-            distributeCashReward(condition, qualifiedTeams, results);
+        // 判断是奖励还是惩罚
+        boolean isReward = condition.getRewardType() != null || 
+                          (condition.getRewardMode() != null && "CASH".equals(condition.getRewardMode()) && condition.getCashRewardAmount() != null);
+        
+        if (isReward) {
+            // 奖励情况
+            if ("CASH".equals(condition.getRewardMode())) {
+                // 现金奖励模式
+                distributeCashReward(condition, qualifiedTeams, results);
+            } else {
+                // 码表奖励模式（默认）
+                distributeCodeTableReward(condition, qualifiedTeams, results);
+            }
         } else {
-            // 码表奖励模式（默认）
-            distributeCodeTableReward(condition, qualifiedTeams, results);
+            // 惩罚情况
+            if ("CASH".equals(condition.getPenaltyMode())) {
+                // 现金惩罚模式
+                distributeCashReward(condition, qualifiedTeams, results);
+            } else {
+                // 码表惩罚模式（默认）
+                distributeCodeTableReward(condition, qualifiedTeams, results);
+            }
         }
     }
     
     /**
-     * 分配现金奖励
+     * 分配现金奖励/惩罚
      */
     private void distributeCashReward(RewardCondition condition, List<String> qualifiedTeams, List<SettlementResult> results) {
-        BigDecimal totalCashAmount = condition.getCashRewardAmount();
-        if (totalCashAmount == null) {
-            throw new RuntimeException("现金奖励金额不能为空");
-        }
+        // 判断是奖励还是惩罚
+        boolean isReward = condition.getRewardType() != null || 
+                          (condition.getRewardMode() != null && "CASH".equals(condition.getRewardMode()) && condition.getCashRewardAmount() != null);
         
-        // 计算每个队伍分得的现金金额，保留2位小数
-        BigDecimal cashPerTeam = totalCashAmount.divide(BigDecimal.valueOf(qualifiedTeams.size()), 2, BigDecimal.ROUND_HALF_UP);
+        BigDecimal totalCashAmount;
+        if (isReward) {
+            totalCashAmount = condition.getCashRewardAmount();
+            if (totalCashAmount == null) {
+                throw new RuntimeException("现金奖励金额不能为空");
+            }
+        } else {
+            totalCashAmount = condition.getCashPenaltyAmount();
+            if (totalCashAmount == null) {
+                throw new RuntimeException("现金惩罚金额不能为空");
+            }
+        }
         
         // 为每个队伍创建结算结果
         for (String teamName : qualifiedTeams) {
@@ -1028,9 +1065,26 @@ public class AttendanceController {
             result.setTeamName(teamName);
             result.setRewardType("现金"); // 现金奖励标识
             result.setQuantity(1.0); // 现金奖励数量固定为1
-            result.setMultiplier(cashPerTeam); // 使用multiplier存储现金金额
-            result.setRewardDescription("现金" + (cashPerTeam.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + cashPerTeam + "元");
-            result.setAmount(cashPerTeam); // 现金金额
+            
+            BigDecimal cashAmount;
+            String description;
+            
+            if (isReward) {
+                // 奖励情况：平分奖励
+                BigDecimal cashPerTeam = totalCashAmount.divide(BigDecimal.valueOf(qualifiedTeams.size()), 2, BigDecimal.ROUND_HALF_UP);
+                cashAmount = cashPerTeam;
+                description = "现金" + (cashPerTeam.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "") + cashPerTeam + "元";
+                result.setAmount(cashPerTeam);
+                result.setMultiplier(cashPerTeam); // 使用multiplier存储现金金额
+            } else {
+                // 惩罚情况：不平分，每个队伍都处罚输入的数值（负数）
+                cashAmount = totalCashAmount; // 直接使用原始金额（已经是负数）
+                description = "现金" + cashAmount + "元";
+                result.setAmount(cashAmount);
+                result.setMultiplier(cashAmount); // 使用multiplier存储现金金额
+            }
+            
+            result.setRewardDescription(description);
             results.add(result);
         }
     }
@@ -1039,7 +1093,11 @@ public class AttendanceController {
      * 分配码表奖励（支持"双"前缀的数量翻倍）
      */
     private void distributeCodeTableReward(RewardCondition condition, List<String> qualifiedTeams, List<SettlementResult> results) {
-        String rewardType = "胜利".equals(condition.getTaskStatus()) ? condition.getRewardType() : condition.getPenaltyType();
+        // 判断是奖励还是惩罚
+        boolean isReward = condition.getRewardType() != null || 
+                          (condition.getRewardMode() != null && "CASH".equals(condition.getRewardMode()) && condition.getCashRewardAmount() != null);
+        
+        String rewardType = isReward ? condition.getRewardType() : condition.getPenaltyType();
         
         // 解析奖励类型和数量倍数
         String baseRewardType = rewardType;
@@ -1859,7 +1917,16 @@ public class AttendanceController {
                         }
                         
                         // 考勤名称
-                        detail.put("attendanceName", record.getAttendanceSession().getName());
+                        if (record.getAttendanceSession() != null) {
+                            String attendanceName = record.getAttendanceSession().getName();
+                            if (attendanceName.startsWith("手动添加-")) {
+                                detail.put("attendanceName", "手动添加");
+                            } else {
+                                detail.put("attendanceName", attendanceName);
+                            }
+                        } else {
+                            detail.put("attendanceName", "手动添加");
+                        }
                         
                         return detail;
                     })
@@ -1983,6 +2050,143 @@ public class AttendanceController {
             System.err.println("获取队伍物品统计失败: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.badRequest().body(Map.of("error", "获取队伍物品统计失败: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * 根据赛季ID查询所有出现过的队伍
+     */
+    @GetMapping("/teams/{seasonId}")
+    public ResponseEntity<List<String>> getTeamsBySeason(@PathVariable Long seasonId) {
+        try {
+            // 查询该赛季下所有考勤记录
+            List<AttendanceSession> sessions = attendanceSessionRepository.findBySeasonId(seasonId);
+            
+            // 提取所有出现过的队伍名称
+            Set<String> teamNames = new HashSet<>();
+            for (AttendanceSession session : sessions) {
+                // 从成员数据中提取队伍名称
+                if (session.getMemberData() != null && !session.getMemberData().isEmpty()) {
+                    try {
+                        ObjectMapper mapper = new ObjectMapper();
+                        @SuppressWarnings("unchecked")
+                        List<Map<String, Object>> memberData = (List<Map<String, Object>>) mapper.readValue(session.getMemberData(), List.class);
+                        for (Map<String, Object> member : memberData) {
+                            String groupName = (String) member.get("分组");
+                            if (groupName != null && !groupName.trim().isEmpty()) {
+                                teamNames.add(groupName.trim());
+                            }
+                        }
+                    } catch (Exception e) {
+                        System.err.println("解析成员数据失败: " + e.getMessage());
+                    }
+                }
+            }
+            
+            // 转换为列表并排序
+            List<String> teams = new ArrayList<>(teamNames);
+            teams.sort(String::compareTo);
+            
+            return ResponseEntity.ok(teams);
+        } catch (Exception e) {
+            System.err.println("查询队伍列表失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(new ArrayList<>());
+        }
+    }
+    
+    /**
+     * 获取或创建手动添加专用的虚拟AttendanceSession
+     */
+    private AttendanceSession getOrCreateManualSession(Season season) {
+        // 查找是否已存在该赛季的手动添加虚拟会话
+        String manualSessionName = "手动添加-" + season.getName();
+        List<AttendanceSession> existingSessions = attendanceSessionRepository.findAll().stream()
+                .filter(session -> manualSessionName.equals(session.getName()) && 
+                                 session.getSeason() != null && 
+                                 session.getSeason().getId().equals(season.getId()))
+                .collect(Collectors.toList());
+        
+        if (!existingSessions.isEmpty()) {
+            return existingSessions.get(0);
+        }
+        
+        // 创建新的虚拟会话
+        AttendanceSession manualSession = new AttendanceSession();
+        manualSession.setName(manualSessionName);
+        manualSession.setBattleResult(BattleResult.VICTORY); // 默认为胜利
+        manualSession.setStatus(SessionStatus.SETTLED); // 标记为已结算状态
+        manualSession.setSeason(season);
+        manualSession.setAttendanceType("手动添加");
+        manualSession.setMemberData("[]"); // 空的成员数据
+        manualSession.setGroupData("[]"); // 空的组数据
+        manualSession.setThreshold(0); // 默认阈值
+        
+        return attendanceSessionRepository.save(manualSession);
+    }
+    
+    /**
+     * 手动添加结算记录
+     */
+    @PostMapping("/settlement/manual")
+    public ResponseEntity<Map<String, Object>> addManualSettlement(@RequestBody com.tripmaster.backend.attendance.ManualSettlementRequest request) {
+        try {
+            // 验证请求参数
+            if (request.getTeamName() == null || request.getTeamName().trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "团队名称不能为空"));
+            }
+            if (request.getRewardType() == null || request.getRewardType().trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "奖惩类型不能为空"));
+            }
+            if (request.getSeasonId() == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "赛季ID不能为空"));
+            }
+            
+            // 验证赛季是否存在
+            Season season = seasonRepository.findById(request.getSeasonId())
+                    .orElseThrow(() -> new RuntimeException("未找到指定的赛季: " + request.getSeasonId()));
+            
+            // 创建或获取手动添加专用的虚拟AttendanceSession
+            AttendanceSession manualSession = getOrCreateManualSession(season);
+            
+            // 创建结算记录
+            SettlementRecord record = new SettlementRecord();
+            record.setTeamName(request.getTeamName().trim());
+            record.setQuantity(request.getQuantity() != null ? request.getQuantity() : BigDecimal.ONE);
+            record.setCodeValue(request.getCodeValue());
+            record.setCashAmount(request.getCashAmount());
+            record.setAttendanceSession(manualSession); // 关联到虚拟会话
+            record.setSettlementBatchId("MANUAL_" + System.currentTimeMillis()); // 手动添加的批次ID
+            record.setCreatedAt(LocalDateTime.now());
+            
+            // 设置奖励模式
+            if (request.getCashAmount() != null) {
+                record.setRewardMode("CASH");
+            } else {
+                record.setRewardMode("CODE_TABLE");
+            }
+            
+            // 保存记录
+            SettlementRecord savedRecord = settlementRecordRepository.save(record);
+            
+            // 触发合成逻辑
+            try {
+                synthesisService.checkAndPerformSynthesis(savedRecord.getId());
+            } catch (Exception e) {
+                System.err.println("触发合成逻辑失败: " + e.getMessage());
+                // 合成失败不影响主流程，只记录错误
+            }
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("recordId", savedRecord.getId());
+            response.put("message", "手动添加结算记录成功");
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            System.err.println("手动添加结算记录失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(Map.of("error", "手动添加结算记录失败: " + e.getMessage()));
         }
     }
 }

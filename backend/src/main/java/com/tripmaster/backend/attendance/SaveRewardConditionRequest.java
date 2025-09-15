@@ -12,6 +12,8 @@ public class SaveRewardConditionRequest {
     private String penaltyType;
     private BigDecimal cashRewardAmount; // 现金奖励金额
     private String rewardMode = "CODE_TABLE"; // 奖励模式
+    private String penaltyMode = "CODE_TABLE"; // 惩罚模式
+    private BigDecimal cashPenaltyAmount; // 现金惩罚金额
 
     // Getters
     public Long getAttendanceSessionId() { return attendanceSessionId; }
@@ -23,6 +25,8 @@ public class SaveRewardConditionRequest {
     public String getPenaltyType() { return penaltyType; }
     public BigDecimal getCashRewardAmount() { return cashRewardAmount; }
     public String getRewardMode() { return rewardMode; }
+    public String getPenaltyMode() { return penaltyMode; }
+    public BigDecimal getCashPenaltyAmount() { return cashPenaltyAmount; }
 
     // Setters
     public void setAttendanceSessionId(Long attendanceSessionId) { this.attendanceSessionId = attendanceSessionId; }
@@ -34,4 +38,6 @@ public class SaveRewardConditionRequest {
     public void setPenaltyType(String penaltyType) { this.penaltyType = penaltyType; }
     public void setCashRewardAmount(BigDecimal cashRewardAmount) { this.cashRewardAmount = cashRewardAmount; }
     public void setRewardMode(String rewardMode) { this.rewardMode = rewardMode; }
+    public void setPenaltyMode(String penaltyMode) { this.penaltyMode = penaltyMode; }
+    public void setCashPenaltyAmount(BigDecimal cashPenaltyAmount) { this.cashPenaltyAmount = cashPenaltyAmount; }
 }

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <changeSet id="001-001" author="dev-team">
+        <comment>为reward_conditions表添加惩罚相关字段</comment>
+        
+        <!-- 添加penalty_mode字段 -->
+        <addColumn tableName="reward_conditions">
+            <column name="penalty_mode" type="VARCHAR(20)" defaultValue="CODE_TABLE">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+        
+        <!-- 添加cash_penalty_amount字段 -->
+        <addColumn tableName="reward_conditions">
+            <column name="cash_penalty_amount" type="NUMERIC(15,2)">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+        
+    </changeSet>
+
+</databaseChangeLog>
+

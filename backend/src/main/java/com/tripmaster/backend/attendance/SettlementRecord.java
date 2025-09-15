@@ -32,7 +32,7 @@ public class SettlementRecord {
     private String settlementBatchId; // 结算批次ID，用于关联特定的奖惩条件组合
     
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "attendance_session_id", nullable = false)
+    @JoinColumn(name = "attendance_session_id", nullable = true)
     private AttendanceSession attendanceSession;
     
     @Column(name = "synthesis_chain_id")
