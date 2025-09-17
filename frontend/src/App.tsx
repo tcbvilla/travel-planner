@@ -1,7 +1,29 @@
 import { useMemo, useState, useEffect, useRef } from 'react'
 import Papa from 'papaparse'
 import html2canvas from 'html2canvas'
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js'
+import { Line } from 'react-chartjs-2'
 import './App.css'
+
+// 注册Chart.js组件
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend
+)
 
 type DisplayRow = {
   成员: string
@@ -686,6 +708,7 @@ function App() {
   const [statsQueryResult, setStatsQueryResult] = useState<any>(null)
   const [availableAttendanceTypes, setAvailableAttendanceTypes] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [chartDisplayMode, setChartDisplayMode] = useState<'both' | 'original' | 'bonus'>('both')
 
   // 当切换到赛季管理页面时自动加载赛季列表
   useEffect(() => {
@@ -6174,25 +6197,242 @@ function App() {
                     团队出勤率曲线 - {selectedStatsTeam}
                   </h4>
                   
+                  {/* 图表显示模式控制 */}
+                  <div style={{ 
+                    marginBottom: '16px', 
+                    display: 'flex', 
+                    gap: '8px',
+                    alignItems: 'center',
+                    flexWrap: 'wrap'
+                  }}>
+                    <span style={{ color: '#ccc', fontSize: '14px' }}>显示模式:</span>
+                    <button
+                      onClick={() => setChartDisplayMode('both')}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: chartDisplayMode === 'both' ? '#007bff' : '#555',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      双线对比
+                    </button>
+                    <button
+                      onClick={() => setChartDisplayMode('original')}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: chartDisplayMode === 'original' ? '#4CAF50' : '#555',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      原始出勤率
+                    </button>
+                    <button
+                      onClick={() => setChartDisplayMode('bonus')}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: chartDisplayMode === 'bonus' ? '#2196F3' : '#555',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      加成后出勤率
+                    </button>
+                    <button
+                      onClick={() => {
+                        const chartCanvas = document.querySelector('#attendance-chart canvas') as HTMLCanvasElement;
+                        if (chartCanvas) {
+                          const link = document.createElement('a');
+                          link.download = `团队出勤率曲线_${selectedStatsTeam}_${new Date().toISOString().split('T')[0]}.png`;
+                          link.href = chartCanvas.toDataURL();
+                          link.click();
+                        }
+                      }}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: '#28a745',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        marginLeft: 'auto'
+                      }}
+                    >
+                      导出图表
+                    </button>
+                  </div>
+                  
                   {/* 图表容器 */}
                   <div style={{ 
                     background: '#1a1a1a', 
                     padding: '20px', 
                     borderRadius: '8px',
-                    minHeight: '400px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
+                    minHeight: '400px'
                   }}>
-                    <div style={{ color: '#ccc', textAlign: 'center' }}>
-                      <p style={{ margin: '0 0 8px 0', fontSize: '16px' }}>图表功能开发中...</p>
-                      <p style={{ margin: '0', fontSize: '14px', color: '#999' }}>
-                        将显示出勤率（加成后）曲线图
-                      </p>
-                      
-                      {/* 出勤率数据表格 */}
-                      <div style={{ marginTop: '20px', textAlign: 'left' }}>
-                        <h5 style={{ color: '#fff', margin: '0 0 10px 0' }}>出勤率数据详情:</h5>
+                    {/* Chart.js 曲线图 */}
+                    <div id="attendance-chart" style={{ height: '350px', marginBottom: '20px' }}>
+                      <Line
+                        data={{
+                          labels: attendanceRateData.map(data => data.date),
+                          datasets: (() => {
+                            const datasets = [];
+                            
+                            if (chartDisplayMode === 'both' || chartDisplayMode === 'original') {
+                              datasets.push({
+                                label: '原始出勤率',
+                                data: attendanceRateData.map(data => data.attendanceRate),
+                                borderColor: '#4CAF50',
+                                backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                                borderWidth: 2,
+                                fill: false,
+                                tension: 0.1,
+                                pointRadius: 4,
+                                pointHoverRadius: 6,
+                                pointBackgroundColor: '#4CAF50',
+                                pointBorderColor: '#fff',
+                                pointBorderWidth: 2
+                              });
+                            }
+                            
+                            if (chartDisplayMode === 'both' || chartDisplayMode === 'bonus') {
+                              datasets.push({
+                                label: '加成后出勤率',
+                                data: attendanceRateData.map(data => data.bonusRate),
+                                borderColor: '#2196F3',
+                                backgroundColor: 'rgba(33, 150, 243, 0.1)',
+                                borderWidth: 3,
+                                fill: false,
+                                tension: 0.1,
+                                pointRadius: 6,
+                                pointHoverRadius: 8,
+                                pointBackgroundColor: '#2196F3',
+                                pointBorderColor: '#fff',
+                                pointBorderWidth: 2
+                              });
+                            }
+                            
+                            return datasets;
+                          })()
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: {
+                            title: {
+                              display: true,
+                              text: `团队出勤率趋势 - ${selectedStatsTeam}`,
+                              color: '#fff',
+                              font: {
+                                size: 16,
+                                weight: 'bold'
+                              }
+                            },
+                            legend: {
+                              display: true,
+                              position: 'top' as const,
+                              labels: {
+                                color: '#fff',
+                                usePointStyle: true,
+                                padding: 20,
+                                font: {
+                                  size: 12
+                                }
+                              }
+                            },
+                            tooltip: {
+                              backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                              titleColor: '#fff',
+                              bodyColor: '#fff',
+                              borderColor: '#555',
+                              borderWidth: 1,
+                              callbacks: {
+                                afterBody: (context) => {
+                                  const index = context[0].dataIndex;
+                                  const data = attendanceRateData[index];
+                                  return [
+                                    `团队人数: ${data.memberCount}`,
+                                    `详细信息: ${data.bonusDescription}`
+                                  ];
+                                }
+                              }
+                            }
+                          },
+                          scales: {
+                            x: {
+                              display: true,
+                              title: {
+                                display: true,
+                                text: '日期',
+                                color: '#fff',
+                                font: {
+                                  size: 14
+                                }
+                              },
+                              ticks: {
+                                color: '#ccc',
+                                maxRotation: 45,
+                                minRotation: 0,
+                                font: {
+                                  size: 11
+                                }
+                              },
+                              grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                              }
+                            },
+                            y: {
+                              display: true,
+                              title: {
+                                display: true,
+                                text: '出勤率 (%)',
+                                color: '#fff',
+                                font: {
+                                  size: 14
+                                }
+                              },
+                              ticks: {
+                                color: '#ccc',
+                                font: {
+                                  size: 11
+                                },
+                                callback: function(value) {
+                                  return value + '%';
+                                }
+                              },
+                              grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                              },
+                              min: 0,
+                              max: 100
+                            }
+                          },
+                          interaction: {
+                            intersect: false,
+                            mode: 'index' as const
+                          },
+                          elements: {
+                            point: {
+                              hoverRadius: 8
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                    
+                    {/* 出勤率数据表格 */}
+                    <div style={{ textAlign: 'left' }}>
+                      <h5 style={{ color: '#fff', margin: '0 0 10px 0' }}>出勤率数据详情:</h5>
                         <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
                           <div style={{ 
                             display: 'grid', 
@@ -6271,7 +6511,6 @@ function App() {
                       </div>
                     </div>
                   </div>
-                </div>
               )}
               
               {/* 错误信息显示 */}
