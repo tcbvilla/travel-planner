@@ -10,6 +10,7 @@ public class GroupStat {
     private long averageMeritIncreaseBonus; // 人均战功增量（加成后）
     private long totalAssistIncrease; // 总助攻增量
     private long averageAssistIncrease; // 人均助攻增量
+    private long averageAssistIncreaseBonus; // 人均助攻增量（加成后）
     private double attendanceRate;
     private double attendanceRateBonus; // 出勤率（加成后）
     private int memberCount;

@@ -13,5 +13,8 @@
     
     <!-- 允许 settlement_records 的 attendance_session_id 为空 -->
     <include file="changesets/002-allow-null-attendance-session-id.xml" relativeToChangelogFile="true"/>
+    
+    <!-- 添加加成配置表 -->
+    <include file="changesets/003-add-bonus-config.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

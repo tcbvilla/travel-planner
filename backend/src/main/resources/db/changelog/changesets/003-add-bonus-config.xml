@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="003-add-bonus-config" author="system">
+        <comment>创建加成配置表，用于管理团队人数加成规则</comment>
+        
+        <!-- 创建加成配置表 -->
+        <createTable tableName="bonus_config">
+            <column name="id" type="BIGSERIAL">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="config_key" type="VARCHAR(100)">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="config_value" type="TEXT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="config_type" type="VARCHAR(50)" defaultValue="JSON">
+                <constraints nullable="false"/>
+            </column>
+            <column name="description" type="TEXT">
+                <constraints nullable="true"/>
+            </column>
+            <column name="is_active" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <!-- 创建索引 -->
+        <createIndex indexName="idx_bonus_config_key_active" tableName="bonus_config">
+            <column name="config_key"/>
+            <column name="is_active"/>
+        </createIndex>
+
+        <!-- 插入初始的空配置 -->
+        <insert tableName="bonus_config">
+            <column name="config_key">team_size_bonus</column>
+            <column name="config_value">{"teamSizeBonusRules":[]}</column>
+            <column name="config_type">JSON</column>
+            <column name="description">团队人数加成规则配置</column>
+            <column name="is_active">true</column>
+        </insert>
+
+        <!-- 添加表和字段注释 -->
+        <sql>
+            COMMENT ON TABLE bonus_config IS '加成配置表，用于存储各种加成规则配置';
+            COMMENT ON COLUMN bonus_config.config_key IS '配置键，用于标识不同类型的配置';
+            COMMENT ON COLUMN bonus_config.config_value IS '配置值，JSON格式存储具体配置数据';
+            COMMENT ON COLUMN bonus_config.config_type IS '配置类型，如JSON、STRING等';
+            COMMENT ON COLUMN bonus_config.description IS '配置描述';
+            COMMENT ON COLUMN bonus_config.is_active IS '是否启用该配置';
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>
