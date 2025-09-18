@@ -86,6 +86,216 @@ type PageResponse<T> = {
   number: number
 }
 
+// 个人统计导出组件
+const PersonalStatsExportComponent = ({ 
+  personalStats
+}: { 
+  personalStats: any
+}) => {
+  if (!personalStats) return null
+
+  return (
+    <div style={{
+      width: '1000px',
+      backgroundColor: '#1a1a1a',
+      color: '#fff',
+      padding: '40px',
+      fontFamily: 'Arial, sans-serif',
+      boxSizing: 'border-box'
+    }}>
+      {/* 标题 */}
+      <div style={{ textAlign: 'center', marginBottom: '40px' }}>
+        <h1 style={{ 
+          margin: '0', 
+          fontSize: '36px', 
+          fontWeight: 'bold',
+          color: '#fff',
+          textShadow: '2px 2px 4px rgba(0,0,0,0.5)'
+        }}>
+          个人统计报告
+        </h1>
+        <p style={{ 
+          margin: '10px 0 0 0', 
+          fontSize: '20px', 
+          color: '#ccc',
+          opacity: 0.8
+        }}>
+          {personalStats.memberName} - {personalStats.timeRange}
+        </p>
+        <p style={{ 
+          margin: '5px 0 0 0', 
+          fontSize: '16px', 
+          color: '#999'
+        }}>
+          考勤类型：{personalStats.attendanceType}
+        </p>
+      </div>
+
+      {/* 统计汇总 */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4, 1fr)',
+        gap: '20px',
+        marginBottom: '40px'
+      }}>
+        <div style={{
+          background: '#007bff',
+          padding: '20px',
+          borderRadius: '12px',
+          textAlign: 'center',
+          boxShadow: '0 4px 8px rgba(0,0,0,0.3)'
+        }}>
+          <div style={{ color: '#fff', fontSize: '16px', marginBottom: '8px', fontWeight: 'bold' }}>总考勤次数</div>
+          <div style={{ color: '#fff', fontSize: '32px', fontWeight: 'bold' }}>
+            {personalStats.totalSessions}
+          </div>
+        </div>
+        <div style={{
+          background: '#28a745',
+          padding: '20px',
+          borderRadius: '12px',
+          textAlign: 'center',
+          boxShadow: '0 4px 8px rgba(0,0,0,0.3)'
+        }}>
+          <div style={{ color: '#fff', fontSize: '16px', marginBottom: '8px', fontWeight: 'bold' }}>参加考勤</div>
+          <div style={{ color: '#fff', fontSize: '32px', fontWeight: 'bold' }}>
+            {personalStats.attendedSessions}
+          </div>
+        </div>
+        <div style={{
+          background: '#ff6b35',
+          padding: '20px',
+          borderRadius: '12px',
+          textAlign: 'center',
+          boxShadow: '0 4px 8px rgba(0,0,0,0.3)'
+        }}>
+          <div style={{ color: '#fff', fontSize: '16px', marginBottom: '8px', fontWeight: 'bold' }}>出勤次数</div>
+          <div style={{ color: '#fff', fontSize: '32px', fontWeight: 'bold' }}>
+            {personalStats.records ? personalStats.records.filter((r: any) => r.isQualified).length : 0}
+          </div>
+        </div>
+        <div style={{
+          background: '#6f42c1',
+          padding: '20px',
+          borderRadius: '12px',
+          textAlign: 'center',
+          boxShadow: '0 4px 8px rgba(0,0,0,0.3)'
+        }}>
+          <div style={{ color: '#fff', fontSize: '16px', marginBottom: '8px', fontWeight: 'bold' }}>出勤率</div>
+          <div style={{ color: '#fff', fontSize: '32px', fontWeight: 'bold' }}>
+            {personalStats.attendanceRate.toFixed(1)}%
+          </div>
+        </div>
+      </div>
+
+      {/* 详细记录表格 */}
+      {personalStats.records && personalStats.records.length > 0 && (
+        <div>
+          <h3 style={{ 
+            margin: '0 0 20px 0', 
+            color: '#fff', 
+            fontSize: '24px',
+            textAlign: 'center',
+            borderBottom: '2px solid #333',
+            paddingBottom: '10px'
+          }}>
+            考勤记录详情
+          </h3>
+          <div style={{
+            background: '#2d2d2d',
+            borderRadius: '8px',
+            overflow: 'hidden',
+            boxShadow: '0 4px 8px rgba(0,0,0,0.3)'
+          }}>
+            {/* 表头 */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '150px 120px 80px 80px 100px 100px 80px 80px 100px',
+              background: '#333',
+              padding: '16px',
+              fontWeight: 'bold',
+              color: '#fff',
+              fontSize: '14px'
+            }}>
+              <span>考勤记录</span>
+              <span>时间</span>
+              <span>参加</span>
+              <span>出勤</span>
+              <span>战功差值</span>
+              <span>助攻差值</span>
+              <span>阈值</span>
+              <span>团队</span>
+              <span>结果</span>
+            </div>
+            {/* 表格内容 */}
+            {personalStats.records.map((record: any, index: number) => (
+              <div key={index} style={{
+                display: 'grid',
+                gridTemplateColumns: '150px 120px 80px 80px 100px 100px 80px 80px 100px',
+                padding: '16px',
+                borderBottom: '1px solid #333',
+                color: '#ccc',
+                fontSize: '13px',
+                backgroundColor: index % 2 === 0 ? '#2d2d2d' : '#3d3d3d'
+              }}>
+                <span style={{ color: '#fff', fontWeight: 'bold' }}>{record.sessionName}</span>
+                <span>{new Date(record.sessionTime).toLocaleDateString()}</span>
+                <span style={{ 
+                  color: record.isAttended ? '#28a745' : '#dc3545',
+                  fontWeight: 'bold'
+                }}>
+                  {record.isAttended ? '参加' : '未参加'}
+                </span>
+                <span style={{ 
+                  color: (record.isQualified === true || record.isQualified === 'true') ? '#28a745' : '#dc3545',
+                  fontWeight: 'bold'
+                }}>
+                  {(record.isQualified === true || record.isQualified === 'true') ? '出勤' : '缺勤'}
+                </span>
+                <span style={{ 
+                  color: record.meritDiff >= 0 ? '#28a745' : '#dc3545',
+                  fontWeight: 'bold'
+                }}>
+                  {record.meritDiff >= 0 ? '+' : ''}{record.meritDiff}
+                </span>
+                <span style={{ 
+                  color: record.assistDiff >= 0 ? '#28a745' : '#dc3545',
+                  fontWeight: 'bold'
+                }}>
+                  {record.assistDiff >= 0 ? '+' : ''}{record.assistDiff}
+                </span>
+                <span style={{ fontWeight: 'bold' }}>{record.threshold}</span>
+                <span>{record.group}</span>
+                <span style={{ 
+                  color: record.battleResult === 'VICTORY' ? '#28a745' :
+                         record.battleResult === 'DEFEAT' ? '#dc3545' : '#ccc',
+                  fontWeight: 'bold'
+                }}>
+                  {record.battleResult === 'VICTORY' ? '胜利' :
+                   record.battleResult === 'DEFEAT' ? '失败' : record.battleResult}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 底部信息 */}
+      <div style={{
+        marginTop: '40px',
+        textAlign: 'center',
+        color: '#999',
+        fontSize: '14px',
+        borderTop: '1px solid #333',
+        paddingTop: '20px'
+      }}>
+        <p>报告生成时间：{new Date().toLocaleString()}</p>
+        <p>数据来源：考勤管理系统</p>
+      </div>
+    </div>
+  )
+}
+
 // 导出组件
 const GroupStatsExportComponent = ({ 
   selectedSession,
@@ -567,6 +777,7 @@ function App() {
   const memberDropdownRef = useRef<HTMLDivElement>(null)
   // 导出组件引用
   const exportRef = useRef<HTMLDivElement>(null)
+  const personalExportRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -685,6 +896,41 @@ function App() {
     }
   }
 
+  // 导出个人统计图片
+  const handleExportPersonalStats = async () => {
+    if (!personalStats || !personalExportRef.current) {
+      alert('无法导出：数据不完整')
+      return
+    }
+
+    try {
+      // 等待组件渲染完成
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      const canvas = await html2canvas(personalExportRef.current, {
+        backgroundColor: '#1a1a1a',
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        width: 1000,
+        height: personalExportRef.current.scrollHeight,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: 1000,
+        windowHeight: personalExportRef.current.scrollHeight
+      })
+      
+      // 转换为图片并下载
+      const link = document.createElement('a')
+      link.download = `${personalStats.memberName}_个人统计_${personalStats.timeRange}.jpg`
+      link.href = canvas.toDataURL('image/jpeg', 0.9)
+      link.click()
+    } catch (error) {
+      console.error('导出失败:', error)
+      alert('导出失败，请重试')
+    }
+  }
+
   const [startFile, setStartFile] = useState<File | null>(null)
   const [endFile, setEndFile] = useState<File | null>(null)
   const [threshold, setThreshold] = useState<number>(1)
@@ -709,6 +955,18 @@ function App() {
   const [availableAttendanceTypes, setAvailableAttendanceTypes] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [chartDisplayMode, setChartDisplayMode] = useState<'both' | 'original' | 'bonus'>('both')
+  
+  // 现金统计相关状态
+  const [cashSummary, setCashSummary] = useState<any>(null)
+  const [isLoadingCash, setIsLoadingCash] = useState(false)
+  
+  // 个人统计相关状态
+  const [personalStats, setPersonalStats] = useState<any>(null)
+  const [isLoadingPersonal, setIsLoadingPersonal] = useState(false)
+  const [searchKeyword, setSearchKeyword] = useState('')
+  const [searchResults, setSearchResults] = useState<string[]>([])
+  const [selectedMember, setSelectedMember] = useState('')
+  const [isSearching, setIsSearching] = useState(false)
 
   // 当切换到赛季管理页面时自动加载赛季列表
   useEffect(() => {
@@ -1215,6 +1473,93 @@ function App() {
       setError('网络错误: ' + error)
     } finally {
       setIsLoadingStats(false)
+    }
+  }
+  
+  // 获取团队现金统计数据
+  const getTeamCashSummary = async () => {
+    if (!selectedStatsTeam || !statsQueryResult) {
+      alert('请先查询数据并选择团队')
+      return
+    }
+    
+    setIsLoadingCash(true)
+    setError(null)
+    
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/statistics/team-cash-summary?startDate=${statsStartDate}&endDate=${statsEndDate}&attendanceType=${statsAttendanceType}&teamName=${selectedStatsTeam}`)
+      
+      if (response.ok) {
+        const data = await response.json()
+        setCashSummary(data)
+      } else {
+        const errorData = await response.json()
+        setError(`获取现金统计数据失败: ${errorData.message || '未知错误'}`)
+      }
+    } catch (error) {
+      console.error('获取现金统计数据失败:', error)
+      setError('网络错误: ' + error)
+    } finally {
+      setIsLoadingCash(false)
+    }
+  }
+  
+  // ==================== 个人统计相关函数 ====================
+  
+  // 搜索人员
+  const searchMembers = async () => {
+    if (!statsStartDate || !statsEndDate) {
+      alert('请先选择日期范围')
+      return
+    }
+    
+    setIsSearching(true)
+    setError(null)
+    
+    try {
+      const url = `http://localhost:8080/api/v1/attendance/statistics/personal/search?startDate=${statsStartDate}&endDate=${statsEndDate}&attendanceType=${statsAttendanceType}${searchKeyword ? `&keyword=${encodeURIComponent(searchKeyword)}` : ''}`
+      const response = await fetch(url)
+      
+      if (response.ok) {
+        const data = await response.json()
+        setSearchResults(data)
+      } else {
+        const errorData = await response.json()
+        setError(`搜索人员失败: ${errorData.message || '未知错误'}`)
+      }
+    } catch (error) {
+      console.error('搜索人员失败:', error)
+      setError('网络错误: ' + error)
+    } finally {
+      setIsSearching(false)
+    }
+  }
+  
+  // 获取个人统计数据
+  const getPersonalStats = async () => {
+    if (!selectedMember || !statsStartDate || !statsEndDate) {
+      alert('请先选择人员')
+      return
+    }
+    
+    setIsLoadingPersonal(true)
+    setError(null)
+    
+    try {
+      const response = await fetch(`http://localhost:8080/api/v1/attendance/statistics/personal?startDate=${statsStartDate}&endDate=${statsEndDate}&attendanceType=${statsAttendanceType}&memberName=${encodeURIComponent(selectedMember)}`)
+      
+      if (response.ok) {
+        const data = await response.json()
+        setPersonalStats(data)
+      } else {
+        const errorData = await response.json()
+        setError(`获取个人统计数据失败: ${errorData.message || '未知错误'}`)
+      }
+    } catch (error) {
+      console.error('获取个人统计数据失败:', error)
+      setError('网络错误: ' + error)
+    } finally {
+      setIsLoadingPersonal(false)
     }
   }
 
@@ -6180,6 +6525,23 @@ function App() {
                         >
                           {isLoadingStats ? '计算中...' : '生成出勤率曲线'}
                         </button>
+                        <button
+                          onClick={getTeamCashSummary}
+                          disabled={!selectedStatsTeam || isLoadingCash}
+                          style={{
+                            padding: '8px 16px',
+                            background: selectedStatsTeam && !isLoadingCash ? '#ff6b35' : '#6c757d',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: selectedStatsTeam && !isLoadingCash ? 'pointer' : 'not-allowed',
+                            fontSize: '14px',
+                            fontWeight: 'bold',
+                            marginLeft: '8px'
+                          }}
+                        >
+                          {isLoadingCash ? '计算中...' : '生成现金统计'}
+                        </button>
                       </div>
                     </div>
                   )}
@@ -6513,6 +6875,136 @@ function App() {
                   </div>
               )}
               
+              {/* 现金统计区域 */}
+              {cashSummary && (
+                <div style={{ 
+                  background: '#3d3d3d', 
+                  padding: '20px', 
+                  borderRadius: '8px',
+                  marginTop: '20px'
+                }}>
+                  <h4 style={{ margin: '0 0 16px 0', color: '#fff' }}>
+                    现金统计汇总 - {cashSummary.teamName}
+                  </h4>
+                  
+                  {/* 现金汇总卡片 */}
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', 
+                    gap: '16px',
+                    marginBottom: '20px'
+                  }}>
+                    <div style={{ 
+                      background: '#28a745', 
+                      padding: '16px', 
+                      borderRadius: '8px',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ color: '#fff', fontSize: '14px', marginBottom: '4px' }}>现金奖励总额</div>
+                      <div style={{ color: '#fff', fontSize: '24px', fontWeight: 'bold' }}>
+                        +{cashSummary.totalRewards.toFixed(2)}
+                      </div>
+                    </div>
+                    <div style={{ 
+                      background: '#dc3545', 
+                      padding: '16px', 
+                      borderRadius: '8px',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ color: '#fff', fontSize: '14px', marginBottom: '4px' }}>现金惩罚总额</div>
+                      <div style={{ color: '#fff', fontSize: '24px', fontWeight: 'bold' }}>
+                        {cashSummary.totalPenalties.toFixed(2)}
+                      </div>
+                    </div>
+                    <div style={{ 
+                      background: cashSummary.netCash >= 0 ? '#007bff' : '#ff6b35', 
+                      padding: '16px', 
+                      borderRadius: '8px',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ color: '#fff', fontSize: '14px', marginBottom: '4px' }}>净现金收益</div>
+                      <div style={{ color: '#fff', fontSize: '24px', fontWeight: 'bold' }}>
+                        {cashSummary.netCash >= 0 ? '+' : ''}{cashSummary.netCash.toFixed(2)}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* 现金记录详情表格 */}
+                  {cashSummary.records && cashSummary.records.length > 0 && (
+                    <div>
+                      <h5 style={{ margin: '0 0 12px 0', color: '#fff' }}>现金记录详情</h5>
+                      <div style={{ 
+                        background: '#1a1a1a', 
+                        borderRadius: '8px',
+                        overflow: 'hidden'
+                      }}>
+                        <div style={{ 
+                          display: 'grid', 
+                          gridTemplateColumns: '200px 120px 100px 120px 200px 80px',
+                          background: '#333',
+                          padding: '12px',
+                          fontWeight: 'bold',
+                          color: '#fff',
+                          fontSize: '14px'
+                        }}>
+                          <span>考勤记录</span>
+                          <span>时间</span>
+                          <span>类型</span>
+                          <span>金额</span>
+                          <span>描述</span>
+                          <span>来源</span>
+                        </div>
+                        {cashSummary.records.map((record: any, index: number) => (
+                          <div key={index} style={{ 
+                            display: 'grid', 
+                            gridTemplateColumns: '200px 120px 100px 120px 200px 80px',
+                            padding: '12px',
+                            borderBottom: '1px solid #333',
+                            color: '#ccc',
+                            fontSize: '13px'
+                          }}>
+                            <span style={{ color: '#fff' }}>{record.sessionName}</span>
+                            <span>{new Date(record.sessionTime).toLocaleDateString()}</span>
+                            <span style={{ 
+                              color: record.cashAmount > 0 ? '#28a745' : '#dc3545',
+                              fontWeight: 'bold'
+                            }}>
+                              {record.itemType}
+                            </span>
+                            <span style={{ 
+                              color: record.cashAmount > 0 ? '#28a745' : '#dc3545',
+                              fontWeight: 'bold'
+                            }}>
+                              {record.cashAmount > 0 ? '+' : ''}{record.cashAmount.toFixed(2)}
+                            </span>
+                            <span>{record.description || '-'}</span>
+                            <span style={{ 
+                              color: record.isManual ? '#ff6b35' : '#007bff',
+                              fontSize: '12px'
+                            }}>
+                              {record.isManual ? '手动' : '自动'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {(!cashSummary.records || cashSummary.records.length === 0) && (
+                    <div style={{ 
+                      textAlign: 'center', 
+                      padding: '40px', 
+                      color: '#999',
+                      background: '#1a1a1a',
+                      borderRadius: '8px'
+                    }}>
+                      <div style={{ fontSize: '16px', marginBottom: '8px' }}>暂无现金记录</div>
+                      <div style={{ fontSize: '14px' }}>该团队在选定时间段内没有现金奖惩记录</div>
+                    </div>
+                  )}
+                </div>
+              )}
+              
               {/* 错误信息显示 */}
               {error && (
                 <div style={{ 
@@ -6532,17 +7024,345 @@ function App() {
           {activeStatsTab === 'individual' && (
             <div style={{ color: '#fff' }}>
               <h3 style={{ margin: '0 0 16px 0' }}>个人统计</h3>
+              
+              {/* 查询表单区域 */}
               <div style={{ 
                 background: '#3d3d3d', 
                 padding: '20px', 
                 borderRadius: '8px',
-                textAlign: 'center'
+                marginBottom: '20px'
               }}>
-                <p style={{ margin: 0, color: '#ccc' }}>个人统计功能正在开发中...</p>
-                <p style={{ margin: '8px 0 0 0', color: '#999', fontSize: '14px' }}>
-                  将包含个人战功变化、出勤记录、奖惩历史等数据
-                </p>
+                <h4 style={{ margin: '0 0 16px 0', color: '#fff' }}>查询条件</h4>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {/* 日期区间选择 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <label style={{ minWidth: '80px', color: '#fff', fontWeight: 'bold' }}>日期区间:</label>
+                    <input
+                      type="date"
+                      value={statsStartDate}
+                      onChange={(e) => setStatsStartDate(e.target.value)}
+                      style={{
+                        padding: '8px 12px',
+                        border: '2px solid #007bff',
+                        borderRadius: '4px',
+                        color: '#fff',
+                        background: '#2d2d2d',
+                        minWidth: '150px'
+                      }}
+                    />
+                    <span style={{ color: '#ccc' }}>至</span>
+                    <input
+                      type="date"
+                      value={statsEndDate}
+                      onChange={(e) => setStatsEndDate(e.target.value)}
+                      style={{
+                        padding: '8px 12px',
+                        border: '2px solid #007bff',
+                        borderRadius: '4px',
+                        color: '#fff',
+                        background: '#2d2d2d',
+                        minWidth: '150px'
+                      }}
+                    />
+                  </div>
+                  
+                  {/* 考勤类型选择 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <label style={{ minWidth: '80px', color: '#fff', fontWeight: 'bold' }}>考勤类型:</label>
+                    <select
+                      value={statsAttendanceType}
+                      onChange={(e) => setStatsAttendanceType(e.target.value)}
+                      style={{
+                        padding: '8px 12px',
+                        border: '2px solid #007bff',
+                        borderRadius: '4px',
+                        color: '#fff',
+                        background: '#2d2d2d',
+                        minWidth: '200px'
+                      }}
+                    >
+                      {availableAttendanceTypes.length > 0 ? (
+                        availableAttendanceTypes.map((type) => (
+                          <option key={type} value={type}>{type}</option>
+                        ))
+                      ) : (
+                        <>
+                          <option value="压秒考勤">压秒考勤</option>
+                          <option value="区间助攻考勤">区间助攻考勤</option>
+                        </>
+                      )}
+                    </select>
+                  </div>
+                  
+                  {/* 人员搜索 */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <label style={{ minWidth: '80px', color: '#fff', fontWeight: 'bold' }}>搜索人员:</label>
+                    <input
+                      type="text"
+                      value={searchKeyword}
+                      onChange={(e) => setSearchKeyword(e.target.value)}
+                      placeholder="输入人员姓名进行搜索"
+                      style={{
+                        padding: '8px 12px',
+                        border: '2px solid #007bff',
+                        borderRadius: '4px',
+                        color: '#fff',
+                        background: '#2d2d2d',
+                        minWidth: '200px'
+                      }}
+                    />
+                    <button
+                      onClick={searchMembers}
+                      disabled={isSearching || !statsStartDate || !statsEndDate}
+                      style={{
+                        padding: '8px 16px',
+                        background: !isSearching && statsStartDate && statsEndDate ? '#007bff' : '#6c757d',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: !isSearching && statsStartDate && statsEndDate ? 'pointer' : 'not-allowed',
+                        fontSize: '14px',
+                        fontWeight: 'bold'
+                      }}
+                    >
+                      {isSearching ? '搜索中...' : '搜索人员'}
+                    </button>
+                  </div>
+                </div>
               </div>
+              
+              {/* 搜索结果 */}
+              {searchResults.length > 0 && (
+                <div style={{ 
+                  background: '#3d3d3d', 
+                  padding: '20px', 
+                  borderRadius: '8px',
+                  marginBottom: '20px'
+                }}>
+                  <h4 style={{ margin: '0 0 16px 0', color: '#fff' }}>搜索结果</h4>
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', 
+                    gap: '8px',
+                    maxHeight: '200px',
+                    overflowY: 'auto'
+                  }}>
+                    {searchResults.map((member, index) => (
+                      <button
+                        key={index}
+                        onClick={() => setSelectedMember(member)}
+                        style={{
+                          padding: '8px 12px',
+                          background: selectedMember === member ? '#007bff' : '#555',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '14px',
+                          textAlign: 'left'
+                        }}
+                      >
+                        {member}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {/* 个人统计结果 */}
+              {selectedMember && (
+                <div style={{ 
+                  background: '#3d3d3d', 
+                  padding: '20px', 
+                  borderRadius: '8px',
+                  marginBottom: '20px'
+                }}>
+               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                 <h4 style={{ margin: 0, color: '#fff' }}>个人统计 - {selectedMember}</h4>
+                 <div style={{ display: 'flex', gap: '12px' }}>
+                   <button
+                     onClick={handleExportPersonalStats}
+                     disabled={!personalStats}
+                     style={{
+                       padding: '8px 16px',
+                       background: personalStats ? '#007bff' : '#6c757d',
+                       color: '#fff',
+                       border: 'none',
+                       borderRadius: '4px',
+                       cursor: personalStats ? 'pointer' : 'not-allowed',
+                       fontSize: '14px',
+                       fontWeight: 'bold'
+                     }}
+                   >
+                     导出图片
+                   </button>
+                   <button
+                     onClick={getPersonalStats}
+                     disabled={isLoadingPersonal}
+                     style={{
+                       padding: '8px 16px',
+                       background: !isLoadingPersonal ? '#28a745' : '#6c757d',
+                       color: '#fff',
+                       border: 'none',
+                       borderRadius: '4px',
+                       cursor: !isLoadingPersonal ? 'pointer' : 'not-allowed',
+                       fontSize: '14px',
+                       fontWeight: 'bold'
+                     }}
+                   >
+                     {isLoadingPersonal ? '计算中...' : '生成个人统计'}
+                   </button>
+                 </div>
+               </div>
+                  
+                  {personalStats && (
+                    <div>
+                      {/* 统计汇总 */}
+                      <div style={{ 
+                        display: 'grid', 
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', 
+                        gap: '16px',
+                        marginBottom: '20px'
+                      }}>
+                        <div style={{ 
+                          background: '#007bff', 
+                          padding: '16px', 
+                          borderRadius: '8px',
+                          textAlign: 'center'
+                        }}>
+                          <div style={{ color: '#fff', fontSize: '14px', marginBottom: '4px' }}>总考勤次数</div>
+                          <div style={{ color: '#fff', fontSize: '24px', fontWeight: 'bold' }}>
+                            {personalStats.totalSessions}
+                          </div>
+                        </div>
+                        <div style={{ 
+                          background: '#28a745', 
+                          padding: '16px', 
+                          borderRadius: '8px',
+                          textAlign: 'center'
+                        }}>
+                          <div style={{ color: '#fff', fontSize: '14px', marginBottom: '4px' }}>参加考勤</div>
+                          <div style={{ color: '#fff', fontSize: '24px', fontWeight: 'bold' }}>
+                            {personalStats.attendedSessions}
+                          </div>
+                        </div>
+                     <div style={{
+                       background: '#ff6b35',
+                       padding: '16px',
+                       borderRadius: '8px',
+                       textAlign: 'center'
+                     }}>
+                       <div style={{ color: '#fff', fontSize: '14px', marginBottom: '4px' }}>出勤次数</div>
+                       <div style={{ color: '#fff', fontSize: '24px', fontWeight: 'bold' }}>
+                         {personalStats.records ? personalStats.records.filter((r: any) => r.isQualified).length : 0}
+                       </div>
+                     </div>
+                        <div style={{ 
+                          background: '#ff6b35', 
+                          padding: '16px', 
+                          borderRadius: '8px',
+                          textAlign: 'center'
+                        }}>
+                          <div style={{ color: '#fff', fontSize: '14px', marginBottom: '4px' }}>出勤率</div>
+                          <div style={{ color: '#fff', fontSize: '24px', fontWeight: 'bold' }}>
+                            {personalStats.attendanceRate.toFixed(1)}%
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* 详细记录表格 */}
+                      {personalStats.records && personalStats.records.length > 0 && (
+                        <div>
+                          <h5 style={{ margin: '0 0 12px 0', color: '#fff' }}>考勤记录详情</h5>
+                          <div style={{ 
+                            background: '#1a1a1a', 
+                            borderRadius: '8px',
+                            overflow: 'hidden'
+                          }}>
+                         <div style={{
+                           display: 'grid',
+                           gridTemplateColumns: '150px 120px 80px 80px 100px 100px 80px 80px 100px',
+                           background: '#333',
+                           padding: '12px',
+                           fontWeight: 'bold',
+                           color: '#fff',
+                           fontSize: '14px'
+                         }}>
+                           <span>考勤记录</span>
+                           <span>时间</span>
+                           <span>参加</span>
+                           <span>出勤</span>
+                           <span>战功差值</span>
+                           <span>助攻差值</span>
+                           <span>阈值</span>
+                           <span>团队</span>
+                           <span>结果</span>
+                         </div>
+                            {personalStats.records.map((record: any, index: number) => (
+                              <div key={index} style={{ 
+                                display: 'grid', 
+                                gridTemplateColumns: '150px 120px 80px 80px 100px 100px 80px 80px 100px',
+                                padding: '12px',
+                                borderBottom: '1px solid #333',
+                                color: '#ccc',
+                                fontSize: '13px'
+                              }}>
+                                <span style={{ color: '#fff' }}>{record.sessionName}</span>
+                                <span>{new Date(record.sessionTime).toLocaleDateString()}</span>
+                                <span style={{ 
+                                  color: record.isAttended ? '#28a745' : '#dc3545',
+                                  fontWeight: 'bold'
+                                }}>
+                                  {record.isAttended ? '参加' : '未参加'}
+                                </span>
+                                <span style={{ 
+                                  color: (record.isQualified === true || record.isQualified === 'true') ? '#28a745' : '#dc3545',
+                                  fontWeight: 'bold'
+                                }}>
+                                  {(record.isQualified === true || record.isQualified === 'true') ? '出勤' : '缺勤'}
+                                </span>
+                                <span style={{ 
+                                  color: record.meritDiff >= 0 ? '#28a745' : '#dc3545'
+                                }}>
+                                  {record.meritDiff >= 0 ? '+' : ''}{record.meritDiff}
+                                </span>
+                                <span style={{ 
+                                  color: record.assistDiff >= 0 ? '#28a745' : '#dc3545'
+                                }}>
+                                  {record.assistDiff >= 0 ? '+' : ''}{record.assistDiff}
+                                </span>
+                                <span>{record.threshold}</span>
+                                <span>{record.group}</span>
+                                <span style={{ 
+                                  color: record.battleResult === 'VICTORY' ? '#28a745' :
+                                         record.battleResult === 'DEFEAT' ? '#dc3545' : '#ccc'
+                                }}>
+                                  {record.battleResult === 'VICTORY' ? '胜利' :
+                                   record.battleResult === 'DEFEAT' ? '失败' : record.battleResult}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      
+                      {(!personalStats.records || personalStats.records.length === 0) && (
+                        <div style={{ 
+                          textAlign: 'center', 
+                          padding: '40px', 
+                          color: '#999',
+                          background: '#1a1a1a',
+                          borderRadius: '8px'
+                        }}>
+                          <div style={{ fontSize: '16px', marginBottom: '8px' }}>暂无考勤记录</div>
+                          <div style={{ fontSize: '14px' }}>该人员在选定时间段内没有考勤记录</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -7765,6 +8585,13 @@ function App() {
         <GroupStatsExportComponent 
           selectedSession={selectedSession}
           sortBy={exportSortBy}
+        />
+      </div>
+      
+      {/* 个人统计导出组件（隐藏） */}
+      <div ref={personalExportRef} style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
+        <PersonalStatsExportComponent 
+          personalStats={personalStats}
         />
       </div>
     </div>

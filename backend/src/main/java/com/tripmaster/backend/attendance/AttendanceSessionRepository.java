@@ -30,6 +30,18 @@ public interface AttendanceSessionRepository extends JpaRepository<AttendanceSes
                                                              @Param("endTime") LocalDateTime endTime);
     
     /**
+     * 根据考勤类型和时间范围查询已结算的考勤记录
+     * 查询条件：考勤记录的起始时间到结束时间完全落在指定时间范围内，且状态为已结算
+     */
+    @Query("SELECT s FROM AttendanceSession s WHERE s.attendanceType = :attendanceType " +
+           "AND s.startTime >= :startTime AND s.endTime <= :endTime " +
+           "AND s.status = 'SETTLED' " +
+           "ORDER BY s.startTime ASC")
+    List<AttendanceSession> findByAttendanceTypeAndTimeRangeAndSettled(@Param("attendanceType") String attendanceType,
+                                                                       @Param("startTime") LocalDateTime startTime,
+                                                                       @Param("endTime") LocalDateTime endTime);
+    
+    /**
      * 查询所有不重复的考勤类型
      */
     @Query("SELECT DISTINCT s.attendanceType FROM AttendanceSession s WHERE s.attendanceType IS NOT NULL ORDER BY s.attendanceType")

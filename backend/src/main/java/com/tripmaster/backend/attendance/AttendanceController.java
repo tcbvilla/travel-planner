@@ -17,6 +17,8 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.HashSet;
+import java.util.Set;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.LocalDateTime;
 import java.time.LocalDate;
@@ -1484,8 +1486,8 @@ public class AttendanceController {
             LocalDateTime startDateTime = LocalDate.parse(startDate).atStartOfDay();
             LocalDateTime endDateTime = LocalDate.parse(endDate).atTime(23, 59, 59);
             
-            // 查询考勤记录 - 完全落在日期区间内的记录
-            List<AttendanceSession> sessions = attendanceSessionRepository.findByAttendanceTypeAndTimeRange(
+            // 查询已结算的考勤记录 - 完全落在日期区间内的记录
+            List<AttendanceSession> sessions = attendanceSessionRepository.findByAttendanceTypeAndTimeRangeAndSettled(
                 attendanceType, startDateTime, endDateTime);
             
             // 转换为简化信息
@@ -1547,8 +1549,8 @@ public class AttendanceController {
             LocalDateTime startDateTime = LocalDate.parse(startDate).atStartOfDay();
             LocalDateTime endDateTime = LocalDate.parse(endDate).atTime(23, 59, 59);
             
-            // 查询考勤记录
-            List<AttendanceSession> sessions = attendanceSessionRepository.findByAttendanceTypeAndTimeRange(
+            // 查询已结算的考勤记录
+            List<AttendanceSession> sessions = attendanceSessionRepository.findByAttendanceTypeAndTimeRangeAndSettled(
                 attendanceType, startDateTime, endDateTime);
             
             System.out.println(String.format("数据统计调试 - 查询到 %d 条考勤记录，考勤类型: %s, 时间范围: %s 到 %s", 
@@ -2722,6 +2724,314 @@ public class AttendanceController {
             response.put("error", e.getMessage());
             
             return ResponseEntity.badRequest().body(response);
+        }
+    }
+    
+    // ==================== 团队现金统计接口 ====================
+    
+    /**
+     * 获取团队现金统计
+     */
+    @GetMapping("/statistics/team-cash-summary")
+    public ResponseEntity<TeamCashSummary> getTeamCashSummary(
+            @RequestParam String startDate,
+            @RequestParam String endDate,
+            @RequestParam String attendanceType,
+            @RequestParam String teamName) {
+        try {
+            LocalDateTime startDateTime = LocalDate.parse(startDate).atStartOfDay();
+            LocalDateTime endDateTime = LocalDate.parse(endDate).atTime(23, 59, 59);
+            
+            // 查询指定时间段内的已结算考勤记录
+            List<AttendanceSession> sessions = attendanceSessionRepository.findByAttendanceTypeAndTimeRangeAndSettled(
+                attendanceType, startDateTime, endDateTime);
+            
+            TeamCashSummary summary = new TeamCashSummary();
+            summary.setTeamName(teamName);
+            summary.setTimeRange(startDate + " 至 " + endDate);
+            summary.setAttendanceType(attendanceType);
+            
+            List<CashRecord> records = new ArrayList<>();
+            double totalRewards = 0.0;
+            double totalPenalties = 0.0;
+            
+            // 获取所有相关的结算记录
+            List<Long> sessionIds = sessions.stream()
+                .map(AttendanceSession::getId)
+                .collect(Collectors.toList());
+            
+            // 查询考勤相关的结算记录
+            List<SettlementRecord> allSettlementRecords = new ArrayList<>();
+            if (!sessionIds.isEmpty()) {
+                List<SettlementRecord> attendanceRecords = settlementRecordRepository.findByAttendanceSessionIdInAndTeamName(
+                    sessionIds, teamName);
+                allSettlementRecords.addAll(attendanceRecords);
+                
+            }
+            
+            // 查询手动添加的结算记录（按创建时间筛选）
+            List<SettlementRecord> manualRecords = settlementRecordRepository.findByTeamNameAndSettlementBatchIdStartingWithAndCreatedAtBetween(
+                teamName, "MANUAL_%", startDateTime, endDateTime);
+            allSettlementRecords.addAll(manualRecords);
+            
+            if (!allSettlementRecords.isEmpty()) {
+                // 筛选有现金金额的记录（只包含直接的现金记录）
+                List<SettlementRecord> settlementRecords = allSettlementRecords.stream()
+                    .filter(record -> {
+                        // 只筛选有直接现金金额的记录
+                        boolean hasCashAmount = record.getCashAmount() != null && record.getCashAmount().compareTo(BigDecimal.ZERO) != 0;
+                        
+                        return hasCashAmount;
+                    })
+                    .collect(Collectors.toList());
+                
+                for (SettlementRecord record : settlementRecords) {
+                    // 查找对应的考勤记录
+                    AttendanceSession session = sessions.stream()
+                        .filter(s -> s.getId().equals(record.getAttendanceSession().getId()))
+                        .findFirst()
+                        .orElse(null);
+                    
+                    // 处理考勤记录和手动记录
+                    String sessionName;
+                    LocalDateTime sessionTime;
+                    String battleResult;
+                    boolean isManual = false;
+                    
+                    if (session != null) {
+                        // 考勤记录
+                        sessionName = session.getName();
+                        sessionTime = session.getStartTime();
+                        battleResult = session.getBattleResult() != null ? session.getBattleResult().toString() : "UNKNOWN";
+                    } else if (record.getSettlementBatchId().startsWith("MANUAL_")) {
+                        // 手动记录
+                        sessionName = "手动添加";
+                        sessionTime = record.getCreatedAt();
+                        battleResult = "MANUAL";
+                        isManual = true;
+                    } else {
+                        // 跳过其他记录
+                        continue;
+                    }
+                    
+                    // 计算现金金额（只处理直接的现金记录）
+                    double cashAmount = 0.0;
+                    if (record.getCashAmount() != null) {
+                        cashAmount = record.getCashAmount().doubleValue();
+                    }
+                    
+                    // 只处理有现金价值的记录
+                    if (Math.abs(cashAmount) > 0.01) {
+                        CashRecord cashRecord = new CashRecord(
+                            sessionName,
+                            sessionTime,
+                            record.getCodeValue() != null ? record.getCodeValue() : "现金",
+                            cashAmount,
+                            record.getCodeValue() != null ? record.getCodeValue() : "现金奖惩",
+                            battleResult,
+                            isManual
+                        );
+                        records.add(cashRecord);
+                        
+                        // 累计金额
+                        if (cashAmount > 0) {
+                            totalRewards += cashAmount;
+                        } else {
+                            totalPenalties += cashAmount;
+                        }
+                        
+                    }
+                }
+            }
+            
+            // 按时间排序记录
+            records.sort(Comparator.comparing(CashRecord::getSessionTime));
+            
+            summary.setTotalRewards(totalRewards);
+            summary.setTotalPenalties(totalPenalties);
+            summary.calculateNetCash();
+            summary.setRecords(records);
+            
+            
+            return ResponseEntity.ok(summary);
+        } catch (Exception e) {
+            System.err.println("获取团队现金统计失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    // ==================== 个人统计接口 ====================
+    
+    /**
+     * 获取个人统计
+     */
+    @GetMapping("/statistics/personal")
+    public ResponseEntity<PersonalStatsSummary> getPersonalStats(
+            @RequestParam String startDate,
+            @RequestParam String endDate,
+            @RequestParam String attendanceType,
+            @RequestParam String memberName) {
+        try {
+            LocalDateTime startDateTime = LocalDate.parse(startDate).atStartOfDay();
+            LocalDateTime endDateTime = LocalDate.parse(endDate).atTime(23, 59, 59);
+            
+            // 查询指定时间段内的已结算考勤记录
+            List<AttendanceSession> sessions = attendanceSessionRepository.findByAttendanceTypeAndTimeRangeAndSettled(
+                attendanceType, startDateTime, endDateTime);
+            
+            PersonalStatsSummary summary = new PersonalStatsSummary();
+            summary.setMemberName(memberName);
+            summary.setTimeRange(startDate + " 至 " + endDate);
+            summary.setAttendanceType(attendanceType);
+            
+            List<PersonalAttendanceRecord> records = new ArrayList<>();
+            int totalSessions = 0;
+            int attendedSessions = 0;
+            int absentSessions = 0;
+            
+            for (AttendanceSession session : sessions) {
+                if (session.getMemberData() == null || session.getMemberData().isEmpty()) {
+                    continue;
+                }
+                
+                try {
+                    ObjectMapper mapper = new ObjectMapper();
+                    List<MemberData> memberDataList = mapper.readValue(session.getMemberData(), 
+                        mapper.getTypeFactory().constructCollectionType(List.class, MemberData.class));
+                    
+                    // 查找指定成员
+                    MemberData member = memberDataList.stream()
+                        .filter(m -> memberName.equals(m.get成员()))
+                        .findFirst()
+                        .orElse(null);
+                    
+                    if (member != null) {
+                        // 总考勤次数：该人员相关的考勤记录数（不管是否参加）
+                        totalSessions++;
+                        
+                        // 参加考勤：该人员实际参加的考勤次数
+                        boolean isAttended = member.is参加考勤();
+                        if (isAttended) {
+                            attendedSessions++;
+                        }
+                        
+                        // 根据考勤类型判断是否达标
+                        boolean isQualified = false;
+                        if (isAttended) {
+                            long meritDiff = member.get后值() - member.get前值();
+                            long assistDiff = member.get助攻后值() - member.get助攻前值();
+                            
+                            if ("区间助攻考勤".equals(attendanceType)) {
+                                isQualified = assistDiff >= session.getThreshold();
+                                System.out.println(String.format("助攻考勤达标判断 - 助攻差值: %d, 阈值: %d, 达标: %s", 
+                                    assistDiff, session.getThreshold(), isQualified));
+                            } else {
+                                isQualified = meritDiff >= session.getThreshold();
+                                System.out.println(String.format("战功考勤达标判断 - 战功差值: %d, 阈值: %d, 达标: %s", 
+                                    meritDiff, session.getThreshold(), isQualified));
+                            }
+                        }
+                        
+                        PersonalAttendanceRecord record = new PersonalAttendanceRecord(
+                            session.getName(),
+                            session.getStartTime(),
+                            session.getAttendanceType(),
+                            isAttended, // 是否参加考勤
+                            isQualified, // 是否达标
+                            member.get前值(),
+                            member.get后值(),
+                            member.get助攻前值(),
+                            member.get助攻后值(),
+                            session.getThreshold(),
+                            member.get分组(),
+                            session.getBattleResult() != null ? session.getBattleResult().toString() : "UNKNOWN"
+                        );
+                        
+                        // 调试信息
+                        System.out.println(String.format("个人统计调试 - 人员: %s, 考勤: %s, 参加: %s, 达标: %s, 战功差值: %d, 助攻差值: %d, 阈值: %d", 
+                            memberName, session.getName(), isAttended, isQualified, 
+                            member.get后值() - member.get前值(), 
+                            member.get助攻后值() - member.get助攻前值(), 
+                            session.getThreshold()));
+                        records.add(record);
+                    }
+                } catch (Exception e) {
+                    System.err.println("解析考勤记录失败: " + e.getMessage());
+                    continue;
+                }
+            }
+            
+            // 按时间排序记录
+            records.sort(Comparator.comparing(PersonalAttendanceRecord::getSessionTime));
+            
+            summary.setTotalSessions(totalSessions);
+            summary.setAttendedSessions(attendedSessions);
+            summary.setAbsentSessions(absentSessions);
+            summary.setRecords(records);
+            summary.calculateAttendanceRate(); // 在设置records之后计算出勤率
+            
+            return ResponseEntity.ok(summary);
+        } catch (Exception e) {
+            System.err.println("获取个人统计失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    /**
+     * 搜索人员列表
+     */
+    @GetMapping("/statistics/personal/search")
+    public ResponseEntity<List<String>> searchMembers(
+            @RequestParam String startDate,
+            @RequestParam String endDate,
+            @RequestParam String attendanceType,
+            @RequestParam(required = false) String keyword) {
+        try {
+            LocalDateTime startDateTime = LocalDate.parse(startDate).atStartOfDay();
+            LocalDateTime endDateTime = LocalDate.parse(endDate).atTime(23, 59, 59);
+            
+            // 查询指定时间段内的已结算考勤记录
+            List<AttendanceSession> sessions = attendanceSessionRepository.findByAttendanceTypeAndTimeRangeAndSettled(
+                attendanceType, startDateTime, endDateTime);
+            
+            Set<String> memberNames = new HashSet<>();
+            
+            for (AttendanceSession session : sessions) {
+                if (session.getMemberData() == null || session.getMemberData().isEmpty()) {
+                    continue;
+                }
+                
+                try {
+                    ObjectMapper mapper = new ObjectMapper();
+                    List<MemberData> memberDataList = mapper.readValue(session.getMemberData(), 
+                        mapper.getTypeFactory().constructCollectionType(List.class, MemberData.class));
+                    
+                    for (MemberData member : memberDataList) {
+                        String memberName = member.get成员();
+                        if (memberName != null && !memberName.trim().isEmpty()) {
+                            // 如果有关键词，进行模糊搜索
+                            if (keyword == null || keyword.trim().isEmpty() || 
+                                memberName.toLowerCase().contains(keyword.toLowerCase())) {
+                                memberNames.add(memberName);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("解析考勤记录失败: " + e.getMessage());
+                    continue;
+                }
+            }
+            
+            List<String> result = new ArrayList<>(memberNames);
+            result.sort(String::compareTo);
+            
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            System.err.println("搜索人员失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().build();
         }
     }
 }
