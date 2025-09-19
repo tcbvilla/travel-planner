@@ -16,5 +16,8 @@
     
     <!-- 添加加成配置表 -->
     <include file="changesets/003-add-bonus-config.xml" relativeToChangelogFile="true"/>
+    
+    <!-- 权限系统表结构 -->
+    <include file="changesets/005-auth-system.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

@@ -12,6 +12,9 @@ import {
   Legend,
 } from 'chart.js'
 import { Line } from 'react-chartjs-2'
+import { AuthProvider, useAuth } from './auth/AuthContext'
+import LoginModal from './auth/LoginModal'
+import ProtectedRoute from './auth/ProtectedRoute'
 import './App.css'
 
 // 注册Chart.js组件
@@ -772,7 +775,9 @@ const GroupStatsExportComponent = ({
   }
 }
 
-function App() {
+function AppContent() {
+  const { user, logout, isAuthenticated } = useAuth()
+  const [showLoginModal, setShowLoginModal] = useState(false)
   // 添加点击外部关闭下拉菜单的功能
   const memberDropdownRef = useRef<HTMLDivElement>(null)
   // 导出组件引用
@@ -3163,6 +3168,64 @@ function App() {
         >
           加成配置
         </button>
+        
+        {/* 用户信息区域 */}
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {isAuthenticated ? (
+            <>
+              <span style={{ color: '#fff', fontSize: '14px' }}>
+                欢迎，{user?.displayName || user?.username}
+              </span>
+              <button
+                onClick={logout}
+                style={{
+                  padding: '8px 16px',
+                  border: '1px solid #dc3545',
+                  background: 'transparent',
+                  color: '#dc3545',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  borderRadius: '4px',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.background = '#dc3545'
+                  e.currentTarget.style.color = '#fff'
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = 'transparent'
+                  e.currentTarget.style.color = '#dc3545'
+                }}
+              >
+                登出
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setShowLoginModal(true)}
+              style={{
+                padding: '8px 16px',
+                border: '1px solid #28a745',
+                background: 'transparent',
+                color: '#28a745',
+                cursor: 'pointer',
+                fontSize: '14px',
+                borderRadius: '4px',
+                transition: 'all 0.3s ease'
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = '#28a745'
+                e.currentTarget.style.color = '#fff'
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = 'transparent'
+                e.currentTarget.style.color = '#28a745'
+              }}
+            >
+              登录
+            </button>
+          )}
+        </div>
       </div>
 
       {/* 页面内容区域 */}
@@ -3171,6 +3234,7 @@ function App() {
         padding: '16px',
         minHeight: 'calc(100vh - 80px)' // 确保内容区域至少占满剩余空间
       }}>
+        <ProtectedRoute requiredModule="ATTENDANCE">
 
       {activeTab === 'add' && (
         <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px' }}>
@@ -7947,6 +8011,7 @@ function App() {
         </div>
       )}
 
+        </ProtectedRoute>
       {/* 页面内容区域结束 */}
 
       {/* 删除确认弹框 */}
@@ -8594,7 +8659,22 @@ function App() {
           personalStats={personalStats}
         />
       </div>
+      
+      {/* 登录模态框 */}
+      <LoginModal 
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+      />
     </div>
+  )
+}
+
+// 主App组件，包装AuthProvider
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   )
 }
 
