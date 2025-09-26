@@ -1,13 +1,13 @@
 package com.tripmaster.backend.attendance;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -140,26 +140,42 @@ public class SynthesisService {
                                                 String triggerBatchId, Long attendanceSessionId) {
         List<SettlementRecord> petalRecords = itemCounts.getOrDefault("花瓣", new ArrayList<>());
         
-        // 计算总花瓣数量（考虑数量字段）
-        double totalPetals = petalRecords.stream()
-                .mapToDouble(record -> record.getQuantity().doubleValue())
-                .sum();
+        // 简化逻辑：每条记录quantity=1，直接计算记录数量
+        int totalPetals = petalRecords.size();
         
         if (totalPetals >= 3) {
-            int synthesisCount = (int) (totalPetals / 3);
+            int synthesisCount = totalPetals / 3;
             
-            System.out.println(String.format("团队 %s 花瓣总数: %.1f, 可合成次数: %d", teamName, totalPetals, synthesisCount));
+            System.out.println(String.format("团队 %s 花瓣总数: %d, 可合成次数: %d", teamName, totalPetals, synthesisCount));
             
-            // 执行合成
+            // 获取所有ACTIVE状态的花瓣记录
+            List<SettlementRecord> currentPetalRecords = getActiveRecordsByTeam(seasonId)
+                    .getOrDefault(teamName, new ArrayList<>())
+                    .stream()
+                    .filter(record -> "花瓣".equals(record.getCodeValue()))
+                    .filter(record -> "ACTIVE".equals(record.getRecordStatus()))
+                    .collect(Collectors.toList());
+            
+            // 逐次处理合成，每次重新获取最新状态
             for (int i = 0; i < synthesisCount; i++) {
-                // 每次合成消耗3个花瓣，生成1个花
-                synthesizeItems(teamName, seasonId, seasonName, petalRecords, "花", "UPGRADE", 
-                              "3个花瓣合成1个花", triggerBatchId, attendanceSessionId);
-                
-                // 重要：更新可用花瓣记录列表，排除已合成的记录
-                petalRecords = petalRecords.stream()
+                // 每次合成前重新获取最新的ACTIVE记录
+                List<SettlementRecord> latestPetalRecords = getActiveRecordsByTeam(seasonId)
+                        .getOrDefault(teamName, new ArrayList<>())
+                        .stream()
+                        .filter(record -> "花瓣".equals(record.getCodeValue()))
                         .filter(record -> "ACTIVE".equals(record.getRecordStatus()))
                         .collect(Collectors.toList());
+                
+                // 检查是否还有足够的记录进行合成
+                if (latestPetalRecords.size() >= 3) {
+                    List<SettlementRecord> selectedRecords = latestPetalRecords.subList(0, 3);
+                    
+                    synthesizeItems(teamName, seasonId, seasonName, selectedRecords, "花", "UPGRADE", 
+                                  "3个花瓣合成1个花", triggerBatchId, attendanceSessionId);
+                } else {
+                    // 如果记录不足，跳出循环
+                    break;
+                }
             }
             
             System.out.println(String.format("团队 %s 完成 %d 次花瓣→花 合成", teamName, synthesisCount));
@@ -177,26 +193,43 @@ public class SynthesisService {
                                               String triggerBatchId, Long attendanceSessionId) {
         List<SettlementRecord> flowerRecords = itemCounts.getOrDefault("花", new ArrayList<>());
         
-        // 计算总花数量（考虑数量字段）
-        double totalFlowers = flowerRecords.stream()
-                .mapToDouble(record -> record.getQuantity().doubleValue())
-                .sum();
+        // 简化逻辑：每条记录quantity=1，直接计算记录数量
+        int totalFlowers = flowerRecords.size();
         
         if (totalFlowers >= 3) {
-            int synthesisCount = (int) (totalFlowers / 3);
+            int synthesisCount = totalFlowers / 3;
             
-            System.out.println(String.format("团队 %s 花总数: %.1f, 可合成次数: %d", teamName, totalFlowers, synthesisCount));
+            System.out.println(String.format("团队 %s 花总数: %d, 可合成次数: %d", teamName, totalFlowers, synthesisCount));
             
-            // 执行合成
+            // 获取所有ACTIVE状态的花记录
+            List<SettlementRecord> currentFlowerRecords = getActiveRecordsByTeam(seasonId)
+                    .getOrDefault(teamName, new ArrayList<>())
+                    .stream()
+                    .filter(record -> "花".equals(record.getCodeValue()))
+                    .filter(record -> "ACTIVE".equals(record.getRecordStatus()))
+                    .collect(Collectors.toList());
+            
+            // 逐次处理合成，每次重新获取最新状态
             for (int i = 0; i < synthesisCount; i++) {
-                synthesizeItemsToCash(teamName, seasonId, seasonName, flowerRecords, 
-                                    BigDecimal.valueOf(648), "CASH_CONVERT", "3个花合成648元现金",
-                                    triggerBatchId, attendanceSessionId);
-                
-                // 重要：更新可用花记录列表，排除已合成的记录
-                flowerRecords = flowerRecords.stream()
+                // 每次合成前重新获取最新的ACTIVE记录
+                List<SettlementRecord> latestFlowerRecords = getActiveRecordsByTeam(seasonId)
+                        .getOrDefault(teamName, new ArrayList<>())
+                        .stream()
+                        .filter(record -> "花".equals(record.getCodeValue()))
                         .filter(record -> "ACTIVE".equals(record.getRecordStatus()))
                         .collect(Collectors.toList());
+                
+                // 检查是否还有足够的记录进行合成
+                if (latestFlowerRecords.size() >= 3) {
+                    List<SettlementRecord> selectedRecords = latestFlowerRecords.subList(0, 3);
+                    
+                    synthesizeItemsToCash(teamName, seasonId, seasonName, selectedRecords, 
+                                        BigDecimal.valueOf(648), "CASH_CONVERT", "3个花合成648元现金",
+                                        triggerBatchId, attendanceSessionId);
+                } else {
+                    // 如果记录不足，跳出循环
+                    break;
+                }
             }
             
             System.out.println(String.format("团队 %s 完成 %d 次花→现金 合成", teamName, synthesisCount));
@@ -214,25 +247,42 @@ public class SynthesisService {
                                                      String triggerBatchId, Long attendanceSessionId) {
         List<SettlementRecord> shitParticleRecords = itemCounts.getOrDefault("屎粒", new ArrayList<>());
         
-        // 计算总屎粒数量（考虑数量字段）
-        double totalShitParticles = shitParticleRecords.stream()
-                .mapToDouble(record -> record.getQuantity().doubleValue())
-                .sum();
+        // 简化逻辑：每条记录quantity=1，直接计算记录数量
+        int totalShitParticles = shitParticleRecords.size();
         
         if (totalShitParticles >= 3) {
-            int synthesisCount = (int) (totalShitParticles / 3);
+            int synthesisCount = totalShitParticles / 3;
             
-            System.out.println(String.format("团队 %s 屎粒总数: %.1f, 可合成次数: %d", teamName, totalShitParticles, synthesisCount));
+            System.out.println(String.format("团队 %s 屎粒总数: %d, 可合成次数: %d", teamName, totalShitParticles, synthesisCount));
             
-            // 执行合成
+            // 获取所有ACTIVE状态的屎粒记录
+            List<SettlementRecord> currentShitParticleRecords = getActiveRecordsByTeam(seasonId)
+                    .getOrDefault(teamName, new ArrayList<>())
+                    .stream()
+                    .filter(record -> "屎粒".equals(record.getCodeValue()))
+                    .filter(record -> "ACTIVE".equals(record.getRecordStatus()))
+                    .collect(Collectors.toList());
+            
+            // 逐次处理合成，每次重新获取最新状态
             for (int i = 0; i < synthesisCount; i++) {
-                synthesizeItems(teamName, seasonId, seasonName, shitParticleRecords, "屎", "UPGRADE",
-                              "3个屎粒合成1个屎", triggerBatchId, attendanceSessionId);
-                
-                // 重要：更新可用屎粒记录列表，排除已合成的记录
-                shitParticleRecords = shitParticleRecords.stream()
+                // 每次合成前重新获取最新的ACTIVE记录
+                List<SettlementRecord> latestShitParticleRecords = getActiveRecordsByTeam(seasonId)
+                        .getOrDefault(teamName, new ArrayList<>())
+                        .stream()
+                        .filter(record -> "屎粒".equals(record.getCodeValue()))
                         .filter(record -> "ACTIVE".equals(record.getRecordStatus()))
                         .collect(Collectors.toList());
+                
+                // 检查是否还有足够的记录进行合成
+                if (latestShitParticleRecords.size() >= 3) {
+                    List<SettlementRecord> selectedRecords = latestShitParticleRecords.subList(0, 3);
+                    
+                    synthesizeItems(teamName, seasonId, seasonName, selectedRecords, "屎", "UPGRADE",
+                                  "3个屎粒合成1个屎", triggerBatchId, attendanceSessionId);
+                } else {
+                    // 如果记录不足，跳出循环
+                    break;
+                }
             }
             
             System.out.println(String.format("团队 %s 完成 %d 次屎粒→屎 合成", teamName, synthesisCount));
@@ -250,26 +300,56 @@ public class SynthesisService {
                                             String triggerBatchId, Long attendanceSessionId) {
         List<SettlementRecord> shitRecords = itemCounts.getOrDefault("屎", new ArrayList<>());
         
-        // 计算总屎数量（考虑数量字段）
-        double totalShits = shitRecords.stream()
-                .mapToDouble(record -> record.getQuantity().doubleValue())
-                .sum();
+        // 简化逻辑：每条记录quantity=1，直接计算记录数量
+        int totalShits = shitRecords.size();
         
         if (totalShits >= 3) {
-            int synthesisCount = (int) (totalShits / 3);
+            int synthesisCount = totalShits / 3;
             
-            System.out.println(String.format("团队 %s 屎总数: %.1f, 可合成次数: %d", teamName, totalShits, synthesisCount));
+            System.out.println(String.format("团队 %s 屎总数: %d, 可合成次数: %d", teamName, totalShits, synthesisCount));
             
-            // 执行合成
+            // 获取所有ACTIVE状态的屎记录
+            List<SettlementRecord> currentShitRecords = getActiveRecordsByTeam(seasonId)
+                    .getOrDefault(teamName, new ArrayList<>())
+                    .stream()
+                    .filter(record -> "屎".equals(record.getCodeValue()))
+                    .filter(record -> "ACTIVE".equals(record.getRecordStatus()))
+                    .collect(Collectors.toList());
+            
+            System.out.println(String.format("团队 %s 屎记录详情: %s", teamName, 
+                currentShitRecords.stream()
+                    .map(r -> "ID:" + r.getId() + ",状态:" + r.getRecordStatus())
+                    .collect(Collectors.joining(", "))));
+            
+            // 逐次处理合成，每次重新获取最新状态
             for (int i = 0; i < synthesisCount; i++) {
-                synthesizeItemsToCash(teamName, seasonId, seasonName, shitRecords, 
-                                    BigDecimal.valueOf(-648), "CASH_CONVERT", "3个屎合成-648元现金惩罚",
-                                    triggerBatchId, attendanceSessionId);
-                
-                // 重要：更新可用屎记录列表，排除已合成的记录
-                shitRecords = shitRecords.stream()
+                // 每次合成前重新获取最新的ACTIVE记录
+                List<SettlementRecord> latestShitRecords = getActiveRecordsByTeam(seasonId)
+                        .getOrDefault(teamName, new ArrayList<>())
+                        .stream()
+                        .filter(record -> "屎".equals(record.getCodeValue()))
                         .filter(record -> "ACTIVE".equals(record.getRecordStatus()))
                         .collect(Collectors.toList());
+                
+                // 检查是否还有足够的记录进行合成
+                if (latestShitRecords.size() >= 3) {
+                    List<SettlementRecord> selectedRecords = latestShitRecords.subList(0, 3);
+                    
+                    System.out.println(String.format("团队 %s 第 %d 次合成，选择记录: %s", teamName, i + 1,
+                        selectedRecords.stream()
+                            .map(r -> "ID:" + r.getId())
+                            .collect(Collectors.joining(", "))));
+                    
+                    synthesizeItemsToCash(teamName, seasonId, seasonName, selectedRecords, 
+                                        BigDecimal.valueOf(-648), "CASH_CONVERT", "3个屎合成-648元现金惩罚",
+                                        triggerBatchId, attendanceSessionId);
+                    
+                    System.out.println(String.format("团队 %s 第 %d 次合成完成", teamName, i + 1));
+                } else {
+                    // 如果记录不足，跳出循环
+                    System.out.println(String.format("团队 %s 第 %d 次合成时记录不足: %d < 3，跳出循环", teamName, i + 1, latestShitRecords.size()));
+                    break;
+                }
             }
             
             System.out.println(String.format("团队 %s 完成 %d 次屎→现金 合成", teamName, synthesisCount));
@@ -417,7 +497,7 @@ public class SynthesisService {
                 if (sourceChain != null) {
                     try {
                         List<String> chainOriginalBatchIds = objectMapper.readValue(
-                                sourceChain.getSourceBatchIds(), List.class);
+                                sourceChain.getSourceBatchIds(), new TypeReference<List<String>>() {});
                         originalBatchIds.addAll(chainOriginalBatchIds);
                     } catch (Exception e) {
                         System.err.println("解析源合成链批次ID失败: " + e.getMessage());

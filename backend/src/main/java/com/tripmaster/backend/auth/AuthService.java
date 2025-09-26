@@ -2,10 +2,11 @@ package com.tripmaster.backend.auth;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import com.tripmaster.backend.auth.User;import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,7 +29,8 @@ public class AuthService {
     @Autowired
     private JwtUtil jwtUtil;
     
-    private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
+    @Autowired
+    private PasswordEncoder passwordEncoder;
     
     /**
      * 用户登录
@@ -43,6 +45,10 @@ public class AuthService {
         User user = userOpt.get();
         
         // 验证密码
+        System.out.println("Debug: 输入密码: " + password);
+        System.out.println("Debug: 数据库密码哈希: " + user.getPasswordHash());
+        System.out.println("Debug: 密码匹配结果: " + passwordEncoder.matches(password, user.getPasswordHash()));
+        
         if (!passwordEncoder.matches(password, user.getPasswordHash())) {
             throw new RuntimeException("用户名或密码错误");
         }
@@ -57,7 +63,10 @@ public class AuthService {
         // 获取用户权限
         List<Permission> permissions = userRepository.findUserPermissions(user.getId());
         
-        return new LoginResponse(token, user, permissions);
+        // 获取用户角色
+        List<Role> roles = userRepository.findUserRoles(user.getId());
+        
+        return new LoginResponse(token, user, permissions, roles);
     }
     
     /**
@@ -98,6 +107,13 @@ public class AuthService {
     }
     
     /**
+     * 获取用户角色
+     */
+    public List<Role> getUserRoles(Long userId) {
+        return userRepository.findUserRoles(userId);
+    }
+    
+    /**
      * 创建用户
      */
     public User createUser(String username, String password, String displayName, String email, String phone) {
@@ -134,16 +150,19 @@ public class AuthService {
         private String token;
         private User user;
         private List<Permission> permissions;
+        private List<Role> roles;
         
-        public LoginResponse(String token, User user, List<Permission> permissions) {
+        public LoginResponse(String token, User user, List<Permission> permissions, List<Role> roles) {
             this.token = token;
             this.user = user;
             this.permissions = permissions;
+            this.roles = roles;
         }
         
         // Getters
         public String getToken() { return token; }
         public User getUser() { return user; }
         public List<Permission> getPermissions() { return permissions; }
+        public List<Role> getRoles() { return roles; }
     }
 }

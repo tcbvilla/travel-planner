@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <!-- 清理现有权限和角色数据，重建简化的权限系统 -->
+    <changeSet id="009-cleanup-and-simplify-permissions" author="system">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="1">
+                SELECT COUNT(*) FROM roles WHERE code = 'SUPER_ADMIN'
+            </sqlCheck>
+        </preConditions>
+        
+        <!-- 1. 清理现有的角色权限关联 -->
+        <sql>
+            DELETE FROM role_permissions;
+        </sql>
+        
+        <!-- 2. 清理现有的用户角色关联（除了admin用户的超级管理员角色） -->
+        <sql>
+            DELETE FROM user_roles 
+            WHERE NOT (
+                user_id = (SELECT id FROM users WHERE username = 'admin') 
+                AND role_id = (SELECT id FROM roles WHERE code = 'SUPER_ADMIN')
+            );
+        </sql>
+        
+        <!-- 3. 删除除admin外的所有用户 -->
+        <sql>
+            DELETE FROM users WHERE username != 'admin';
+        </sql>
+        
+        <!-- 4. 删除除超级管理员外的所有角色 -->
+        <sql>
+            DELETE FROM roles WHERE code != 'SUPER_ADMIN';
+        </sql>
+        
+        <!-- 5. 清理现有权限 -->
+        <sql>
+            DELETE FROM permissions;
+        </sql>
+        
+        <!-- 6. 创建新的简化权限 -->
+        <sql>
+            INSERT INTO permissions (code, name, module, resource, action, description, created_at, updated_at) VALUES
+            ('ATTENDANCE:CREATE', '新建考勤权限', 'ATTENDANCE', 'CREATE', 'ALL', '可以看到并使用添加考勤页面的所有功能', NOW(), NOW()),
+            ('ATTENDANCE:VIEW', '查看记录权限', 'ATTENDANCE', 'VIEW', 'ALL', '可以查看考勤记录页面，但不能编辑操作', NOW(), NOW()),
+            ('ATTENDANCE:EDIT', '编辑记录权限', 'ATTENDANCE', 'EDIT', 'ALL', '可以编辑和删除考勤记录', NOW(), NOW()),
+            ('REWARD:MANAGE', '添加奖惩权限', 'REWARD', 'MANAGE', 'ALL', '可以管理考勤奖惩、执行结算、手动添加奖惩', NOW(), NOW()),
+            ('RANKING:VIEW', '查看榜单权限', 'RANKING', 'VIEW', 'ALL', '可以查看榜单和数据统计页面', NOW(), NOW()),
+            ('RANKING:EXPORT', '导出榜单权限', 'RANKING', 'EXPORT', 'ALL', '可以导出图表和图片', NOW(), NOW()),
+            ('SEASON:MANAGE', '设置赛季权限', 'SEASON', 'MANAGE', 'ALL', '可以看到并使用赛季管理页面的所有功能', NOW(), NOW()),
+            ('CONFIG:MANAGE', '加成配置权限', 'CONFIG', 'MANAGE', 'ALL', '可以看到并使用加成配置页面的所有功能', NOW(), NOW());
+        </sql>
+        
+        <!-- 7. 为超级管理员分配所有新权限 -->
+        <sql>
+            INSERT INTO role_permissions (role_id, permission_id, created_at)
+            SELECT 
+                (SELECT id FROM roles WHERE code = 'SUPER_ADMIN') as role_id,
+                p.id as permission_id,
+                CURRENT_TIMESTAMP as created_at
+            FROM permissions p;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>
+

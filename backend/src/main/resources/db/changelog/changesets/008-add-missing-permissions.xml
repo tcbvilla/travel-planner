@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <!-- 添加缺失的权限 -->
+    <changeSet id="008-add-missing-permissions" author="system">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM permissions WHERE code IN ('USER:MANAGE', 'ROLE:MANAGE', 'PERMISSION:MANAGE', 'USER:CREATE', 'USER:EDIT', 'USER:DELETE', 'ROLE:CREATE', 'ROLE:EDIT', 'ROLE:DELETE', 'PERMISSION:CREATE', 'PERMISSION:EDIT', 'PERMISSION:DELETE')
+            </sqlCheck>
+        </preConditions>
+        
+        <sql>
+            -- 用户管理权限
+            INSERT INTO permissions (code, name, module, resource, action, description, created_at) VALUES
+            ('USER:MANAGE', '用户管理', 'USER', 'MANAGE', 'ALL', '完整的用户管理权限，包括创建、编辑、删除用户', NOW()),
+            ('USER:CREATE', '创建用户', 'USER', 'USER', 'CREATE', '可以创建新用户', NOW()),
+            ('USER:EDIT', '编辑用户', 'USER', 'USER', 'EDIT', '可以编辑用户信息', NOW()),
+            ('USER:DELETE', '删除用户', 'USER', 'USER', 'DELETE', '可以删除用户', NOW());
+
+            -- 角色管理权限
+            INSERT INTO permissions (code, name, module, resource, action, description, created_at) VALUES
+            ('ROLE:MANAGE', '角色管理', 'ROLE', 'MANAGE', 'ALL', '完整的角色管理权限，包括创建、编辑、删除角色', NOW()),
+            ('ROLE:CREATE', '创建角色', 'ROLE', 'ROLE', 'CREATE', '可以创建新角色', NOW()),
+            ('ROLE:EDIT', '编辑角色', 'ROLE', 'ROLE', 'EDIT', '可以编辑角色信息', NOW()),
+            ('ROLE:DELETE', '删除角色', 'ROLE', 'ROLE', 'DELETE', '可以删除角色', NOW());
+
+            -- 权限管理权限
+            INSERT INTO permissions (code, name, module, resource, action, description, created_at) VALUES
+            ('PERMISSION:MANAGE', '权限管理', 'PERMISSION', 'MANAGE', 'ALL', '完整的权限管理权限，包括创建、编辑、删除权限', NOW()),
+            ('PERMISSION:CREATE', '创建权限', 'PERMISSION', 'PERMISSION', 'CREATE', '可以创建新权限', NOW()),
+            ('PERMISSION:EDIT', '编辑权限', 'PERMISSION', 'PERMISSION', 'EDIT', '可以编辑权限信息', NOW()),
+            ('PERMISSION:DELETE', '删除权限', 'PERMISSION', 'PERMISSION', 'DELETE', '可以删除权限', NOW());
+        </sql>
+    </changeSet>
+
+    <!-- 为SUPER_ADMIN分配新权限 -->
+    <changeSet id="008-assign-superadmin-new-permissions" author="system">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <sqlCheck expectedResult="1">
+                    SELECT COUNT(*) FROM roles WHERE code = 'SUPER_ADMIN'
+                </sqlCheck>
+                <sqlCheck expectedResult="12">
+                    SELECT COUNT(*) FROM permissions WHERE code IN ('USER:MANAGE', 'ROLE:MANAGE', 'PERMISSION:MANAGE', 'USER:CREATE', 'USER:EDIT', 'USER:DELETE', 'ROLE:CREATE', 'ROLE:EDIT', 'ROLE:DELETE', 'PERMISSION:CREATE', 'PERMISSION:EDIT', 'PERMISSION:DELETE')
+                </sqlCheck>
+            </and>
+        </preConditions>
+        
+        <sql>
+            INSERT INTO role_permissions (role_id, permission_id, created_at)
+            SELECT 
+                (SELECT id FROM roles WHERE code = 'SUPER_ADMIN') as role_id,
+                p.id as permission_id,
+                CURRENT_TIMESTAMP as created_at
+            FROM permissions p
+            WHERE p.code IN (
+                'USER:MANAGE', 'ROLE:MANAGE', 'PERMISSION:MANAGE',
+                'USER:CREATE', 'USER:EDIT', 'USER:DELETE',
+                'ROLE:CREATE', 'ROLE:EDIT', 'ROLE:DELETE',
+                'PERMISSION:CREATE', 'PERMISSION:EDIT', 'PERMISSION:DELETE'
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM role_permissions rp 
+                WHERE rp.role_id = (SELECT id FROM roles WHERE code = 'SUPER_ADMIN')
+                AND rp.permission_id = p.id
+            );
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>
+

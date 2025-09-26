@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <!-- 为permissions表添加updated_at列 -->
+    <changeSet id="006-add-permissions-updated-at" author="system">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="permissions" columnName="updated_at"/>
+            </not>
+        </preConditions>
+        <addColumn tableName="permissions">
+            <column name="updated_at" type="timestamp" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+    
+    <!-- 为permissions表添加created_by列 -->
+    <changeSet id="006-add-permissions-created-by" author="system">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="permissions" columnName="created_by"/>
+            </not>
+        </preConditions>
+        <addColumn tableName="permissions">
+            <column name="created_by" type="bigint">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+    </changeSet>
+    
+    <!-- 为permissions表添加updated_by列 -->
+    <changeSet id="006-add-permissions-updated-by" author="system">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="permissions" columnName="updated_by"/>
+            </not>
+        </preConditions>
+        <addColumn tableName="permissions">
+            <column name="updated_by" type="bigint">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+    </changeSet>
+    
+    <!-- 为roles表添加updated_by列 -->
+    <changeSet id="006-add-roles-updated-by" author="system">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="roles" columnName="updated_by"/>
+            </not>
+        </preConditions>
+        <addColumn tableName="roles">
+            <column name="updated_by" type="bigint">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+    </changeSet>
+    
+    <!-- 为users表添加updated_by列 -->
+    <changeSet id="006-add-users-updated-by" author="system">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="users" columnName="updated_by"/>
+            </not>
+        </preConditions>
+        <addColumn tableName="users">
+            <column name="updated_by" type="bigint">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+    </changeSet>
+    
+    <!-- 为role_permissions表添加created_by列 -->
+    <changeSet id="006-add-role-permissions-created-by" author="system">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="role_permissions" columnName="created_by"/>
+            </not>
+        </preConditions>
+        <addColumn tableName="role_permissions">
+            <column name="created_by" type="bigint">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+    </changeSet>
+    
+    <!-- 为user_roles表添加created_by列 -->
+    <changeSet id="006-add-user-roles-created-by" author="system">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="user_roles" columnName="created_by"/>
+            </not>
+        </preConditions>
+        <addColumn tableName="user_roles">
+            <column name="created_by" type="bigint">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+    </changeSet>
+    
+
+</databaseChangeLog>

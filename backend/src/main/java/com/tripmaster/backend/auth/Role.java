@@ -41,6 +41,11 @@ public class Role {
     @JsonIgnore
     private User createdBy;
     
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "updated_by")
+    @JsonIgnore
+    private User updatedBy;
+    
     @OneToMany(mappedBy = "role", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonIgnore
     private Set<UserRole> userRoles;
@@ -48,6 +53,16 @@ public class Role {
     @OneToMany(mappedBy = "role", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonIgnore
     private Set<RolePermission> rolePermissions;
+    
+    /**
+     * 获取角色的所有权限
+     */
+    @JsonIgnore
+    public Set<Permission> getPermissions() {
+        return rolePermissions.stream()
+                .map(RolePermission::getPermission)
+                .collect(java.util.stream.Collectors.toSet());
+    }
     
     @PrePersist
     protected void onCreate() {

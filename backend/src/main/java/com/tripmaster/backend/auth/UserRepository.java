@@ -1,5 +1,7 @@
 package com.tripmaster.backend.auth;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -53,4 +55,15 @@ public interface UserRepository extends JpaRepository<User, Long> {
            "JOIN ur.role r " +
            "WHERE u.id = :userId")
     List<Role> findUserRoles(@Param("userId") Long userId);
+    
+    /**
+     * 根据用户名或显示名搜索用户（分页）
+     */
+    @Query("SELECT u FROM User u WHERE " +
+           "LOWER(u.username) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(u.displayName) LIKE LOWER(CONCAT('%', :search, '%'))")
+    Page<User> findByUsernameContainingIgnoreCaseOrDisplayNameContainingIgnoreCase(
+        @Param("search") String search1, 
+        @Param("search") String search2, 
+        Pageable pageable);
 }

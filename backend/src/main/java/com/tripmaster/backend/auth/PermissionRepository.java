@@ -1,5 +1,7 @@
 package com.tripmaster.backend.auth;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -40,4 +42,21 @@ public interface PermissionRepository extends JpaRepository<Permission, Long> {
      */
     @Query("SELECT DISTINCT p.resource FROM Permission p WHERE p.module = :module ORDER BY p.resource")
     List<String> findResourcesByModule(@Param("module") String module);
+    
+    /**
+     * 根据名称或描述搜索权限（分页）
+     */
+    @Query("SELECT p FROM Permission p WHERE " +
+           "LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%')) OR " +
+           "LOWER(p.description) LIKE LOWER(CONCAT('%', :search, '%'))")
+    Page<Permission> findByNameContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
+        @Param("search") String search1, 
+        @Param("search") String search2, 
+        Pageable pageable);
+    
+    /**
+     * 查找所有权限模块
+     */
+    @Query("SELECT DISTINCT p.module FROM Permission p ORDER BY p.module")
+    List<String> findDistinctModules();
 }

@@ -32,6 +32,7 @@ public class AuthController {
             result.put("token", response.getToken());
             result.put("user", response.getUser());
             result.put("permissions", response.getPermissions());
+            result.put("roles", response.getRoles());
             
             return ResponseEntity.ok(result);
         } catch (Exception e) {
@@ -57,11 +58,13 @@ public class AuthController {
             }
             
             List<Permission> permissions = authService.getUserPermissions(user.getId());
+            List<Role> roles = authService.getUserRoles(user.getId());
             
             Map<String, Object> result = new HashMap<>();
             result.put("valid", true);
             result.put("user", user);
             result.put("permissions", permissions);
+            result.put("roles", roles);
             
             return ResponseEntity.ok(result);
         } catch (Exception e) {

@@ -12,16 +12,4 @@ public class TravelBackendApplication {
         SpringApplication.run(TravelBackendApplication.class, args);
     }
 
-    @Bean
-    public WebMvcConfigurer corsConfigurer() {
-        return new WebMvcConfigurer() {
-            @Override
-            public void addCorsMappings(CorsRegistry registry) {
-                registry.addMapping("/**")
-                        .allowedMethods("GET","POST","PUT","DELETE","OPTIONS")
-                        .allowedOrigins("http://localhost:5173", "http://127.0.0.1:5173")
-                        .allowCredentials(true);
-            }
-        };
-    }
 }

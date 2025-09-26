@@ -32,6 +32,11 @@ public class RolePermission {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
     
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by")
+    @JsonIgnore
+    private User createdBy;
+    
     @PrePersist
     protected void onCreate() {
         createdAt = LocalDateTime.now();

@@ -170,19 +170,6 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             </button>
           </div>
         </form>
-        
-        <div style={{
-          marginTop: '20px',
-          padding: '15px',
-          backgroundColor: '#1a1a1a',
-          borderRadius: '4px',
-          fontSize: '14px',
-          color: '#ccc'
-        }}>
-          <div style={{ marginBottom: '8px', fontWeight: 'bold' }}>默认账号：</div>
-          <div>用户名：admin</div>
-          <div>密码：123456</div>
-        </div>
       </div>
     </div>
   );

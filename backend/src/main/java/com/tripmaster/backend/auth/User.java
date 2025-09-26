@@ -55,9 +55,24 @@ public class User {
     @JsonIgnore
     private User createdBy;
     
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "updated_by")
+    @JsonIgnore
+    private User updatedBy;
+    
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JsonIgnore
     private Set<UserRole> userRoles;
+    
+    /**
+     * 获取用户的所有角色
+     */
+    @JsonIgnore
+    public Set<Role> getRoles() {
+        return userRoles.stream()
+                .map(UserRole::getRole)
+                .collect(java.util.stream.Collectors.toSet());
+    }
     
     @PrePersist
     protected void onCreate() {

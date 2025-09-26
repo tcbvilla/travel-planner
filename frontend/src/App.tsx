@@ -12,9 +12,12 @@ import {
   Legend,
 } from 'chart.js'
 import { Line } from 'react-chartjs-2'
-import { AuthProvider, useAuth } from './auth/AuthContext'
+import { AuthProvider, useAuth, type Role } from './auth/AuthContext'
 import LoginModal from './auth/LoginModal'
 import ProtectedRoute from './auth/ProtectedRoute'
+import UserManagement from './components/admin/UserManagement'
+import PermissionWrapper from './components/PermissionWrapper'
+import PermissionButton from './components/PermissionButton'
 import './App.css'
 
 // 注册Chart.js组件
@@ -802,8 +805,8 @@ function AppContent() {
     try {
       console.log('开始加载码表数据...')
       const [rewardResponse, penaltyResponse] = await Promise.all([
-        fetch('http://localhost:8080/api/v1/attendance/code-tables?type=REWARD'),
-        fetch('http://localhost:8080/api/v1/attendance/code-tables?type=PENALTY')
+        fetch('/api/v1/attendance/code-tables?type=REWARD'),
+        fetch('/api/v1/attendance/code-tables?type=PENALTY')
       ])
       
       console.log('码表响应状态:', rewardResponse.status, penaltyResponse.status)
@@ -826,7 +829,7 @@ function AppContent() {
   // 初始化码表数据
   const initCodeTables = async () => {
     try {
-      const response = await fetch('http://localhost:8080/api/v1/attendance/code-tables/init', {
+      const response = await fetch('/api/v1/attendance/code-tables/init', {
         method: 'POST'
       })
       
@@ -941,9 +944,10 @@ function AppContent() {
   const [threshold, setThreshold] = useState<number>(1)
   const [rows, setRows] = useState<DisplayRow[]>([])
   const [groupStats, setGroupStats] = useState<GroupStat[]>([])
-  const [activeTab, setActiveTab] = useState<'add' | 'view' | 'season' | 'ranking' | 'statistics' | 'config'>('add')
+  const [activeTab, setActiveTab] = useState<'add' | 'view' | 'season' | 'ranking' | 'statistics' | 'config' | 'admin'>('add')
   const [activeSubTab, setActiveSubTab] = useState<'members' | 'groups'>('members')
   const [activeStatsTab, setActiveStatsTab] = useState<'team' | 'individual'>('team')
+  const [activeAdminSubTab, setActiveAdminSubTab] = useState<'users' | 'roles'>('users')
   const [attendanceType, setAttendanceType] = useState('压秒考勤')
   const [customAttendanceType, setCustomAttendanceType] = useState('')
   const [filteredCount, setFilteredCount] = useState<number>(0)
@@ -1139,6 +1143,15 @@ function AppContent() {
   const [manualRewardType, setManualRewardType] = useState<string>('reward') // reward 或 penalty
   const [manualRewardMode, setManualRewardMode] = useState<string>('CODE_TABLE') // CODE_TABLE 或 CASH
   const [manualRewardCodeValue, setManualRewardCodeValue] = useState<string>('花')
+  
+  // 当奖惩类型改变时，重置码表值选择
+  useEffect(() => {
+    if (manualRewardType === 'reward') {
+      setManualRewardCodeValue('花')
+    } else {
+      setManualRewardCodeValue('屎')
+    }
+  }, [manualRewardType])
   const [manualRewardCashAmount, setManualRewardCashAmount] = useState<number>(0)
   const [manualRewardQuantity, setManualRewardQuantity] = useState<number>(1)
   const [manualRewardDescription, setManualRewardDescription] = useState<string>('')
@@ -1282,7 +1295,7 @@ function AppContent() {
       // 只有当有数据需要更新时才发送请求
       if (Object.keys(updateData).length > 0) {
         console.log('发送的更新数据:', updateData)
-        const response = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${selectedSession.id}/update`, {
+        const response = await fetch(`/api/v1/attendance/sessions/${selectedSession.id}/update`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(updateData)
@@ -1327,7 +1340,7 @@ function AppContent() {
     
     try {
       // 重新获取会话数据（包含重新计算的小组统计和成员数据）
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${selectedSession.id}`)
+      const response = await fetch(`/api/v1/attendance/sessions/${selectedSession.id}`)
       if (response.ok) {
         const data = await response.json()
         const session = data.session as AttendanceSession
@@ -1402,7 +1415,7 @@ function AppContent() {
   // 获取可用的考勤类型
   const loadAttendanceTypes = async () => {
     try {
-      const response = await fetch('http://localhost:8080/api/v1/attendance/attendance-types')
+      const response = await fetch('/api/v1/attendance/attendance-types')
       if (response.ok) {
         const types = await response.json()
         setAvailableAttendanceTypes(types)
@@ -1433,7 +1446,7 @@ function AppContent() {
     setError(null)
     
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/statistics/query?startDate=${statsStartDate}&endDate=${statsEndDate}&attendanceType=${statsAttendanceType}`)
+      const response = await fetch(`/api/v1/attendance/statistics/query?startDate=${statsStartDate}&endDate=${statsEndDate}&attendanceType=${statsAttendanceType}`)
       
       if (response.ok) {
         const data = await response.json()
@@ -1464,7 +1477,7 @@ function AppContent() {
     setError(null)
     
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/statistics/team-attendance-rate?startDate=${statsStartDate}&endDate=${statsEndDate}&attendanceType=${statsAttendanceType}&teamName=${selectedStatsTeam}`)
+      const response = await fetch(`/api/v1/attendance/statistics/team-attendance-rate?startDate=${statsStartDate}&endDate=${statsEndDate}&attendanceType=${statsAttendanceType}&teamName=${selectedStatsTeam}`)
       
       if (response.ok) {
         const data = await response.json()
@@ -1492,7 +1505,7 @@ function AppContent() {
     setError(null)
     
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/statistics/team-cash-summary?startDate=${statsStartDate}&endDate=${statsEndDate}&attendanceType=${statsAttendanceType}&teamName=${selectedStatsTeam}`)
+      const response = await fetch(`/api/v1/attendance/statistics/team-cash-summary?startDate=${statsStartDate}&endDate=${statsEndDate}&attendanceType=${statsAttendanceType}&teamName=${selectedStatsTeam}`)
       
       if (response.ok) {
         const data = await response.json()
@@ -1522,7 +1535,7 @@ function AppContent() {
     setError(null)
     
     try {
-      const url = `http://localhost:8080/api/v1/attendance/statistics/personal/search?startDate=${statsStartDate}&endDate=${statsEndDate}&attendanceType=${statsAttendanceType}${searchKeyword ? `&keyword=${encodeURIComponent(searchKeyword)}` : ''}`
+      const url = `/api/v1/attendance/statistics/personal/search?startDate=${statsStartDate}&endDate=${statsEndDate}&attendanceType=${statsAttendanceType}${searchKeyword ? `&keyword=${encodeURIComponent(searchKeyword)}` : ''}`
       const response = await fetch(url)
       
       if (response.ok) {
@@ -1551,7 +1564,7 @@ function AppContent() {
     setError(null)
     
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/statistics/personal?startDate=${statsStartDate}&endDate=${statsEndDate}&attendanceType=${statsAttendanceType}&memberName=${encodeURIComponent(selectedMember)}`)
+      const response = await fetch(`/api/v1/attendance/statistics/personal?startDate=${statsStartDate}&endDate=${statsEndDate}&attendanceType=${statsAttendanceType}&memberName=${encodeURIComponent(selectedMember)}`)
       
       if (response.ok) {
         const data = await response.json()
@@ -1579,7 +1592,7 @@ function AppContent() {
     
     try {
       // 使用新的批量团队更新API
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${selectedSession.id}/teams-attendance`, {
+      const response = await fetch(`/api/v1/attendance/sessions/${selectedSession.id}/teams-attendance`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1625,7 +1638,7 @@ function AppContent() {
     setIsUpdatingMemberAttendance(true)
     
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${selectedSession.id}/members-attendance`, {
+      const response = await fetch(`/api/v1/attendance/sessions/${selectedSession.id}/members-attendance`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1786,7 +1799,7 @@ function AppContent() {
     console.log('请求数据:', requestData)
 
     try {
-      const response = await fetch('http://localhost:8080/api/v1/attendance/save-reward-condition', {
+      const response = await fetch('/api/v1/attendance/save-reward-condition', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestData)
@@ -1821,7 +1834,7 @@ function AppContent() {
     
     try {
       console.log('Fetching reward conditions for session ID:', selectedSession.id)
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/reward-conditions/${selectedSession.id}`)
+      const response = await fetch(`/api/v1/attendance/reward-conditions/${selectedSession.id}`)
       if (response.ok) {
         const data = await response.json()
         console.log('Received reward conditions:', data)
@@ -1893,7 +1906,7 @@ function AppContent() {
     }
 
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/reward-conditions/${editingCondition.id}`, {
+      const response = await fetch(`/api/v1/attendance/reward-conditions/${editingCondition.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestData)
@@ -1912,7 +1925,7 @@ function AppContent() {
   // 新增函数：删除奖惩条件
   const deleteRewardCondition = async (id: number) => {
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/reward-conditions/${id}`, {
+      const response = await fetch(`/api/v1/attendance/reward-conditions/${id}`, {
         method: 'DELETE'
       })
       
@@ -1927,7 +1940,7 @@ function AppContent() {
   // 新增函数：更新考勤记录状态
   const updateSessionStatus = async (sessionId: number, newStatus: string) => {
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${sessionId}/status?status=${newStatus}`, {
+      const response = await fetch(`/api/v1/attendance/sessions/${sessionId}/status?status=${newStatus}`, {
         method: 'PUT'
       })
       
@@ -1937,7 +1950,7 @@ function AppContent() {
         // 如果当前查看的是这个会话，也更新selectedSession
         if (selectedSession && selectedSession.id === sessionId) {
           // 重新获取完整的会话数据（包括小组统计）
-          const sessionResponse = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${sessionId}`)
+          const sessionResponse = await fetch(`/api/v1/attendance/sessions/${sessionId}`)
           if (sessionResponse.ok) {
             const data = await sessionResponse.json()
             const session = data.session as AttendanceSession
@@ -1992,7 +2005,7 @@ function AppContent() {
       form.append('threshold', String(threshold))
       form.append('attendanceType', '压秒考勤') // 比较接口默认使用压秒考勤
 
-      const resp = await fetch('http://localhost:8080/api/v1/attendance/compare', {
+      const resp = await fetch('/api/v1/attendance/compare', {
         method: 'POST',
         body: form,
       })
@@ -2122,7 +2135,7 @@ function AppContent() {
         attendanceType: finalAttendanceType
       }
       
-      const resp = await fetch(`http://localhost:8080/api/v1/attendance/save-session`, {
+      const resp = await fetch(`/api/v1/attendance/save-session`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -2148,7 +2161,7 @@ function AppContent() {
   // 加载会话列表
   const loadSessions = async (page = 0) => {
     try {
-      const resp = await fetch(`http://localhost:8080/api/v1/attendance/sessions?page=${page}&size=10`)
+      const resp = await fetch(`/api/v1/attendance/sessions?page=${page}&size=10`)
       if (!resp.ok) throw new Error(`加载失败: ${resp.status}`)
       
       const data = await resp.json() as PageResponse<AttendanceSession>
@@ -2164,7 +2177,7 @@ function AppContent() {
   const viewSession = async (sessionId: number) => {
     console.log('查看会话:', sessionId)
     try {
-      const resp = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${sessionId}`)
+      const resp = await fetch(`/api/v1/attendance/sessions/${sessionId}`)
       console.log('API响应状态:', resp.status)
       if (!resp.ok) throw new Error(`加载失败: ${resp.status}`)
       
@@ -2192,7 +2205,7 @@ function AppContent() {
       // 加载奖惩条件列表 - 使用sessionWithGroupStats而不是依赖selectedSession状态
       try {
         console.log('Fetching reward conditions for session ID:', sessionWithGroupStats.id)
-        const response = await fetch(`http://localhost:8080/api/v1/attendance/reward-conditions/${sessionWithGroupStats.id}`)
+        const response = await fetch(`/api/v1/attendance/reward-conditions/${sessionWithGroupStats.id}`)
         if (response.ok) {
           const data = await response.json()
           console.log('Received reward conditions:', data)
@@ -2220,7 +2233,7 @@ function AppContent() {
     if (!sessionToDelete) return
     
     try {
-      const resp = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${sessionToDelete}`, {
+      const resp = await fetch(`/api/v1/attendance/sessions/${sessionToDelete}`, {
         method: 'DELETE'
       })
       
@@ -2254,7 +2267,7 @@ function AppContent() {
   const loadSeasons = async (page: number = 0) => {
     setLoadingSeasons(true)
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/seasons?page=${page}&size=10`)
+      const response = await fetch(`/api/v1/attendance/seasons?page=${page}&size=10`)
       if (response.ok) {
         const data = await response.json()
         setSeasons(data.content || [])
@@ -2279,7 +2292,7 @@ function AppContent() {
     }
 
     try {
-      const response = await fetch('http://localhost:8080/api/v1/attendance/seasons', {
+      const response = await fetch('/api/v1/attendance/seasons', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -2313,7 +2326,7 @@ function AppContent() {
     }
 
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/seasons/${id}`, {
+      const response = await fetch(`/api/v1/attendance/seasons/${id}`, {
         method: 'DELETE'
       })
 
@@ -2352,7 +2365,7 @@ function AppContent() {
     }
 
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/seasons/${editingSeason.id}`, {
+      const response = await fetch(`/api/v1/attendance/seasons/${editingSeason.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -2409,7 +2422,7 @@ function AppContent() {
   const [allSeasons, setAllSeasons] = useState<any[]>([])
   const loadAllSeasons = async () => {
     try {
-      const response = await fetch('http://localhost:8080/api/v1/attendance/seasons?page=0&size=1000')
+      const response = await fetch('/api/v1/attendance/seasons?page=0&size=1000')
       if (response.ok) {
         const data = await response.json()
         setAllSeasons(data.content || [])
@@ -2466,7 +2479,7 @@ function AppContent() {
     
     setLoadingSettlementConditions(true)
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/reward-conditions/${selectedSession.id}`)
+      const response = await fetch(`/api/v1/attendance/reward-conditions/${selectedSession.id}`)
       if (response.ok) {
         const conditions = await response.json()
         setSettlementRewardConditions(conditions)
@@ -2489,7 +2502,7 @@ function AppContent() {
     setLoadingSettlementResults(true)
     try {
       // 重新获取最新的小组统计数据（从后端获取，确保包含正确的attendanceRateBonus）
-      const sessionResponse = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${selectedSession.id}`)
+      const sessionResponse = await fetch(`/api/v1/attendance/sessions/${selectedSession.id}`)
       if (!sessionResponse.ok) {
         throw new Error('获取会话数据失败')
       }
@@ -2499,7 +2512,7 @@ function AppContent() {
       
       console.log('发送给后端的groupStats:', groupStats)
       
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${selectedSession.id}/calculate-settlement`, {
+      const response = await fetch(`/api/v1/attendance/sessions/${selectedSession.id}/calculate-settlement`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(groupStats)
@@ -2529,7 +2542,7 @@ function AppContent() {
     
     setExecutingSettlement(true)
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${selectedSession.id}/execute-settlement`, {
+      const response = await fetch(`/api/v1/attendance/sessions/${selectedSession.id}/execute-settlement`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settlementResults)
@@ -2567,7 +2580,7 @@ function AppContent() {
     }
     
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/sessions/${selectedSession.id}/revoke-settlement`, {
+      const response = await fetch(`/api/v1/attendance/sessions/${selectedSession.id}/revoke-settlement`, {
         method: 'DELETE'
       })
       
@@ -2599,7 +2612,7 @@ function AppContent() {
   const loadSettlementLogs = async (page: number = 0) => {
     setLoadingLogs(true)
     try {
-      let url = `http://localhost:8080/api/v1/attendance/settlement-logs?page=${page}&size=10`
+      let url = `/api/v1/attendance/settlement-logs?page=${page}&size=10`
       if (rankingSeasonId) {
         url += `&seasonId=${rankingSeasonId}`
       }
@@ -2650,7 +2663,7 @@ function AppContent() {
     console.log('loadManualRewardTeams: 开始加载团队列表，赛季ID:', rankingSeasonId)
     setLoadingManualRewardTeams(true)
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/teams/${rankingSeasonId}`)
+      const response = await fetch(`/api/v1/attendance/teams/${rankingSeasonId}`)
       console.log('loadManualRewardTeams: 响应状态:', response.status)
       if (response.ok) {
         const teams = await response.json()
@@ -2701,7 +2714,7 @@ function AppContent() {
         rewardDescription: manualRewardDescription || `${manualRewardType === 'reward' ? '奖励' : '惩罚'}: ${manualRewardMode === 'CASH' ? `现金${finalCashAmount > 0 ? '+' : ''}${finalCashAmount}元` : manualRewardCodeValue}`
       }
       
-      const response = await fetch('http://localhost:8080/api/v1/attendance/settlement/manual', {
+      const response = await fetch('/api/v1/attendance/settlement/manual', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2761,7 +2774,7 @@ function AppContent() {
     
     setRevokingRecord(true)
     try {
-      const response = await fetch(`http://localhost:8080/api/v1/attendance/settlement/manual/${revokeRecordId}`, {
+      const response = await fetch(`/api/v1/attendance/settlement/manual/${revokeRecordId}`, {
         method: 'DELETE'
       })
       
@@ -2801,7 +2814,7 @@ function AppContent() {
   const loadBonusConfig = async () => {
     setLoadingBonusConfig(true)
     try {
-      const response = await fetch('http://localhost:8080/api/v1/attendance/bonus-config')
+      const response = await fetch('/api/v1/attendance/bonus-config')
       if (response.ok) {
         const config = await response.json()
         setBonusConfig(config)
@@ -2821,7 +2834,7 @@ function AppContent() {
   const saveBonusConfig = async () => {
     setSavingBonusConfig(true)
     try {
-      const response = await fetch('http://localhost:8080/api/v1/attendance/bonus-config', {
+      const response = await fetch('/api/v1/attendance/bonus-config', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json'
@@ -2908,8 +2921,8 @@ function AppContent() {
     try {
       // 并行加载榜单数据和队伍物品统计
       const [rankingResponse, itemsResponse] = await Promise.all([
-        fetch(`http://localhost:8080/api/v1/attendance/seasons/${seasonId}/ranking`),
-        fetch(`http://localhost:8080/api/v1/attendance/seasons/${seasonId}/team-items-summary`)
+        fetch(`/api/v1/attendance/seasons/${seasonId}/ranking`),
+        fetch(`/api/v1/attendance/seasons/${seasonId}/team-items-summary`)
       ])
       
       if (rankingResponse.ok) {
@@ -2944,7 +2957,7 @@ function AppContent() {
   const loadSettlementDetails = async (seasonId: number, teams: string[] = [], start: string = '', end: string = '') => {
     setLoadingDetails(true)
     try {
-      let url = `http://localhost:8080/api/v1/attendance/seasons/${seasonId}/settlement-details`
+      let url = `/api/v1/attendance/seasons/${seasonId}/settlement-details`
       const params = new URLSearchParams()
       
       if (teams.length > 0) {
@@ -3066,108 +3079,139 @@ function AppContent() {
         display: 'flex',
         gap: 8
       }}>
-        <button
-          onClick={() => setActiveTab('add')}
-          style={{
-            padding: '12px 24px',
-            border: 'none',
-            background: activeTab === 'add' ? '#007bff' : '#555555',
-            color: '#fff',
-            cursor: 'pointer',
-            fontSize: '16px',
-            fontWeight: activeTab === 'add' ? 'bold' : 'normal',
-            borderRadius: '4px',
-            transition: 'all 0.3s ease'
-          }}
-        >
-          添加考勤
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab('view')
-            loadSessions()
-          }}
-          style={{
-            padding: '12px 24px',
-            border: 'none',
-            background: activeTab === 'view' ? '#007bff' : '#555555',
-            color: '#fff',
-            cursor: 'pointer',
-            fontSize: '16px',
-            fontWeight: activeTab === 'view' ? 'bold' : 'normal',
-            borderRadius: '4px',
-            transition: 'all 0.3s ease'
-          }}
-        >
-          查看考勤记录
-        </button>
-        <button
-          onClick={() => setActiveTab('season')}
-          style={{
-            padding: '12px 24px',
-            border: 'none',
-            background: activeTab === 'season' ? '#007bff' : '#555555',
-            color: '#fff',
-            cursor: 'pointer',
-            fontSize: '16px',
-            fontWeight: activeTab === 'season' ? 'bold' : 'normal',
-            borderRadius: '4px',
-            transition: 'all 0.3s ease'
-          }}
-        >
-          赛季管理
-        </button>
-        <button
-          onClick={() => setActiveTab('ranking')}
-          style={{
-            padding: '12px 24px',
-            border: 'none',
-            background: activeTab === 'ranking' ? '#007bff' : '#555555',
-            color: '#fff',
-            cursor: 'pointer',
-            fontSize: '16px',
-            fontWeight: activeTab === 'ranking' ? 'bold' : 'normal',
-            borderRadius: '4px',
-            transition: 'all 0.3s ease'
-          }}
-        >
-          查看榜单
-        </button>
-        <button
-          onClick={() => setActiveTab('statistics')}
-          style={{
-            padding: '12px 24px',
-            border: 'none',
-            background: activeTab === 'statistics' ? '#007bff' : '#555555',
-            color: '#fff',
-            cursor: 'pointer',
-            fontSize: '16px',
-            fontWeight: activeTab === 'statistics' ? 'bold' : 'normal',
-            borderRadius: '4px',
-            transition: 'all 0.3s ease'
-          }}
-        >
-          数据统计
-        </button>
-        <button
-          onClick={() => {
-            setActiveTab('config')
-            loadBonusConfig()
-          }}
-          style={{
-            padding: '12px 24px',
-            border: 'none',
-            background: activeTab === 'config' ? '#007bff' : '#555555',
-            color: '#fff',
-            cursor: 'pointer',
-            fontSize: '16px',
-            fontWeight: activeTab === 'config' ? 'bold' : 'normal',
-            borderRadius: '4px',
-            transition: 'all 0.3s ease'
-          }}
-        >
-          加成配置
-        </button>
+        <PermissionWrapper permission="ATTENDANCE:CREATE">
+          <button
+            onClick={() => setActiveTab('add')}
+            style={{
+              padding: '12px 24px',
+              border: 'none',
+              background: activeTab === 'add' ? '#007bff' : '#555555',
+              color: '#fff',
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: activeTab === 'add' ? 'bold' : 'normal',
+              borderRadius: '4px',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            添加考勤
+          </button>
+        </PermissionWrapper>
+        <PermissionWrapper permission="ATTENDANCE:VIEW">
+          <button
+            onClick={() => {
+              setActiveTab('view')
+              loadSessions()
+            }}
+            style={{
+              padding: '12px 24px',
+              border: 'none',
+              background: activeTab === 'view' ? '#007bff' : '#555555',
+              color: '#fff',
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: activeTab === 'view' ? 'bold' : 'normal',
+              borderRadius: '4px',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            查看考勤记录
+          </button>
+        </PermissionWrapper>
+        <PermissionWrapper permission="SEASON:MANAGE">
+          <button
+            onClick={() => setActiveTab('season')}
+            style={{
+              padding: '12px 24px',
+              border: 'none',
+              background: activeTab === 'season' ? '#007bff' : '#555555',
+              color: '#fff',
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: activeTab === 'season' ? 'bold' : 'normal',
+              borderRadius: '4px',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            赛季管理
+          </button>
+        </PermissionWrapper>
+        <PermissionWrapper permission="RANKING:VIEW">
+          <button
+            onClick={() => setActiveTab('ranking')}
+            style={{
+              padding: '12px 24px',
+              border: 'none',
+              background: activeTab === 'ranking' ? '#007bff' : '#555555',
+              color: '#fff',
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: activeTab === 'ranking' ? 'bold' : 'normal',
+              borderRadius: '4px',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            查看榜单
+          </button>
+        </PermissionWrapper>
+        <PermissionWrapper permission="RANKING:VIEW">
+          <button
+            onClick={() => setActiveTab('statistics')}
+            style={{
+              padding: '12px 24px',
+              border: 'none',
+              background: activeTab === 'statistics' ? '#007bff' : '#555555',
+              color: '#fff',
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: activeTab === 'statistics' ? 'bold' : 'normal',
+              borderRadius: '4px',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            数据统计
+          </button>
+        </PermissionWrapper>
+        <PermissionWrapper permission="CONFIG:MANAGE">
+          <button
+            onClick={() => {
+              setActiveTab('config')
+              loadBonusConfig()
+            }}
+            style={{
+              padding: '12px 24px',
+              border: 'none',
+              background: activeTab === 'config' ? '#007bff' : '#555555',
+              color: '#fff',
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: activeTab === 'config' ? 'bold' : 'normal',
+              borderRadius: '4px',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            加成配置
+          </button>
+        </PermissionWrapper>
+        {/* 用户管理 - 仅超级管理员可见 */}
+        {user?.roles?.some((role: Role) => role.code === 'SUPER_ADMIN') && (
+          <button
+            onClick={() => setActiveTab('admin')}
+            style={{
+              padding: '12px 24px',
+              border: 'none',
+              background: activeTab === 'admin' ? '#007bff' : '#555555',
+              color: '#fff',
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: activeTab === 'admin' ? 'bold' : 'normal',
+              borderRadius: '4px',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            用户管理
+          </button>
+        )}
         
         {/* 用户信息区域 */}
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -3391,13 +3435,15 @@ function AppContent() {
                           style={{ padding: '4px 8px', background: '#007bff', color: '#fff', border: 'none', cursor: 'pointer' }}
                         >
                           查看
-        </button>
-                        <button
+                        </button>
+                        <PermissionButton
+                          permission="ATTENDANCE:EDIT"
                           onClick={() => showDeleteConfirmation(session.id)}
                           style={{ padding: '4px 8px', background: '#dc3545', color: '#fff', border: 'none', cursor: 'pointer' }}
+                          disabledMessage="没有编辑记录权限"
                         >
                           删除
-                        </button>
+                        </PermissionButton>
       </div>
                     </td>
                   </tr>
@@ -4393,7 +4439,8 @@ function AppContent() {
               
               {!editingSession && selectedSession.status === 'ADDED' && (
                 <div style={{ marginTop: '8px' }}>
-                  <button
+                  <PermissionButton
+                    permission="ATTENDANCE:EDIT"
                     onClick={startEditSession}
                     style={{
                       padding: '6px 12px',
@@ -4404,9 +4451,10 @@ function AppContent() {
                       cursor: 'pointer',
                       fontSize: '12px'
                     }}
+                    disabledMessage="没有编辑记录权限"
                   >
                     编辑
-                  </button>
+                  </PermissionButton>
                 </div>
               )}
             </div>
@@ -4997,7 +5045,8 @@ function AppContent() {
                     )}
                     {/* 操作按钮 */}
                     <div style={{ display: 'flex', gap: '12px', marginTop: '16px' }}>
-                      <button
+                      <PermissionButton
+                        permission="REWARD:MANAGE"
                         onClick={editingCondition ? updateRewardCondition : saveRewardCondition}
                         disabled={selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED'}
                         style={{
@@ -5009,9 +5058,10 @@ function AppContent() {
                           cursor: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 'not-allowed' : 'pointer',
                           opacity: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 0.6 : 1
                         }}
+                        disabledMessage="没有添加奖惩权限"
                       >
                         {editingCondition ? '更新' : '新增'}
-                      </button>
+                      </PermissionButton>
                       {editingCondition && (
                         <button
                           onClick={resetRewardForm}
@@ -5102,7 +5152,8 @@ function AppContent() {
                                 })()}
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
-                                <button
+                                <PermissionButton
+                                  permission="REWARD:MANAGE"
                                   onClick={() => editRewardCondition(condition)}
                                   disabled={selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED'}
                                   style={{
@@ -5115,10 +5166,12 @@ function AppContent() {
                                     marginRight: '4px',
                                     opacity: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 0.6 : 1
                                   }}
+                                  disabledMessage="没有添加奖惩权限"
                                 >
                                   编辑
-                                </button>
-                                <button
+                                </PermissionButton>
+                                <PermissionButton
+                                  permission="REWARD:MANAGE"
                                   onClick={() => deleteRewardCondition(condition.id)}
                                   disabled={selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED'}
                                   style={{
@@ -5130,9 +5183,10 @@ function AppContent() {
                                     cursor: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 'not-allowed' : 'pointer',
                                     opacity: selectedSession.status === 'SAVED' || selectedSession.status === 'SETTLED' ? 0.6 : 1
                                   }}
+                                  disabledMessage="没有添加奖惩权限"
                                 >
                                   删除
-                                </button>
+                                </PermissionButton>
                               </td>
                             </tr>
                           ))}
@@ -5145,7 +5199,8 @@ function AppContent() {
                 {/* 保存/取消保存按钮 */}
                 <div style={{ marginTop: '16px', textAlign: 'center' }}>
                   {selectedSession.status === 'ADDED' && (
-                    <button
+                    <PermissionButton
+                      permission="ATTENDANCE:EDIT"
                       onClick={() => updateSessionStatus(selectedSession.id, 'SAVED')}
                       style={{
                         padding: '12px 24px',
@@ -5157,12 +5212,14 @@ function AppContent() {
                         fontSize: '16px',
                         fontWeight: 'bold'
                       }}
+                      disabledMessage="没有编辑记录权限"
                     >
                       保存考勤记录
-                    </button>
+                    </PermissionButton>
                   )}
                   {selectedSession.status === 'SAVED' && (
-                    <button
+                    <PermissionButton
+                      permission="ATTENDANCE:EDIT"
                       onClick={() => updateSessionStatus(selectedSession.id, 'ADDED')}
                       style={{
                         padding: '12px 24px',
@@ -5174,9 +5231,10 @@ function AppContent() {
                         fontSize: '16px',
                         fontWeight: 'bold'
                       }}
+                      disabledMessage="没有编辑记录权限"
                     >
                       取消保存
-                    </button>
+                    </PermissionButton>
                   )}
                 </div>
               </div>
@@ -5339,7 +5397,8 @@ function AppContent() {
                       
                       {/* 执行按钮 */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <button
+                        <PermissionButton
+                          permission="ATTENDANCE:EDIT"
                           onClick={updateTeamAttendance}
                           disabled={selectedTeams.length === 0 || isUpdatingTeamAttendance || selectedSession.status !== 'ADDED'}
                           style={{
@@ -5353,9 +5412,10 @@ function AppContent() {
                             fontWeight: 'bold',
                             opacity: selectedSession.status !== 'ADDED' ? 0.6 : 1
                           }}
+                          disabledMessage="没有编辑记录权限"
                         >
                           {isUpdatingTeamAttendance ? '执行中...' : `批量更新 ${selectedTeams.length} 个团队`}
-                        </button>
+                        </PermissionButton>
                       </div>
                     </div>
                   </div>
@@ -5502,7 +5562,8 @@ function AppContent() {
                       
                       {/* 执行按钮 */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <button
+                        <PermissionButton
+                          permission="ATTENDANCE:EDIT"
                           onClick={updateMembersAttendance}
                           disabled={selectedMembers.length === 0 || isUpdatingMemberAttendance || selectedSession.status !== 'ADDED'}
                           style={{
@@ -5516,9 +5577,10 @@ function AppContent() {
                             fontWeight: 'bold',
                             opacity: selectedSession.status !== 'ADDED' ? 0.6 : 1
                           }}
+                          disabledMessage="没有编辑记录权限"
                         >
                           {isUpdatingMemberAttendance ? '执行中...' : `批量更新 ${selectedMembers.length} 个成员`}
-                        </button>
+                        </PermissionButton>
                       </div>
                     </div>
                   </div>
@@ -5696,7 +5758,8 @@ function AppContent() {
                   >
                     计算结算
                   </button>
-                  <button
+                  <PermissionButton
+                    permission="REWARD:MANAGE"
                     onClick={() => setShowSettlementConfirm(true)}
                     disabled={selectedSession.status !== 'SAVED' || settlementResults.length === 0 || executingSettlement}
                     style={{
@@ -5709,10 +5772,12 @@ function AppContent() {
                       opacity: (selectedSession.status === 'SAVED' && settlementResults.length > 0 && !executingSettlement) ? 1 : 0.6
                     }}
                     title={selectedSession.status === 'ADDED' ? '考勤记录未保存' : selectedSession.status === 'SETTLED' ? '考勤记录已结算' : settlementResults.length === 0 ? '请先计算结算结果' : '执行结算'}
+                    disabledMessage="没有添加奖惩权限"
                   >
                     {executingSettlement ? '执行中...' : '执行结算'}
-                  </button>
-                  <button
+                  </PermissionButton>
+                  <PermissionButton
+                    permission="REWARD:MANAGE"
                     onClick={revokeSettlement}
                     disabled={selectedSession.status !== 'SETTLED'}
                     style={{
@@ -5724,9 +5789,10 @@ function AppContent() {
                       cursor: selectedSession.status === 'SETTLED' ? 'pointer' : 'not-allowed',
                       opacity: selectedSession.status === 'SETTLED' ? 1 : 0.6
                     }}
+                    disabledMessage="没有添加奖惩权限"
                   >
                     撤销结算
-                  </button>
+                  </PermissionButton>
                 </div>
               </div>
             )}
@@ -5837,7 +5903,8 @@ function AppContent() {
                   查看日志
                 </button>
                 {rankingSeasonId && (
-                  <button
+                  <PermissionButton
+                    permission="REWARD:MANAGE"
                     onClick={openManualRewardModal}
                     style={{
                       padding: '8px 16px',
@@ -5848,9 +5915,10 @@ function AppContent() {
                       cursor: 'pointer',
                       fontSize: '14px'
                     }}
+                    disabledMessage="没有添加奖惩权限"
                   >
                     手动添加奖惩
-                  </button>
+                  </PermissionButton>
                 )}
               </div>
             </div>
@@ -6674,7 +6742,8 @@ function AppContent() {
                     >
                       加成后出勤率
                     </button>
-                    <button
+                    <PermissionButton
+                      permission="RANKING:EXPORT"
                       onClick={() => {
                         const chartCanvas = document.querySelector('#attendance-chart canvas') as HTMLCanvasElement;
                         if (chartCanvas) {
@@ -6694,9 +6763,10 @@ function AppContent() {
                         fontSize: '12px',
                         marginLeft: 'auto'
                       }}
+                      disabledMessage="没有导出榜单权限"
                     >
                       导出图表
-                    </button>
+                    </PermissionButton>
                   </div>
                   
                   {/* 图表容器 */}
@@ -7245,7 +7315,8 @@ function AppContent() {
                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                  <h4 style={{ margin: 0, color: '#fff' }}>个人统计 - {selectedMember}</h4>
                  <div style={{ display: 'flex', gap: '12px' }}>
-                   <button
+                   <PermissionButton
+                     permission="RANKING:EXPORT"
                      onClick={handleExportPersonalStats}
                      disabled={!personalStats}
                      style={{
@@ -7258,9 +7329,10 @@ function AppContent() {
                        fontSize: '14px',
                        fontWeight: 'bold'
                      }}
+                     disabledMessage="没有导出榜单权限"
                    >
                      导出图片
-                   </button>
+                   </PermissionButton>
                    <button
                      onClick={getPersonalStats}
                      disabled={isLoadingPersonal}
@@ -8011,6 +8083,14 @@ function AppContent() {
         </div>
       )}
 
+      {/* 用户管理页面 - 仅超级管理员可访问 */}
+      {activeTab === 'admin' && user?.roles?.some((role: Role) => role.code === 'SUPER_ADMIN') && (
+        <UserManagement 
+          activeSubTab={activeAdminSubTab} 
+          setActiveSubTab={setActiveAdminSubTab} 
+        />
+      )}
+
         </ProtectedRoute>
       {/* 页面内容区域结束 */}
 
@@ -8559,10 +8639,17 @@ function AppContent() {
                     borderRadius: '4px'
                   }}
                 >
-                  <option value="花">花</option>
-                  <option value="花瓣">花瓣</option>
-                  <option value="屎">屎</option>
-                  <option value="屎粒">屎粒</option>
+                  {manualRewardType === 'reward' ? (
+                    <>
+                      <option value="花">花</option>
+                      <option value="花瓣">花瓣</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="屎">屎</option>
+                      <option value="屎粒">屎粒</option>
+                    </>
+                  )}
                 </select>
               )}
             </div>
@@ -8572,8 +8659,7 @@ function AppContent() {
             {manualRewardMode === 'CODE_TABLE' && (
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ display: 'block', color: '#fff', marginBottom: '8px' }}>数量</label>
-                <input
-                  type="number"
+                <select
                   value={manualRewardQuantity}
                   onChange={(e) => setManualRewardQuantity(Number(e.target.value))}
                   style={{
@@ -8584,8 +8670,10 @@ function AppContent() {
                     border: '1px solid #555',
                     borderRadius: '4px'
                   }}
-                  min="1"
-                />
+                >
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                </select>
               </div>
             )}
             

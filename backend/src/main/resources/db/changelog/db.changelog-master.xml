@@ -19,5 +19,17 @@
     
     <!-- 权限系统表结构 -->
     <include file="changesets/005-auth-system.xml" relativeToChangelogFile="true"/>
+    
+    <!-- 添加缺失的列 -->
+    <include file="changesets/006-add-missing-columns.xml" relativeToChangelogFile="true"/>
+    
+    <!-- 初始化角色数据 -->
+    <include file="changesets/007-init-roles-data.xml" relativeToChangelogFile="true"/>
+    
+    <!-- 添加缺失的权限 -->
+    <include file="changesets/008-add-missing-permissions.xml" relativeToChangelogFile="true"/>
+    
+    <!-- 简化权限系统 -->
+    <include file="changesets/009-simplify-permissions.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

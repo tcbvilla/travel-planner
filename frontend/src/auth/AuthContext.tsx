@@ -1,4 +1,13 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import API_ENDPOINTS from '../config/api';
+
+// 角色接口
+export interface Role {
+  id: number;
+  code: string;
+  name: string;
+  description?: string;
+}
 
 // 用户信息接口
 export interface User {
@@ -10,6 +19,7 @@ export interface User {
   status: string;
   createdAt: string;
   lastLoginAt?: string;
+  roles?: Role[];
 }
 
 // 权限信息接口
@@ -34,6 +44,10 @@ interface AuthContextType {
   logout: () => void;
   checkPermission: (permissionCode: string) => boolean;
   hasModulePermission: (module: string) => boolean;
+  hasAnyPermission: (permissionCodes: string[]) => boolean;
+  hasAllPermissions: (permissionCodes: string[]) => boolean;
+  isSuperAdmin: () => boolean;
+  hasRole: (roleCode: string) => boolean;
 }
 
 // 创建认证上下文
@@ -62,7 +76,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   // 验证Token
   const validateToken = async (tokenToValidate: string) => {
     try {
-      const response = await fetch('http://localhost:8080/api/auth/validate', {
+      const response = await fetch(API_ENDPOINTS.VALIDATE, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -73,7 +87,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const data = await response.json();
       
       if (data.valid) {
-        setUser(data.user);
+        // 将角色信息添加到用户对象中
+        const userWithRoles = {
+          ...data.user,
+          roles: data.roles || []
+        };
+        setUser(userWithRoles);
         setPermissions(data.permissions || []);
         setToken(tokenToValidate);
         localStorage.setItem('authToken', tokenToValidate);
@@ -99,7 +118,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const login = async (username: string, password: string): Promise<boolean> => {
     try {
       setIsLoading(true);
-      const response = await fetch('http://localhost:8080/api/auth/login', {
+      const response = await fetch(API_ENDPOINTS.LOGIN, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -110,7 +129,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       const data = await response.json();
       
       if (data.success) {
-        setUser(data.user);
+        // 将角色信息添加到用户对象中
+        const userWithRoles = {
+          ...data.user,
+          roles: data.roles || []
+        };
+        setUser(userWithRoles);
         setPermissions(data.permissions || []);
         setToken(data.token);
         localStorage.setItem('authToken', data.token);
@@ -146,6 +170,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return permissions.some(p => p.module === module);
   };
 
+  // 检查是否有任意一个权限
+  const hasAnyPermission = (permissionCodes: string[]): boolean => {
+    return permissionCodes.some(code => checkPermission(code));
+  };
+
+  // 检查是否有全部权限
+  const hasAllPermissions = (permissionCodes: string[]): boolean => {
+    return permissionCodes.every(code => checkPermission(code));
+  };
+
+  // 检查是否为超级管理员
+  const isSuperAdmin = (): boolean => {
+    return permissions.some(p => p.code === 'SUPER_ADMIN');
+  };
+
+  // 检查是否有指定角色
+  const hasRole = (_roleCode: string): boolean => {
+    if (!user?.roles) return false;
+    return user.roles.some(role => role.code === _roleCode);
+  };
+
   const value: AuthContextType = {
     user,
     permissions,
@@ -156,6 +201,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     logout,
     checkPermission,
     hasModulePermission,
+    hasAnyPermission,
+    hasAllPermissions,
+    isSuperAdmin,
+    hasRole,
   };
 
   return (

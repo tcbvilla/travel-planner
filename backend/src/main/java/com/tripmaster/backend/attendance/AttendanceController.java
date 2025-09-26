@@ -9,6 +9,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -1871,18 +1872,38 @@ public class AttendanceController {
      * 删除赛季
      */
     @DeleteMapping("/seasons/{id}")
+    @Transactional
     public ResponseEntity<String> deleteSeason(@PathVariable Long id) {
         try {
             Season season = seasonRepository.findById(id)
                     .orElseThrow(() -> new RuntimeException("未找到赛季: " + id));
             
-            // 检查赛季是否被考勤记录使用
-            long count = seasonRepository.countAttendanceSessionsBySeasonId(id);
-            System.out.println("赛季ID: " + id + ", 关联的考勤记录数量: " + count);
-            if (count > 0) {
-                return ResponseEntity.badRequest().body("无法删除赛季：该赛季已被 " + count + " 条考勤记录使用，请先删除相关的考勤记录");
+            // 获取该赛季的所有考勤记录
+            List<AttendanceSession> sessions = attendanceSessionRepository.findBySeasonId(id);
+            
+            // 分离真实考勤记录和虚拟记录
+            List<AttendanceSession> realSessions = sessions.stream()
+                    .filter(session -> !session.getName().startsWith("手动添加-"))
+                    .collect(Collectors.toList());
+            
+            List<AttendanceSession> virtualSessions = sessions.stream()
+                    .filter(session -> session.getName().startsWith("手动添加-"))
+                    .collect(Collectors.toList());
+            
+            System.out.println("赛季ID: " + id + ", 真实考勤记录: " + realSessions.size() + ", 虚拟记录: " + virtualSessions.size());
+            
+            // 如果有真实考勤记录，不允许删除
+            if (!realSessions.isEmpty()) {
+                return ResponseEntity.badRequest().body("无法删除赛季：该赛季已被 " + realSessions.size() + " 条真实考勤记录使用，请先删除相关的考勤记录");
             }
             
+            // 如果有虚拟记录，先删除它们
+            if (!virtualSessions.isEmpty()) {
+                System.out.println("删除 " + virtualSessions.size() + " 个虚拟考勤记录");
+                attendanceSessionRepository.deleteAll(virtualSessions);
+            }
+            
+            // 删除赛季
             seasonRepository.delete(season);
             return ResponseEntity.ok("赛季删除成功");
         } catch (Exception e) {
@@ -1918,22 +1939,41 @@ public class AttendanceController {
             StringBuilder settlementContent = new StringBuilder();
             
             for (SettlementResult result : settlementResults) {
-                SettlementRecord record = new SettlementRecord();
-                record.setTeamName(result.getTeamName());
-                record.setCodeValue(result.getRewardType()); // 保存具体的码表值，如"花"、"屎"或"现金"
-                record.setQuantity(BigDecimal.valueOf(result.getQuantity())); // 保存数量，转换为BigDecimal
-                record.setSettlementBatchId(settlementBatchId); // 设置结算批次ID
-                record.setAttendanceSession(session);
-                
                 // 判断是否为现金奖励
                 if ("现金".equals(result.getRewardType())) {
-                    record.setCashAmount(result.getAmount()); // 保存现金金额
-                    record.setRewardMode("CASH"); // 设置为现金模式
+                    // 现金奖励：创建一条记录
+                    SettlementRecord record = new SettlementRecord();
+                    record.setTeamName(result.getTeamName());
+                    record.setCodeValue(result.getRewardType());
+                    record.setQuantity(BigDecimal.ONE); // 现金记录数量固定为1
+                    record.setCashAmount(result.getAmount());
+                    record.setRewardMode("CASH");
+                    record.setSettlementBatchId(settlementBatchId);
+                    record.setAttendanceSession(session);
+                    records.add(record);
                 } else {
-                    record.setRewardMode("CODE_TABLE"); // 设置为码表模式
+                    // 码表奖励：根据数量创建多条记录
+                    int quantity = result.getQuantity().intValue();
+                    String baseCodeValue = result.getRewardType();
+                    
+                    // 处理双花双屎：转换为基础类型
+                    if (baseCodeValue.startsWith("双")) {
+                        baseCodeValue = baseCodeValue.substring(1); // 去掉"双"前缀
+                        quantity = quantity * 2; // 数量翻倍
+                    }
+                    
+                    // 创建多条记录，每个物品一条记录
+                    for (int i = 0; i < quantity; i++) {
+                        SettlementRecord record = new SettlementRecord();
+                        record.setTeamName(result.getTeamName());
+                        record.setCodeValue(baseCodeValue); // 使用基础类型（如"花"、"屎"）
+                        record.setQuantity(BigDecimal.ONE); // 每条记录数量固定为1
+                        record.setRewardMode("CODE_TABLE");
+                        record.setSettlementBatchId(settlementBatchId);
+                        record.setAttendanceSession(session);
+                        records.add(record);
+                    }
                 }
-                
-                records.add(record);
                 
                 // 构建日志内容
                 settlementContent.append(result.getTeamName())
@@ -2110,6 +2150,18 @@ public class AttendanceController {
             session.setStatus(SessionStatus.SAVED);
             attendanceSessionRepository.save(session);
             System.out.println("更新考勤记录状态为已保存");
+            
+            // 撤销后重新触发合成检查
+            if (session.getSeason() != null) {
+                System.out.println("撤销后重新触发合成检查，赛季ID: " + session.getSeason().getId());
+                try {
+                    synthesisService.checkAndPerformSynthesis(session.getSeason().getId(), "REVOKE_" + latestBatchId, session.getId());
+                    System.out.println("撤销后合成检查完成");
+                } catch (Exception e) {
+                    System.err.println("撤销后合成检查失败: " + e.getMessage());
+                    // 合成检查失败不影响撤销操作的成功
+                }
+            }
             
             String resultMessage = "结算撤销成功，删除了 " + analysis.getDirectRecords().size() + " 条记录";
             if (analysis.isHasImpact()) {
@@ -2548,32 +2600,43 @@ public class AttendanceController {
             // 创建或获取手动添加专用的虚拟AttendanceSession
             AttendanceSession manualSession = getOrCreateManualSession(season);
             
-            // 创建结算记录
-            SettlementRecord record = new SettlementRecord();
-            record.setTeamName(request.getTeamName().trim());
-            record.setQuantity(request.getQuantity() != null ? request.getQuantity() : BigDecimal.ONE);
-            record.setCodeValue(request.getCodeValue());
-            record.setCashAmount(request.getCashAmount());
-            record.setAttendanceSession(manualSession); // 关联到虚拟会话
-            record.setSettlementBatchId("MANUAL_" + System.currentTimeMillis()); // 手动添加的批次ID
-            record.setCreatedAt(LocalDateTime.now());
+            // 获取数量，默认为1
+            int quantity = request.getQuantity() != null ? request.getQuantity().intValue() : 1;
+            String batchId = "MANUAL_" + System.currentTimeMillis(); // 统一的批次ID
             
-            // 设置奖励模式
-            if (request.getCashAmount() != null) {
-                record.setRewardMode("CASH");
-            } else {
-                record.setRewardMode("CODE_TABLE");
+            // 创建多条结算记录，每个物品一条记录
+            List<SettlementRecord> savedRecords = new ArrayList<>();
+            for (int i = 0; i < quantity; i++) {
+                SettlementRecord record = new SettlementRecord();
+                record.setTeamName(request.getTeamName().trim());
+                record.setQuantity(BigDecimal.ONE); // 每条记录数量固定为1
+                record.setCodeValue(request.getCodeValue());
+                record.setCashAmount(request.getCashAmount());
+                record.setAttendanceSession(manualSession); // 关联到虚拟会话
+                record.setSettlementBatchId(batchId); // 使用统一的批次ID
+                record.setCreatedAt(LocalDateTime.now());
+                
+                // 设置奖励模式
+                if (request.getCashAmount() != null) {
+                    record.setRewardMode("CASH");
+                } else {
+                    record.setRewardMode("CODE_TABLE");
+                }
+                
+                // 保存记录
+                SettlementRecord savedRecord = settlementRecordRepository.save(record);
+                savedRecords.add(savedRecord);
             }
             
-            // 保存记录
-            SettlementRecord savedRecord = settlementRecordRepository.save(record);
+            // 使用第一条记录作为代表进行后续处理
+            SettlementRecord firstRecord = savedRecords.get(0);
             
             // 触发合成逻辑
             try {
                 synthesisService.checkAndPerformSynthesis(
                     season.getId(), 
-                    savedRecord.getSettlementBatchId(), 
-                    savedRecord.getAttendanceSession().getId()
+                    firstRecord.getSettlementBatchId(), 
+                    firstRecord.getAttendanceSession().getId()
                 );
             } catch (Exception e) {
                 System.err.println("触发合成逻辑失败: " + e.getMessage());
@@ -2583,8 +2646,9 @@ public class AttendanceController {
             
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("recordId", savedRecord.getId());
-            response.put("message", "手动添加结算记录成功");
+            response.put("recordIds", savedRecords.stream().map(SettlementRecord::getId).collect(Collectors.toList()));
+            response.put("recordCount", savedRecords.size());
+            response.put("message", String.format("手动添加结算记录成功，共创建 %d 条记录", savedRecords.size()));
             
             return ResponseEntity.ok(response);
         } catch (Exception e) {
@@ -2627,7 +2691,22 @@ public class AttendanceController {
             // 5. 执行级联撤销
             cascadeRevocationService.executeRevocationWithCascade(targetBatchId);
             
-            // 6. 构建响应数据
+            // 6. 撤销后重新触发合成检查
+            Long seasonId = record.getAttendanceSession() != null && record.getAttendanceSession().getSeason() != null 
+                ? record.getAttendanceSession().getSeason().getId() : null;
+            
+            if (seasonId != null) {
+                System.out.println("撤销手动记录后重新触发合成检查，赛季ID: " + seasonId);
+                try {
+                    synthesisService.checkAndPerformSynthesis(seasonId, "REVOKE_MANUAL_" + targetBatchId, record.getAttendanceSession().getId());
+                    System.out.println("撤销手动记录后合成检查完成");
+                } catch (Exception e) {
+                    System.err.println("撤销手动记录后合成检查失败: " + e.getMessage());
+                    // 合成检查失败不影响撤销操作的成功
+                }
+            }
+            
+            // 7. 构建响应数据
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("message", "手动奖惩撤销成功");

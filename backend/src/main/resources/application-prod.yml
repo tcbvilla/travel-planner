@@ -10,21 +10,20 @@ server:
 spring:
   application:
     name: game-attendance-backend
-  profiles:
-    active: prod
   
   # 数据源配置
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://postgres:5432/game_attendance}
+    url: jdbc:postgresql://localhost:5432/game_attendance?user=postgres&password=postgres&sslmode=disable&authenticationPlugin=org.postgresql.plugin.authentication.cleartext.PasswordAuthenticator
     driver-class-name: org.postgresql.Driver
-    username: ${DATABASE_USERNAME:postgres}
-    password: ${DATABASE_PASSWORD:postgres}
+    username: postgres
+    password: postgres 
     hikari:
-      maximum-pool-size: 20
-      minimum-idle: 5
+      maximum-pool-size: 10
+      minimum-idle: 2
       connection-timeout: 30000
-      idle-timeout: 600000
-      max-lifetime: 1800000
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      leak-detection-threshold: 60000
   
   # JPA 配置
   jpa:
@@ -59,7 +58,7 @@ logging:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
     file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
   file:
-    name: /app/logs/application.log
+    name: ./logs/application.log
     max-size: 100MB
     max-history: 30
 
@@ -79,6 +78,11 @@ management:
     diskspace:
       enabled: true
       threshold: 100MB
+
+# JWT配置
+jwt:
+  secret: your-super-secret-jwt-key-that-is-at-least-256-bits-long-for-production-use
+  expiration: 86400000  # 24小时，单位毫秒
 
 # 应用信息
 info:

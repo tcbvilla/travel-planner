@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <!-- 初始化基础角色数据 -->
+    <changeSet id="007-init-basic-roles" author="system">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM roles WHERE code IN ('USER', 'MANAGER', 'VIEWER')
+            </sqlCheck>
+        </preConditions>
+        
+        <!-- 插入基础角色 -->
+        <insert tableName="roles">
+            <column name="code" value="USER"/>
+            <column name="name" value="普通用户"/>
+            <column name="description" value="系统普通用户角色"/>
+            <column name="created_at" valueComputed="CURRENT_TIMESTAMP"/>
+            <column name="updated_at" valueComputed="CURRENT_TIMESTAMP"/>
+        </insert>
+        
+        <insert tableName="roles">
+            <column name="code" value="MANAGER"/>
+            <column name="name" value="管理员"/>
+            <column name="description" value="系统管理员角色"/>
+            <column name="created_at" valueComputed="CURRENT_TIMESTAMP"/>
+            <column name="updated_at" valueComputed="CURRENT_TIMESTAMP"/>
+        </insert>
+        
+        <insert tableName="roles">
+            <column name="code" value="VIEWER"/>
+            <column name="name" value="查看者"/>
+            <column name="description" value="只读权限用户角色"/>
+            <column name="created_at" valueComputed="CURRENT_TIMESTAMP"/>
+            <column name="updated_at" valueComputed="CURRENT_TIMESTAMP"/>
+        </insert>
+    </changeSet>
+
+    <!-- 为SUPER_ADMIN分配所有权限 -->
+    <changeSet id="007-assign-superadmin-permissions" author="system">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="roles"/>
+                <tableExists tableName="permissions"/>
+                <tableExists tableName="role_permissions"/>
+                <sqlCheck expectedResult="1">
+                    SELECT COUNT(*) FROM roles WHERE code = 'SUPER_ADMIN'
+                </sqlCheck>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM role_permissions rp 
+                    JOIN roles r ON rp.role_id = r.id 
+                    WHERE r.code = 'SUPER_ADMIN'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        
+        <sql>
+            INSERT INTO role_permissions (role_id, permission_id, created_at)
+            SELECT 
+                (SELECT id FROM roles WHERE code = 'SUPER_ADMIN') as role_id,
+                p.id as permission_id,
+                CURRENT_TIMESTAMP as created_at
+            FROM permissions p;
+        </sql>
+    </changeSet>
+
+    <!-- 为MANAGER分配管理权限 -->
+    <changeSet id="007-assign-manager-permissions" author="system">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <sqlCheck expectedResult="1">
+                    SELECT COUNT(*) FROM roles WHERE code = 'MANAGER'
+                </sqlCheck>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM role_permissions rp 
+                    JOIN roles r ON rp.role_id = r.id 
+                    WHERE r.code = 'MANAGER'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        
+        <sql>
+            INSERT INTO role_permissions (role_id, permission_id, created_at)
+            SELECT 
+                (SELECT id FROM roles WHERE code = 'MANAGER') as role_id,
+                p.id as permission_id,
+                CURRENT_TIMESTAMP as created_at
+            FROM permissions p
+            WHERE p.code IN (
+                'ATTENDANCE:PAGE:VIEW',
+                'ATTENDANCE:SESSION:VIEW',
+                'ATTENDANCE:SESSION:CREATE',
+                'ATTENDANCE:SESSION:EDIT',
+                'RANKING:PAGE:VIEW',
+                'STATISTICS:PAGE:VIEW',
+                'USER:PAGE:VIEW',
+                'USER:ACCOUNT:EDIT'
+            );
+        </sql>
+    </changeSet>
+
+    <!-- 为USER分配基本权限 -->
+    <changeSet id="007-assign-user-permissions" author="system">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <sqlCheck expectedResult="1">
+                    SELECT COUNT(*) FROM roles WHERE code = 'USER'
+                </sqlCheck>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM role_permissions rp 
+                    JOIN roles r ON rp.role_id = r.id 
+                    WHERE r.code = 'USER'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        
+        <sql>
+            INSERT INTO role_permissions (role_id, permission_id, created_at)
+            SELECT 
+                (SELECT id FROM roles WHERE code = 'USER') as role_id,
+                p.id as permission_id,
+                CURRENT_TIMESTAMP as created_at
+            FROM permissions p
+            WHERE p.code IN (
+                'ATTENDANCE:PAGE:VIEW',
+                'ATTENDANCE:SESSION:VIEW',
+                'RANKING:PAGE:VIEW',
+                'STATISTICS:PAGE:VIEW'
+            );
+        </sql>
+    </changeSet>
+
+    <!-- 为VIEWER分配只读权限 -->
+    <changeSet id="007-assign-viewer-permissions" author="system">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <sqlCheck expectedResult="1">
+                    SELECT COUNT(*) FROM roles WHERE code = 'VIEWER'
+                </sqlCheck>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM role_permissions rp 
+                    JOIN roles r ON rp.role_id = r.id 
+                    WHERE r.code = 'VIEWER'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        
+        <sql>
+            INSERT INTO role_permissions (role_id, permission_id, created_at)
+            SELECT 
+                (SELECT id FROM roles WHERE code = 'VIEWER') as role_id,
+                p.id as permission_id,
+                CURRENT_TIMESTAMP as created_at
+            FROM permissions p
+            WHERE p.code IN (
+                'ATTENDANCE:PAGE:VIEW',
+                'RANKING:PAGE:VIEW',
+                'STATISTICS:PAGE:VIEW'
+            );
+        </sql>
+    </changeSet>
+
+    <!-- 为现有的testuser分配USER角色 -->
+    <changeSet id="007-assign-testuser-role" author="system">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <sqlCheck expectedResult="1">
+                    SELECT COUNT(*) FROM users WHERE username = 'testuser'
+                </sqlCheck>
+                <sqlCheck expectedResult="1">
+                    SELECT COUNT(*) FROM roles WHERE code = 'USER'
+                </sqlCheck>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM user_roles ur 
+                    JOIN users u ON ur.user_id = u.id 
+                    WHERE u.username = 'testuser'
+                </sqlCheck>
+            </and>
+        </preConditions>
+        
+        <sql>
+            INSERT INTO user_roles (user_id, role_id, created_at)
+            SELECT 
+                (SELECT id FROM users WHERE username = 'testuser') as user_id,
+                (SELECT id FROM roles WHERE code = 'USER') as role_id,
+                CURRENT_TIMESTAMP as created_at;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>
+
