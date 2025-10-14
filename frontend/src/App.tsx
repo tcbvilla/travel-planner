@@ -1019,8 +1019,13 @@ function AppContent() {
   useEffect(() => {
     if (modalActiveTab === 'settlement' && selectedSession) {
       loadSettlementRewardConditions()
-      // 清除之前的结算结果，确保数据准确性
-      setSettlementResults([])
+      
+      // 如果考勤记录已结算，自动加载已结算记录；否则清除结算结果
+      if (selectedSession.status === 'SETTLED') {
+        loadSettledRecords()
+      } else {
+        setSettlementResults([])
+      }
     }
   }, [modalActiveTab, selectedSession])
 
@@ -2530,6 +2535,34 @@ function AppContent() {
     } catch (error) {
       console.error('计算结算结果失败:', error)
       alert('网络错误: ' + error)
+      setSettlementResults([])
+    } finally {
+      setLoadingSettlementResults(false)
+    }
+  }
+
+  // 获取已结算的记录
+  const loadSettledRecords = async () => {
+    if (!selectedSession) return
+    
+    setLoadingSettlementResults(true)
+    try {
+      const response = await fetch(`/api/v1/attendance/sessions/${selectedSession.id}/settled-records`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      })
+      
+      if (response.ok) {
+        const results = await response.json()
+        setSettlementResults(results)
+      } else {
+        console.error('获取已结算记录失败')
+        setSettlementResults([])
+      }
+    } catch (error) {
+      console.error('获取已结算记录失败:', error)
       setSettlementResults([])
     } finally {
       setLoadingSettlementResults(false)
@@ -5701,15 +5734,30 @@ function AppContent() {
 
                 {/* 结算结果 */}
                 <div style={{ marginBottom: '16px' }}>
-                  <h5 style={{ color: '#fff', marginBottom: '8px' }}>结算结果</h5>
+                  <h5 style={{ color: '#fff', marginBottom: '8px' }}>
+                    结算结果
+                    {selectedSession.status === 'SETTLED' && (
+                      <span style={{ color: '#28a745', fontSize: '12px', marginLeft: '8px' }}>
+                        (已结算状态 - 显示实际结算记录)
+                      </span>
+                    )}
+                    {selectedSession.status === 'SAVED' && settlementResults.length > 0 && (
+                      <span style={{ color: '#ffc107', fontSize: '12px', marginLeft: '8px' }}>
+                        (计算结果 - 未执行结算)
+                      </span>
+                    )}
+                  </h5>
                   
                   {loadingSettlementResults ? (
                     <div style={{ color: '#fff', textAlign: 'center', padding: '20px' }}>
-                      计算中...
+                      {selectedSession.status === 'SETTLED' ? '加载已结算记录中...' : '计算中...'}
                     </div>
                   ) : settlementResults.length === 0 ? (
                     <div style={{ color: '#ccc', fontStyle: 'italic', padding: '8px' }}>
-                      暂无结算结果，请先点击"计算结算"按钮进行计算
+                      {selectedSession.status === 'SETTLED' 
+                        ? '暂无结算记录' 
+                        : '暂无结算结果，请先点击"计算结算"按钮进行计算'
+                      }
                     </div>
                   ) : (
                     <div style={{ overflowX: 'auto' }}>
@@ -5742,22 +5790,39 @@ function AppContent() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '12px' }}>
-                  <button
-                    onClick={calculateSettlementResults}
-                    disabled={selectedSession.status !== 'SAVED' || settlementRewardConditions.length === 0}
-                    style={{
-                      padding: '8px 16px',
-                      background: (selectedSession.status === 'SAVED' && settlementRewardConditions.length > 0) ? '#007bff' : '#6c757d',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: (selectedSession.status === 'SAVED' && settlementRewardConditions.length > 0) ? 'pointer' : 'not-allowed',
-                      opacity: (selectedSession.status === 'SAVED' && settlementRewardConditions.length > 0) ? 1 : 0.6
-                    }}
-                    title={selectedSession.status === 'ADDED' ? '考勤记录未保存' : selectedSession.status === 'SETTLED' ? '考勤记录已结算' : settlementRewardConditions.length === 0 ? '请先添加奖惩条件' : '计算结算结果'}
-                  >
-                    计算结算
-                  </button>
+                  {selectedSession.status === 'SETTLED' ? (
+                    <button
+                      onClick={loadSettledRecords}
+                      style={{
+                        padding: '8px 16px',
+                        background: '#28a745',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer'
+                      }}
+                      title="查看已结算的记录"
+                    >
+                      查看结算记录
+                    </button>
+                  ) : (
+                    <button
+                      onClick={calculateSettlementResults}
+                      disabled={selectedSession.status !== 'SAVED' || settlementRewardConditions.length === 0}
+                      style={{
+                        padding: '8px 16px',
+                        background: (selectedSession.status === 'SAVED' && settlementRewardConditions.length > 0) ? '#007bff' : '#6c757d',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: (selectedSession.status === 'SAVED' && settlementRewardConditions.length > 0) ? 'pointer' : 'not-allowed',
+                        opacity: (selectedSession.status === 'SAVED' && settlementRewardConditions.length > 0) ? 1 : 0.6
+                      }}
+                      title={selectedSession.status === 'ADDED' ? '考勤记录未保存' : settlementRewardConditions.length === 0 ? '请先添加奖惩条件' : '计算结算结果'}
+                    >
+                      计算结算
+                    </button>
+                  )}
                   <PermissionButton
                     permission="REWARD:MANAGE"
                     onClick={() => setShowSettlementConfirm(true)}

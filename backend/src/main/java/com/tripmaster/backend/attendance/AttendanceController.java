@@ -2076,6 +2076,82 @@ public class AttendanceController {
     }
 
     /**
+     * 获取已结算的记录详情
+     */
+    @GetMapping("/sessions/{sessionId}/settled-records")
+    public ResponseEntity<List<SettlementResult>> getSettledRecords(@PathVariable Long sessionId) {
+        try {
+            AttendanceSession session = attendanceSessionRepository.findById(sessionId)
+                    .orElseThrow(() -> new RuntimeException("未找到考勤记录: " + sessionId));
+            
+            // 检查考勤记录状态
+            if (session.getStatus() != SessionStatus.SETTLED) {
+                return ResponseEntity.badRequest().body(null);
+            }
+            
+            // 获取该考勤记录的所有结算记录，只包含原始记录（非合成记录）
+            List<SettlementRecord> settlementRecords = settlementRecordRepository.findByAttendanceSessionId(sessionId);
+            
+            // 过滤掉合成记录，只保留原始结算记录
+            List<SettlementRecord> originalRecords = settlementRecords.stream()
+                    .filter(record -> !Boolean.TRUE.equals(record.getIsSynthetic()))
+                    .collect(Collectors.toList());
+            
+            // 按团队聚合原始结算记录，计算每个团队的总金额和奖惩描述
+            Map<String, List<SettlementRecord>> recordsByTeam = originalRecords.stream()
+                    .collect(Collectors.groupingBy(SettlementRecord::getTeamName));
+            
+            List<SettlementResult> results = new ArrayList<>();
+            
+            for (Map.Entry<String, List<SettlementRecord>> entry : recordsByTeam.entrySet()) {
+                String teamName = entry.getKey();
+                List<SettlementRecord> teamRecords = entry.getValue();
+                
+                // 计算总金额
+                BigDecimal totalAmount = teamRecords.stream()
+                        .map(record -> record.getCashAmount() != null ? record.getCashAmount() : BigDecimal.ZERO)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                
+                // 生成奖惩描述
+                Map<String, Long> itemCounts = teamRecords.stream()
+                        .filter(record -> record.getCodeValue() != null && !record.getCodeValue().isEmpty())
+                        .collect(Collectors.groupingBy(
+                                SettlementRecord::getCodeValue,
+                                Collectors.counting()
+                        ));
+                
+                StringBuilder description = new StringBuilder();
+                for (Map.Entry<String, Long> itemEntry : itemCounts.entrySet()) {
+                    if (description.length() > 0) {
+                        description.append(", ");
+                    }
+                    description.append(itemEntry.getValue()).append("个").append(itemEntry.getKey());
+                }
+                
+                if (description.length() == 0) {
+                    description.append("现金奖励");
+                }
+                
+                SettlementResult result = new SettlementResult();
+                result.setTeamName(teamName);
+                result.setRewardDescription(description.toString());
+                result.setAmount(totalAmount);
+                
+                results.add(result);
+            }
+            
+            // 按团队名称排序
+            results.sort(Comparator.comparing(SettlementResult::getTeamName));
+            
+            return ResponseEntity.ok(results);
+        } catch (Exception e) {
+            System.err.println("获取已结算记录失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(null);
+        }
+    }
+
+    /**
      * 撤销结算 - 删除结算记录和日志
      */
     @DeleteMapping("/sessions/{sessionId}/revoke-settlement")
