@@ -928,8 +928,37 @@ public class AttendanceController {
      * 处理战功增量排名
      */
     private void processMeritRanking(RewardCondition condition, List<GroupStat> groupStats, List<SettlementResult> results, String attendanceType) {
+        // 先过滤出满足出勤率条件的队伍（与出勤率排名逻辑保持一致）
+        List<GroupStat> filteredStats = new ArrayList<>();
+        double threshold = condition.getAttendanceRateThreshold();
+        
+        for (GroupStat stat : groupStats) {
+            // 判断是奖励还是惩罚
+            boolean isReward = condition.getRewardType() != null || 
+                              (condition.getRewardMode() != null && "CASH".equals(condition.getRewardMode()) && condition.getCashRewardAmount() != null);
+            
+            if (isReward) {
+                // 奖励情况：出勤率（加成后）大于等于阈值
+                if (stat.getAttendanceRateBonus() >= threshold) {
+                    filteredStats.add(stat);
+                }
+            } else {
+                // 惩罚情况：出勤率（加成后）小于等于阈值
+                if (stat.getAttendanceRateBonus() <= threshold) {
+                    filteredStats.add(stat);
+                }
+            }
+        }
+        
+        if (filteredStats.isEmpty()) {
+            System.out.println("战功增量排名：没有队伍满足出勤率条件，出勤率阈值: " + threshold);
+            return; // 没有队伍满足出勤率条件
+        }
+        
+        System.out.println("战功增量排名：满足出勤率条件的队伍数量: " + filteredStats.size() + ", 出勤率阈值: " + threshold);
+        
         // 按人均战功增量（加成后）排序
-        List<GroupStat> sortedStats = new ArrayList<>(groupStats);
+        List<GroupStat> sortedStats = new ArrayList<>(filteredStats);
         
         // 判断是奖励还是惩罚
         boolean isReward = condition.getRewardType() != null || 
@@ -988,13 +1017,13 @@ public class AttendanceController {
                               (condition.getRewardMode() != null && "CASH".equals(condition.getRewardMode()) && condition.getCashRewardAmount() != null);
             
             if (isReward) {
-                // 奖励情况：出勤率（加成后）大于阈值
-                if (stat.getAttendanceRateBonus() > threshold) {
+                // 奖励情况：出勤率（加成后）大于等于阈值
+                if (stat.getAttendanceRateBonus() >= threshold) {
                     filteredStats.add(stat);
                 }
             } else {
-                // 惩罚情况：出勤率（加成后）小于阈值
-                if (stat.getAttendanceRateBonus() < threshold) {
+                // 惩罚情况：出勤率（加成后）小于等于阈值
+                if (stat.getAttendanceRateBonus() <= threshold) {
                     filteredStats.add(stat);
                 }
             }

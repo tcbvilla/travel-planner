@@ -4815,9 +4815,9 @@ function AppContent() {
                     {/* 奖励情况下的表单字段 */}
                     {rewardPenaltyType === 'reward' && (
                       <>
-                        {/* 出勤率大于 */}
+                        {/* 出勤率大于等于 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>出勤率大于</label>
+                          <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>出勤率大于等于</label>
                           <input 
                             type="number" 
                             value={attendanceRateSuccess}
@@ -4965,9 +4965,9 @@ function AppContent() {
                     {/* 惩罚情况下的表单字段 */}
                     {rewardPenaltyType === 'penalty' && (
                       <>
-                        {/* 出勤率小于 */}
+                        {/* 出勤率小于等于 */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>出勤率小于</label>
+                          <label style={{ minWidth: '100px', color: '#000', fontWeight: 'bold' }}>出勤率小于等于</label>
                           <input 
                             type="number" 
                             value={attendanceRateFailure}
@@ -5143,7 +5143,7 @@ function AppContent() {
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
                                 {(() => {
                                   const isReward = condition.rewardType || (condition.rewardMode === 'CASH' && condition.cashRewardAmount);
-                                  return isReward ? '大于' : '小于';
+                                  return isReward ? '大于等于' : '小于等于';
                                 })()} {condition.attendanceRateThreshold}%
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
@@ -5685,7 +5685,7 @@ function AppContent() {
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
                                 {(() => {
                                   const isReward = condition.rewardType || (condition.rewardMode === 'CASH' && condition.cashRewardAmount);
-                                  return isReward ? '大于' : '小于';
+                                  return isReward ? '大于等于' : '小于等于';
                                 })()} {condition.attendanceRateThreshold}%
                               </td>
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
