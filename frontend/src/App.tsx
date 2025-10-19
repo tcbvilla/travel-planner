@@ -964,6 +964,7 @@ function AppContent() {
   const [availableAttendanceTypes, setAvailableAttendanceTypes] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [chartDisplayMode, setChartDisplayMode] = useState<'both' | 'original' | 'bonus'>('both')
+  const [itemsDisplayMode, setItemsDisplayMode] = useState<'table' | 'icons'>('icons')
   
   // 现金统计相关状态
   const [cashSummary, setCashSummary] = useState<any>(null)
@@ -5778,7 +5779,7 @@ function AppContent() {
                               <td style={{ padding: '8px', border: '1px solid #555', color: '#fff' }}>
                                 {result.rewardDescription}
                               </td>
-                              <td style={{ padding: '8px', border: '1px solid #555', color: result.amount >= 0 ? '#28a745' : '#dc3545' }}>
+                              <td style={{ padding: '8px', border: '1px solid #555', color: result.amount >= 0 ? '#f44336' : '#333' }}>
                                 {result.amount.toFixed(3)}
                               </td>
                             </tr>
@@ -6118,13 +6119,13 @@ function AppContent() {
       </div>
 
               {/* 柱状图 */}
-              <div style={{ 
-                background: '#3d3d3d', 
+              <div className="chart-container" style={{ 
+                background: '#f5f5f5', 
                 padding: '20px', 
                 borderRadius: '8px',
                 marginBottom: '20px'
               }}>
-                <h4 style={{ color: '#fff', margin: '0 0 20px 0', textAlign: 'center' }}>
+                <h4 style={{ color: '#333', margin: '0 0 20px 0', textAlign: 'center' }}>
                   小组总奖金柱状图
                 </h4>
                 <div style={{ 
@@ -6134,7 +6135,8 @@ function AppContent() {
                   height: '400px',
                   padding: '0 20px',
                   overflowX: 'auto',
-                  position: 'relative'
+                  position: 'relative',
+                  color: '#333'
                 }}>
                   {/* 零轴线 */}
                   <div style={{
@@ -6143,7 +6145,7 @@ function AppContent() {
                     right: '20px',
                     top: 'calc(35px + 150px)', // 35px(正值数值) + 150px(正值区域) = 185px，正好是柱子的交界处
                     height: '1px',
-                    background: '#666',
+                    background: '#999',
                     zIndex: 1
                   }}></div>
                   
@@ -6176,16 +6178,14 @@ function AppContent() {
                           justifyContent: 'center'
                         }}>
                           {isPositive && (
-                            <div style={{ 
-                              color: '#4caf50',
+                            <div className="positive-value" style={{ 
                               fontSize: '11px',
                               fontWeight: 'bold',
                               textAlign: 'center'
                             }}>
                               +{team.totalReward}
-                              <div style={{ 
+                              <div className="positive-percentage" style={{ 
                                 fontSize: '9px',
-                                color: '#81c784',
                                 marginTop: '2px'
                               }}>
                                 {percentage}%
@@ -6214,7 +6214,7 @@ function AppContent() {
                               <div style={{
                                 width: '40px',
                                 height: `${barHeight}px`,
-                                background: `linear-gradient(to top, #4caf50, #81c784)`,
+                                background: `linear-gradient(to top, #f44336, #ff6b6b)`,
                                 borderRadius: '4px 4px 0 0',
                                 transition: 'all 0.3s ease'
                               }}>
@@ -6234,7 +6234,7 @@ function AppContent() {
                               <div style={{
                                 width: '40px',
                                 height: `${barHeight}px`,
-                                background: `linear-gradient(to bottom, #f44336, #e57373)`,
+                                background: `linear-gradient(to bottom, #333, #666)`,
                                 borderRadius: '0 0 4px 4px',
                                 transition: 'all 0.3s ease'
                               }}>
@@ -6251,16 +6251,14 @@ function AppContent() {
                           justifyContent: 'center'
                         }}>
                           {!isPositive && (
-                            <div style={{ 
-                              color: '#f44336',
+                            <div className="negative-value" style={{ 
                               fontSize: '11px',
                               fontWeight: 'bold',
                               textAlign: 'center'
                             }}>
                               {team.totalReward}
-                              <div style={{ 
+                              <div className="negative-percentage" style={{ 
                                 fontSize: '9px',
-                                color: '#e57373',
                                 marginTop: '2px'
                               }}>
                                 {percentage}%
@@ -6270,8 +6268,7 @@ function AppContent() {
                         </div>
                         
                         {/* 小组名称 - 始终在底部 */}
-                        <div style={{ 
-                          color: '#fff',
+                        <div className="team-name" style={{ 
                           fontSize: '11px',
                           marginTop: '8px',
                           textAlign: 'center',
@@ -6296,9 +6293,42 @@ function AppContent() {
                 <div style={{ 
                   background: '#4a4a4a',
                   padding: '16px',
-                  borderBottom: '1px solid #555'
+                  borderBottom: '1px solid #555',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
                 }}>
                   <h4 style={{ margin: 0, color: '#fff' }}>队伍物品统计</h4>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => setItemsDisplayMode('icons')}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: itemsDisplayMode === 'icons' ? '#007bff' : '#555',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      图标
+                    </button>
+                    <button
+                      onClick={() => setItemsDisplayMode('table')}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: itemsDisplayMode === 'table' ? '#007bff' : '#555',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      表格
+                    </button>
+                  </div>
                 </div>
 
                 {loadingTeamItems ? (
@@ -6309,7 +6339,7 @@ function AppContent() {
                   <div style={{ textAlign: 'center', padding: '40px', color: '#ccc' }}>
                     暂无数据
                   </div>
-                ) : (
+                ) : itemsDisplayMode === 'table' ? (
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ 
                       width: '100%', 
@@ -6423,7 +6453,7 @@ function AppContent() {
                               padding: '12px 8px', 
                               border: '1px solid #555', 
                               textAlign: 'center', 
-                              color: team.现金 > 0 ? '#4caf50' : team.现金 < 0 ? '#f44336' : '#ccc',
+                              color: team.现金 > 0 ? '#f44336' : team.现金 < 0 ? '#333' : '#ccc',
                               fontWeight: team.现金 !== 0 ? 'bold' : 'normal'
                             }}>
                               {team.现金 > 0 ? '+' : ''}{team.现金}
@@ -6432,6 +6462,86 @@ function AppContent() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                ) : (
+                  // 图标格式展示
+                  <div style={{ padding: '20px' }}>
+                    {teamItemsSummary.map((team: any, index: number) => (
+                      <div key={team.teamName} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: '12px 16px',
+                        marginBottom: '8px',
+                        backgroundColor: index % 2 === 0 ? '#3d3d3d' : '#454545',
+                        borderRadius: '6px',
+                        border: '1px solid #555'
+                      }}>
+                        {/* 队伍名称 */}
+                        <div style={{
+                          minWidth: '120px',
+                          color: '#fff',
+                          fontWeight: 'bold',
+                          fontSize: '14px'
+                        }}>
+                          {team.teamName}
+                        </div>
+                        
+                        {/* 物品图标展示区域 */}
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          overflowX: 'auto',
+                          flex: 1,
+                          padding: '4px 0'
+                        }}>
+                          {/* 花 */}
+                          {Array.from({ length: team.花 || 0 }, (_, i) => (
+                            <span key={`flower-${i}`} style={{ fontSize: '20px' }}>🌹</span>
+                          ))}
+                          
+                          {/* 花瓣 */}
+                          {Array.from({ length: team.花瓣 || 0 }, (_, i) => (
+                            <span key={`petal-${i}`} style={{ fontSize: '20px' }}>🌸</span>
+                          ))}
+                          
+                          {/* 屎 */}
+                          {Array.from({ length: team.屎 || 0 }, (_, i) => (
+                            <span key={`shit-${i}`} style={{ fontSize: '20px' }}>💩</span>
+                          ))}
+                          
+                          {/* 屎粒 */}
+                          {Array.from({ length: team.屎粒 || 0 }, (_, i) => (
+                            <span key={`shit-particle-${i}`} style={{ fontSize: '20px' }}>🟤</span>
+                          ))}
+                          
+                          {/* 如果没有物品，显示提示 */}
+                          {(!team.花 && !team.花瓣 && !team.屎 && !team.屎粒) && (
+                            <span style={{ color: '#888', fontSize: '12px', fontStyle: 'italic' }}>
+                              暂无物品
+                            </span>
+                          )}
+                        </div>
+                        
+                        {/* 现金显示 */}
+                        {team.现金 !== 0 && (
+                          <div style={{
+                            minWidth: '80px',
+                            textAlign: 'right',
+                            color: team.现金 > 0 ? '#f44336' : '#333',
+                            fontWeight: 'bold',
+                            fontSize: '14px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'flex-end',
+                            gap: '4px'
+                          }}>
+                            <span style={{ fontSize: '16px' }}>💰</span>
+                            <span>{team.现金 > 0 ? '+' : ''}{team.现金}</span>
+                          </div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -6479,7 +6589,7 @@ function AppContent() {
                     <div style={{ 
                       textAlign: 'right',
                       fontWeight: 'bold',
-                      color: team.totalReward >= 0 ? '#4caf50' : '#f44336'
+                      color: team.totalReward >= 0 ? '#f44336' : '#333'
                     }}>
                       {team.totalReward > 0 ? '+' : ''}{team.totalReward}
                     </div>

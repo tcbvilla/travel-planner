@@ -166,3 +166,32 @@ tr[style*="background: #f8d7da"] td {
 .read-the-docs {
   color: #888;
 }
+
+/* 小组总奖金柱状图特定样式 - 覆盖全局白色文字 */
+.chart-container {
+  color: #333 !important;
+}
+
+.chart-container * {
+  color: inherit !important;
+}
+
+.chart-container .positive-value {
+  color: #f44336 !important;
+}
+
+.chart-container .positive-percentage {
+  color: #ff6b6b !important;
+}
+
+.chart-container .negative-value {
+  color: #333 !important;
+}
+
+.chart-container .negative-percentage {
+  color: #666 !important;
+}
+
+.chart-container .team-name {
+  color: #333 !important;
+}
