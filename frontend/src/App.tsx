@@ -305,10 +305,12 @@ const PersonalStatsExportComponent = ({
 // 导出组件
 const GroupStatsExportComponent = ({ 
   selectedSession,
-  sortBy
+  sortBy,
+  bonusConfig
 }: { 
   selectedSession: AttendanceSession | null
   sortBy: 'attendance' | 'averageMerit'
+  bonusConfig: any
 }) => {
   if (!selectedSession) return null
 
@@ -551,7 +553,7 @@ const GroupStatsExportComponent = ({
             margin: '0 auto'
           }}>
             <div style={{ fontSize: '14px', color: '#ccc', marginBottom: '6px' }}>
-              {isAssistAttendance ? '最低助攻' : '最低战功'}
+              {isAssistAttendance ? '最低助攻' : '最低战功'}：{minMeritMembers.length}人
             </div>
             <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f44336' }}>{minMeritValue.toLocaleString()}</div>
             <div style={{ fontSize: '11px', color: '#888', marginTop: '3px' }}>
@@ -757,6 +759,34 @@ const GroupStatsExportComponent = ({
             <div>• 数据来源：仅统计参加考勤的成员</div>
           </div>
         </div>
+
+        {/* 加成配置规则展示 */}
+        {bonusConfig && bonusConfig.teamSizeBonusRules && bonusConfig.teamSizeBonusRules.length > 0 && (
+          <div style={{ 
+            background: '#2d2d2d', 
+            borderRadius: '12px', 
+            padding: '20px',
+            border: '2px solid #444',
+            marginTop: '20px'
+          }}>
+            <h3 style={{ 
+              margin: '0 0 15px 0', 
+              fontSize: '18px', 
+              color: '#4CAF50',
+              borderBottom: '1px solid #4CAF50',
+              paddingBottom: '8px'
+            }}>
+              团队人数加成规则
+            </h3>
+            <div style={{ fontSize: '14px', color: '#ccc', lineHeight: '1.6' }}>
+              {bonusConfig.teamSizeBonusRules.map((rule: any, index: number) => (
+                <div key={index} style={{ marginBottom: '8px' }}>
+                  • 团队人数 {rule.minSize} - {rule.maxSize} 人：出勤率加成 {rule.attendanceRateBonus}%，战功加成 {rule.meritBonus}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     )
   } catch (error) {
@@ -877,6 +907,11 @@ function AppContent() {
     }
 
     try {
+      // 确保加成配置数据已加载
+      if (!bonusConfig || !bonusConfig.teamSizeBonusRules) {
+        await loadBonusConfig()
+      }
+      
       // 等待组件渲染完成
       await new Promise(resolve => setTimeout(resolve, 500))
       
@@ -939,6 +974,72 @@ function AppContent() {
     }
   }
 
+  // 生成最低战功人员名单
+  const generateMinMeritList = () => {
+    if (!selectedSession) {
+      alert('请先选择考勤记录')
+      return
+    }
+
+    try {
+      const memberData = selectedSession.memberData ? JSON.parse(selectedSession.memberData) : []
+      const attendingMembers = memberData.filter((member: DisplayRow) => member.参加考勤)
+      
+      if (attendingMembers.length === 0) {
+        alert('没有参加考勤的成员数据')
+        return
+      }
+
+      // 判断是否为助攻考勤
+      const isAssistAttendance = selectedSession?.attendanceType === '区间助攻考勤'
+      
+      // 计算最低战功/助攻值
+      const minMeritMember = attendingMembers.reduce((min: DisplayRow, member: DisplayRow) => {
+        const currentValue = isAssistAttendance ? member.助攻差值 : member.差值
+        const minValue = isAssistAttendance ? min.助攻差值 : min.差值
+        return currentValue < minValue ? member : min
+      }, attendingMembers[0])
+      
+      const minMeritValue = isAssistAttendance ? (minMeritMember?.助攻差值 || 0) : (minMeritMember?.差值 || 0)
+      
+      // 找出所有达到最低战功/助攻的成员
+      const minMeritMembers = attendingMembers.filter((member: DisplayRow) => 
+        (isAssistAttendance ? member.助攻差值 : member.差值) === minMeritValue
+      )
+      
+      // 按团队分组
+      const membersByTeam = minMeritMembers.reduce((acc: any, member: DisplayRow) => {
+        const teamName = member.分组
+        if (!acc[teamName]) {
+          acc[teamName] = []
+        }
+        acc[teamName].push(member.成员)
+        return acc
+      }, {})
+      
+      // 生成文本
+      const sessionName = selectedSession.name || '考勤记录'
+      let text = `【${sessionName}最低${isAssistAttendance ? '助攻' : '战功'}人员名单】\n\n`
+      
+      let totalCount = 0
+      Object.keys(membersByTeam).forEach((teamName, index) => {
+        const members = membersByTeam[teamName]
+        text += `${index + 1}.${teamName}：`
+        text += members.map((member: any) => `@${member}`).join('；')
+        text += '；\n'
+        totalCount += members.length
+      })
+      
+      text += `\n总计${totalCount}人，最低${isAssistAttendance ? '助攻' : '战功'}${minMeritValue}`
+      
+      setMinMeritText(text)
+      setShowMinMeritModal(true)
+    } catch (error) {
+      console.error('生成最低战功人员名单失败:', error)
+      alert('生成名单失败，请重试')
+    }
+  }
+
   const [startFile, setStartFile] = useState<File | null>(null)
   const [endFile, setEndFile] = useState<File | null>(null)
   const [threshold, setThreshold] = useState<number>(1)
@@ -965,6 +1066,10 @@ function AppContent() {
   const [error, setError] = useState<string | null>(null)
   const [chartDisplayMode, setChartDisplayMode] = useState<'both' | 'original' | 'bonus'>('both')
   const [itemsDisplayMode, setItemsDisplayMode] = useState<'table' | 'icons'>('icons')
+  
+  // 最低战功人员导出相关状态
+  const [showMinMeritModal, setShowMinMeritModal] = useState(false)
+  const [minMeritText, setMinMeritText] = useState('')
   
   // 现金统计相关状态
   const [cashSummary, setCashSummary] = useState<any>(null)
@@ -4706,33 +4811,63 @@ function AppContent() {
                     </select>
                   </div>
                   
-                  <button
-                    onClick={handleExportGroupStats}
-                    style={{
-                      padding: '12px 24px',
-                      backgroundColor: '#28a745',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '6px',
-                      fontSize: '16px',
-                      fontWeight: 'bold',
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                      transition: 'all 0.3s ease'
-                    }}
-                    onMouseOver={(e) => {
-                      e.currentTarget.style.backgroundColor = '#218838'
-                      e.currentTarget.style.transform = 'translateY(-1px)'
-                      e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.3)'
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.backgroundColor = '#28a745'
-                      e.currentTarget.style.transform = 'translateY(0)'
-                      e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)'
-                    }}
-                  >
-                    导出小组统计图片
-                  </button>
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                    <button
+                      onClick={handleExportGroupStats}
+                      style={{
+                        padding: '12px 24px',
+                        backgroundColor: '#28a745',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '16px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                        transition: 'all 0.3s ease'
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.backgroundColor = '#218838'
+                        e.currentTarget.style.transform = 'translateY(-1px)'
+                        e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.3)'
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.backgroundColor = '#28a745'
+                        e.currentTarget.style.transform = 'translateY(0)'
+                        e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)'
+                      }}
+                    >
+                      导出小组统计图片
+                    </button>
+                    
+                    <button
+                      onClick={generateMinMeritList}
+                      style={{
+                        padding: '12px 24px',
+                        backgroundColor: '#007bff',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        fontSize: '16px',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                        transition: 'all 0.3s ease'
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.backgroundColor = '#0056b3'
+                        e.currentTarget.style.transform = 'translateY(-1px)'
+                        e.currentTarget.style.boxShadow = '0 4px 8px rgba(0,0,0,0.3)'
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.backgroundColor = '#007bff'
+                        e.currentTarget.style.transform = 'translateY(0)'
+                        e.currentTarget.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)'
+                      }}
+                    >
+                      导出最低战功人员
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -8913,6 +9048,7 @@ function AppContent() {
         <GroupStatsExportComponent 
           selectedSession={selectedSession}
           sortBy={exportSortBy}
+          bonusConfig={bonusConfig}
         />
       </div>
       
@@ -8923,6 +9059,163 @@ function AppContent() {
         />
       </div>
       
+      {/* 最低战功人员名单弹窗 */}
+      {showMinMeritModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000
+        }}>
+          <div style={{
+            backgroundColor: '#2d2d2d',
+            borderRadius: '12px',
+            padding: '24px',
+            maxWidth: '600px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'auto',
+            border: '2px solid #444'
+          }}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '20px'
+            }}>
+              <h3 style={{
+                color: '#fff',
+                margin: 0,
+                fontSize: '20px',
+                fontWeight: 'bold'
+              }}>
+                最低战功人员名单
+              </h3>
+              <button
+                onClick={() => setShowMinMeritModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#fff',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  borderRadius: '4px',
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = '#555'
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent'
+                }}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div style={{
+              backgroundColor: '#1a1a1a',
+              padding: '16px',
+              borderRadius: '8px',
+              border: '1px solid #444',
+              marginBottom: '20px'
+            }}>
+              <textarea
+                value={minMeritText}
+                readOnly
+                style={{
+                  width: '100%',
+                  height: '300px',
+                  backgroundColor: 'transparent',
+                  color: '#fff',
+                  border: 'none',
+                  outline: 'none',
+                  resize: 'none',
+                  fontSize: '14px',
+                  lineHeight: '1.6',
+                  fontFamily: 'monospace'
+                }}
+                onClick={(e) => {
+                  e.currentTarget.select()
+                }}
+              />
+            </div>
+            
+            <div style={{
+              display: 'flex',
+              gap: '12px',
+              justifyContent: 'center'
+            }}>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(minMeritText).then(() => {
+                    alert('已复制到剪贴板！')
+                  }).catch(() => {
+                    // 如果剪贴板API失败，使用传统方法
+                    const textArea = document.createElement('textarea')
+                    textArea.value = minMeritText
+                    document.body.appendChild(textArea)
+                    textArea.select()
+                    document.execCommand('copy')
+                    document.body.removeChild(textArea)
+                    alert('已复制到剪贴板！')
+                  })
+                }}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: '#28a745',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.backgroundColor = '#218838'
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.backgroundColor = '#28a745'
+                }}
+              >
+                复制到剪贴板
+              </button>
+              
+              <button
+                onClick={() => setShowMinMeritModal(false)}
+                style={{
+                  padding: '12px 24px',
+                  backgroundColor: '#6c757d',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '16px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.backgroundColor = '#5a6268'
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.backgroundColor = '#6c757d'
+                }}
+              >
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 登录模态框 */}
       <LoginModal 
         isOpen={showLoginModal}
