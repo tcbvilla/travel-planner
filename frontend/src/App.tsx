@@ -536,7 +536,7 @@ const GroupStatsExportComponent = ({
               <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#4caf50' }}>{maxMeritValue.toLocaleString()}</div>
               <div style={{ fontSize: '11px', color: '#888', marginTop: '3px' }}>
                 {maxMeritMembers.map((member: DisplayRow) => 
-                  `${member.分组} | ${member.成员}`
+                  `${member.成员}`
                 ).join('、')}
               </div>
             </div>
@@ -556,10 +556,37 @@ const GroupStatsExportComponent = ({
               {isAssistAttendance ? '最低助攻' : '最低战功'}：{minMeritMembers.length}人
             </div>
             <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#f44336' }}>{minMeritValue.toLocaleString()}</div>
-            <div style={{ fontSize: '11px', color: '#888', marginTop: '3px' }}>
-              {minMeritMembers.map((member: DisplayRow) => 
-                `${member.分组} | ${member.成员}`
-              ).join('、')}
+            <div style={{ fontSize: '11px', color: '#888', marginTop: '3px', lineHeight: '1.4', textAlign: 'left' }}>
+              {(() => {
+                // 按小组分组
+                const membersByTeam = minMeritMembers.reduce((acc: any, member: DisplayRow) => {
+                  const teamName = member.分组
+                  if (!acc[teamName]) {
+                    acc[teamName] = []
+                  }
+                  acc[teamName].push(member.成员)
+                  return acc
+                }, {})
+                
+                // 生成按小组分类的显示文本
+                return Object.keys(membersByTeam).map((teamName) => {
+                  const members = membersByTeam[teamName]
+                  const memberList = members.join('、')
+                  return (
+                    <div key={teamName}>
+                      <div style={{ marginBottom: '11px' }}>
+                        <span style={{ fontWeight: 'bold', color: '#ccc' }}>{teamName}</span>
+                        <span className="min-merit-count">
+                          <span style={{ fontWeight: '900', fontSize: '14px', color: '#f44336' }}>{members.length}</span>
+                          <span style={{ color: '#ccc' }}>人</span>
+                        </span>
+                        <span style={{ color: '#ccc' }}>：</span>
+                        <span>{memberList}</span>
+                      </div>
+                    </div>
+                  )
+                })
+              })()}
             </div>
           </div>
         </div>
@@ -715,7 +742,7 @@ const GroupStatsExportComponent = ({
                     borderBottom: '1px solid #f44336',
                     paddingBottom: '5px'
                   }}>
-                    缺勤人员
+                    缺勤{absentMembers.length}人
                   </h4>
                   <div style={{ 
                     fontSize: '13px', 
@@ -727,7 +754,7 @@ const GroupStatsExportComponent = ({
                     border: '1px solid #555'
                   }}>
                     {absentMembers.map((member: DisplayRow, idx: number) => 
-                      `${member.分组} | ${member.成员}${idx < absentMembers.length - 1 ? ', ' : ''}`
+                      `${member.成员}${idx < absentMembers.length - 1 ? ', ' : ''}`
                     ).join('')}
                   </div>
                 </div>
@@ -908,8 +935,13 @@ function AppContent() {
 
     try {
       // 确保加成配置数据已加载
-      if (!bonusConfig || !bonusConfig.teamSizeBonusRules) {
+      console.log('导出前加成配置状态:', bonusConfig)
+      if (!bonusConfig || !bonusConfig.teamSizeBonusRules || bonusConfig.teamSizeBonusRules.length === 0) {
+        console.log('加成配置为空，开始加载...')
         await loadBonusConfig()
+        // 等待状态更新完成
+        await new Promise(resolve => setTimeout(resolve, 200))
+        console.log('加载后加成配置状态:', bonusConfig)
       }
       
       // 等待组件渲染完成
@@ -1027,6 +1059,10 @@ function AppContent() {
         text += `${index + 1}.${teamName}：`
         text += members.map((member: any) => `@${member}`).join('；')
         text += '；\n'
+        // 在小组之间添加空行（除了最后一个小组）
+        if (index < Object.keys(membersByTeam).length - 1) {
+          text += '\n'
+        }
         totalCount += members.length
       })
       
@@ -6647,7 +6683,7 @@ function AppContent() {
                           
                           {/* 屎粒 */}
                           {Array.from({ length: team.屎粒 || 0 }, (_, i) => (
-                            <span key={`shit-particle-${i}`} style={{ fontSize: '20px' }}>🟤</span>
+                            <span key={`shit-particle-${i}`} style={{ fontSize: '20px' }}>🫘</span>
                           ))}
                           
                           {/* 如果没有物品，显示提示 */}
@@ -9145,6 +9181,9 @@ function AppContent() {
                 onClick={(e) => {
                   e.currentTarget.select()
                 }}
+                onFocus={(e) => {
+                  e.currentTarget.select()
+                }}
               />
             </div>
             
@@ -9154,19 +9193,38 @@ function AppContent() {
               justifyContent: 'center'
             }}>
               <button
-                onClick={() => {
-                  navigator.clipboard.writeText(minMeritText).then(() => {
-                    alert('已复制到剪贴板！')
-                  }).catch(() => {
-                    // 如果剪贴板API失败，使用传统方法
+                onClick={async () => {
+                  try {
+                    // 首先尝试现代剪贴板API
+                    if (navigator.clipboard && window.isSecureContext) {
+                      await navigator.clipboard.writeText(minMeritText)
+                      alert('已复制到剪贴板！')
+                      return
+                    }
+                    
+                    // 如果现代API不可用，使用传统方法
                     const textArea = document.createElement('textarea')
                     textArea.value = minMeritText
+                    textArea.style.position = 'fixed'
+                    textArea.style.left = '-999999px'
+                    textArea.style.top = '-999999px'
                     document.body.appendChild(textArea)
+                    textArea.focus()
                     textArea.select()
-                    document.execCommand('copy')
+                    
+                    const successful = document.execCommand('copy')
                     document.body.removeChild(textArea)
-                    alert('已复制到剪贴板！')
-                  })
+                    
+                    if (successful) {
+                      alert('已复制到剪贴板！')
+                    } else {
+                      // 如果复制失败，提示用户手动复制
+                      alert('自动复制失败，请手动选择文本并复制（Ctrl+C）')
+                    }
+                  } catch (error) {
+                    console.error('复制失败:', error)
+                    alert('复制失败，请手动选择文本并复制（Ctrl+C）')
+                  }
                 }}
                 style={{
                   padding: '12px 24px',

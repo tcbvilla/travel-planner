@@ -195,3 +195,10 @@ tr[style*="background: #f8d7da"] td {
 .chart-container .team-name {
   color: #333 !important;
 }
+
+/* 最低战功数字显示为红色 - 覆盖全局白色文字 */
+.min-merit-count span:first-child {
+  color: #f44336 !important;
+  font-weight: 900 !important;
+  font-size: 14px !important;
+}
