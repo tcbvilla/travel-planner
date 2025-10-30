@@ -5032,6 +5032,11 @@ function AppContent() {
                             <option value="3">3</option>
                             <option value="4">4</option>
                             <option value="5">5</option>
+                            <option value="6">6</option>
+                            <option value="7">7</option>
+                            <option value="8">8</option>
+                            <option value="9">9</option>
+                            <option value="10">10</option>
                           </select>
                           <span style={{ color: '#000' }}>名</span>
                         </div>
@@ -5062,6 +5067,11 @@ function AppContent() {
                             <option value="3">3</option>
                             <option value="4">4</option>
                             <option value="5">5</option>
+                            <option value="6">6</option>
+                            <option value="7">7</option>
+                            <option value="8">8</option>
+                            <option value="9">9</option>
+                            <option value="10">10</option>
                           </select>
                           <span style={{ color: '#000' }}>名</span>
                         </div>
@@ -6672,7 +6682,7 @@ function AppContent() {
                               key={`flower-${i}`}
                               src="/images/花.png"
                               alt="花"
-                              style={{ width: '20px', height: '20px', objectFit: 'contain', verticalAlign: 'middle' }}
+                              style={{ width: '28px', height: '28px', objectFit: 'contain', verticalAlign: 'middle' }}
                               loading="lazy"
                             />
                           ))}
@@ -6683,7 +6693,7 @@ function AppContent() {
                               key={`petal-${i}`}
                               src="/images/花瓣.png"
                               alt="花瓣"
-                              style={{ width: '20px', height: '20px', objectFit: 'contain', verticalAlign: 'middle' }}
+                              style={{ width: '28px', height: '28px', objectFit: 'contain', verticalAlign: 'middle' }}
                               loading="lazy"
                             />
                           ))}
@@ -6694,7 +6704,7 @@ function AppContent() {
                               key={`shit-${i}`}
                               src="/images/屎.png"
                               alt="屎"
-                              style={{ width: '20px', height: '20px', objectFit: 'contain', verticalAlign: 'middle' }}
+                              style={{ width: '28px', height: '28px', objectFit: 'contain', verticalAlign: 'middle' }}
                               loading="lazy"
                             />
                           ))}
@@ -6705,7 +6715,7 @@ function AppContent() {
                               key={`shit-particle-${i}`}
                               src="/images/屎粒.png"
                               alt="屎粒"
-                              style={{ width: '20px', height: '20px', objectFit: 'contain', verticalAlign: 'middle' }}
+                              style={{ width: '28px', height: '28px', objectFit: 'contain', verticalAlign: 'middle' }}
                               loading="lazy"
                             />
                           ))}
@@ -6734,7 +6744,7 @@ function AppContent() {
                             <img
                               src="/images/钱袋.png"
                               alt="钱袋"
-                              style={{ width: '16px', height: '16px', objectFit: 'contain', verticalAlign: 'middle' }}
+                              style={{ width: '28px', height: '28px', objectFit: 'contain', verticalAlign: 'middle' }}
                               loading="lazy"
                             />
                             <span>{team.现金 > 0 ? '+' : ''}{team.现金}</span>
