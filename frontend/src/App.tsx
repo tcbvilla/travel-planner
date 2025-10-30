@@ -6668,22 +6668,46 @@ function AppContent() {
                         }}>
                           {/* 花 */}
                           {Array.from({ length: team.花 || 0 }, (_, i) => (
-                            <span key={`flower-${i}`} style={{ fontSize: '20px' }}>🌹</span>
+                            <img
+                              key={`flower-${i}`}
+                              src="/images/花.png"
+                              alt="花"
+                              style={{ width: '20px', height: '20px', objectFit: 'contain', verticalAlign: 'middle' }}
+                              loading="lazy"
+                            />
                           ))}
                           
                           {/* 花瓣 */}
                           {Array.from({ length: team.花瓣 || 0 }, (_, i) => (
-                            <span key={`petal-${i}`} style={{ fontSize: '20px' }}>🌸</span>
+                            <img
+                              key={`petal-${i}`}
+                              src="/images/花瓣.png"
+                              alt="花瓣"
+                              style={{ width: '20px', height: '20px', objectFit: 'contain', verticalAlign: 'middle' }}
+                              loading="lazy"
+                            />
                           ))}
                           
                           {/* 屎 */}
                           {Array.from({ length: team.屎 || 0 }, (_, i) => (
-                            <span key={`shit-${i}`} style={{ fontSize: '20px' }}>💩</span>
+                            <img
+                              key={`shit-${i}`}
+                              src="/images/屎.png"
+                              alt="屎"
+                              style={{ width: '20px', height: '20px', objectFit: 'contain', verticalAlign: 'middle' }}
+                              loading="lazy"
+                            />
                           ))}
                           
                           {/* 屎粒 */}
                           {Array.from({ length: team.屎粒 || 0 }, (_, i) => (
-                            <span key={`shit-particle-${i}`} style={{ fontSize: '20px' }}>🫘</span>
+                            <img
+                              key={`shit-particle-${i}`}
+                              src="/images/屎粒.png"
+                              alt="屎粒"
+                              style={{ width: '20px', height: '20px', objectFit: 'contain', verticalAlign: 'middle' }}
+                              loading="lazy"
+                            />
                           ))}
                           
                           {/* 如果没有物品，显示提示 */}
@@ -6707,7 +6731,12 @@ function AppContent() {
                             justifyContent: 'flex-end',
                             gap: '4px'
                           }}>
-                            <span style={{ fontSize: '16px' }}>💰</span>
+                            <img
+                              src="/images/钱袋.png"
+                              alt="钱袋"
+                              style={{ width: '16px', height: '16px', objectFit: 'contain', verticalAlign: 'middle' }}
+                              loading="lazy"
+                            />
                             <span>{team.现金 > 0 ? '+' : ''}{team.现金}</span>
                           </div>
                         )}
