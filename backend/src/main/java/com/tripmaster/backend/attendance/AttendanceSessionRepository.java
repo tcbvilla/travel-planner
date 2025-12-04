@@ -46,4 +46,35 @@ public interface AttendanceSessionRepository extends JpaRepository<AttendanceSes
      */
     @Query("SELECT DISTINCT s.attendanceType FROM AttendanceSession s WHERE s.attendanceType IS NOT NULL ORDER BY s.attendanceType")
     List<String> findDistinctAttendanceTypes();
+    
+    /**
+     * 根据时间范围查询所有已结算的考勤记录（排除手动添加类型）
+     * 查询条件：考勤记录的起始时间到结束时间完全落在指定时间范围内，且状态为已结算，且考勤类型不是"手动添加"
+     */
+    @Query("SELECT s FROM AttendanceSession s WHERE s.startTime >= :startTime AND s.endTime <= :endTime " +
+           "AND s.status = 'SETTLED' " +
+           "AND (s.attendanceType IS NULL OR s.attendanceType != '手动添加') " +
+           "ORDER BY s.startTime ASC")
+    List<AttendanceSession> findByTimeRangeAndSettledExcludingManual(
+            @Param("startTime") LocalDateTime startTime,
+            @Param("endTime") LocalDateTime endTime);
+    
+    /**
+     * 根据赛季ID查询已结算的考勤记录（排除手动添加类型）
+     */
+    @Query("SELECT s FROM AttendanceSession s WHERE s.season.id = :seasonId " +
+           "AND s.status = 'SETTLED' " +
+           "AND (s.attendanceType IS NULL OR s.attendanceType != '手动添加') " +
+           "ORDER BY s.startTime ASC")
+    List<AttendanceSession> findBySeasonIdAndSettledExcludingManual(@Param("seasonId") Long seasonId);
+    
+    /**
+     * 查询所有已结算且不重复的考勤类型（排除手动添加类型）
+     */
+    @Query("SELECT DISTINCT s.attendanceType FROM AttendanceSession s " +
+           "WHERE s.status = 'SETTLED' " +
+           "AND s.attendanceType IS NOT NULL " +
+           "AND s.attendanceType != '手动添加' " +
+           "ORDER BY s.attendanceType")
+    List<String> findDistinctAttendanceTypesSettledExcludingManual();
 }
