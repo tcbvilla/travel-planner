@@ -4,6 +4,7 @@ package com.tripmaster.backend.attendance;
 import com.opencsv.CSVReader;
 import com.opencsv.CSVReaderBuilder;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -62,6 +64,15 @@ public class AttendanceController {
     
     @Autowired
     private BonusConfigService bonusConfigService;
+    
+    @Autowired
+    private PaymentRecordRepository paymentRecordRepository;
+    
+    @Autowired
+    private TeamLogoRepository teamLogoRepository;
+    
+    @Value("${app.upload.team-logos-dir:${user.home}/uploads/team_logos}")
+    private String teamLogosUploadDir;
 
     @PostMapping(value = "/compare", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public AttendanceResponse compare(@RequestPart("start") MultipartFile start,
@@ -510,7 +521,7 @@ public class AttendanceController {
             return "考勤记录";
         }
         
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy年MM月dd日HH时mm分");
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy年MM月dd日HH时mm分ss秒");
         String startStr = startTime.format(formatter);
         String endStr = endTime.format(formatter);
         
@@ -2244,6 +2255,19 @@ public class AttendanceController {
             CascadeRevocationService.RevocationImpactAnalysis analysis = 
                 cascadeRevocationService.analyzeRevocationImpact(latestBatchId);
             
+            // 检查支付状态：不能撤销已支付的记录
+            List<Long> allAffectedRecordIds = new ArrayList<>();
+            allAffectedRecordIds.addAll(analysis.getDirectRecords().stream()
+                    .map(SettlementRecord::getId)
+                    .collect(Collectors.toList()));
+            allAffectedRecordIds.addAll(analysis.getSynthesisRecordsToDelete().stream()
+                    .map(SettlementRecord::getId)
+                    .collect(Collectors.toList()));
+            
+            if (paymentService.anyPaid(allAffectedRecordIds)) {
+                return ResponseEntity.badRequest().body("该结算包含已支付的记录，无法撤销。请先撤销支付状态。");
+            }
+            
             // 构建撤销日志内容，体现具体的撤销内容
             StringBuilder revokeContent = new StringBuilder();
             revokeContent.append("撤销结算，删除了以下结算记录：");
@@ -2334,8 +2358,19 @@ public class AttendanceController {
                 return ResponseEntity.ok(response);
             }
             
-            // 按小组聚合计算总奖金
+            // 获取所有结算记录的ID
+            List<Long> settlementRecordIds = settlementRecords.stream()
+                    .map(SettlementRecord::getId)
+                    .collect(Collectors.toList());
+            
+            // 批量查询已支付的记录
+            Map<Long, PaymentRecord> paidRecordsMap = paymentRecordRepository.findBySettlementRecordIdIn(settlementRecordIds)
+                    .stream()
+                    .collect(Collectors.toMap(pr -> pr.getSettlementRecord().getId(), pr -> pr));
+            
+            // 按小组聚合计算总奖金和已结算金额
             Map<String, Double> teamTotalRewards = new HashMap<>();
+            Map<String, Double> teamSettledRewards = new HashMap<>();
             
             for (SettlementRecord record : settlementRecords) {
                 String teamName = record.getTeamName();
@@ -2357,7 +2392,13 @@ public class AttendanceController {
                     }
                 }
                 
+                // 累加总金额
                 teamTotalRewards.merge(teamName, rewardAmount, Double::sum);
+                
+                // 如果已支付，累加已结算金额
+                if (paidRecordsMap.containsKey(record.getId())) {
+                    teamSettledRewards.merge(teamName, rewardAmount, Double::sum);
+                }
             }
             
             // 转换为榜单数据格式并排序
@@ -2366,6 +2407,7 @@ public class AttendanceController {
                         Map<String, Object> teamData = new HashMap<>();
                         teamData.put("teamName", entry.getKey());
                         teamData.put("totalReward", Math.round(entry.getValue() * 100.0) / 100.0); // 保留2位小数
+                        teamData.put("settledReward", Math.round(teamSettledRewards.getOrDefault(entry.getKey(), 0.0) * 100.0) / 100.0); // 已结算金额
                         return teamData;
                     })
                     .sorted((a, b) -> Double.compare((Double) b.get("totalReward"), (Double) a.get("totalReward"))) // 按总奖金降序排列
@@ -2825,6 +2867,19 @@ public class AttendanceController {
             System.out.println("影响分析 - 直接记录: " + analysis.getDirectRecords().size() + 
                              ", 受影响合成链: " + analysis.getAffectedChains().size());
             
+            // 检查支付状态：不能撤销已支付的记录
+            List<Long> allAffectedRecordIds = new ArrayList<>();
+            allAffectedRecordIds.addAll(analysis.getDirectRecords().stream()
+                    .map(SettlementRecord::getId)
+                    .collect(Collectors.toList()));
+            allAffectedRecordIds.addAll(analysis.getSynthesisRecordsToDelete().stream()
+                    .map(SettlementRecord::getId)
+                    .collect(Collectors.toList()));
+            
+            if (paymentService.anyPaid(allAffectedRecordIds)) {
+                return ResponseEntity.badRequest().body(Map.of("error", "该记录或相关合成记录已支付，无法撤销。请先撤销支付状态。"));
+            }
+            
             // 5. 执行级联撤销
             cascadeRevocationService.executeRevocationWithCascade(targetBatchId);
             
@@ -2959,8 +3014,16 @@ public class AttendanceController {
             LocalDateTime endDateTime = LocalDate.parse(endDate).atTime(23, 59, 59);
             
             // 查询指定时间段内的已结算考勤记录
-            List<AttendanceSession> sessions = attendanceSessionRepository.findByAttendanceTypeAndTimeRangeAndSettled(
-                attendanceType, startDateTime, endDateTime);
+            List<AttendanceSession> sessions;
+            if (attendanceType == null || attendanceType.trim().isEmpty() || "全部".equals(attendanceType)) {
+                // 查询所有类型（排除手动添加）
+                sessions = attendanceSessionRepository.findByTimeRangeAndSettledExcludingManual(
+                    startDateTime, endDateTime);
+            } else {
+                // 查询指定类型
+                sessions = attendanceSessionRepository.findByAttendanceTypeAndTimeRangeAndSettled(
+                    attendanceType, startDateTime, endDateTime);
+            }
             
             TeamCashSummary summary = new TeamCashSummary();
             summary.setTeamName(teamName);
@@ -3593,6 +3656,357 @@ public class AttendanceController {
             System.err.println("获取团队排名失败: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    // ==================== 支付管理接口 ====================
+    
+    @Autowired
+    private PaymentService paymentService;
+    
+    /**
+     * 查询金额记录列表（支持筛选和分页）
+     */
+    @GetMapping("/payments")
+    public ResponseEntity<?> getPaymentRecords(
+            @RequestParam(required = false) Long seasonId,
+            @RequestParam(required = false) String teamName,
+            @RequestParam(required = false, defaultValue = "ALL") String paymentStatus,  // ALL, PAID, UNPAID
+            @RequestParam(required = false, defaultValue = "ALL") String recordType,     // ALL, SETTLEMENT, MANUAL, SYNTHESIS
+            @RequestParam(required = false, defaultValue = "1") int pageNum,
+            @RequestParam(required = false, defaultValue = "10") int pageSize) {
+        try {
+            Page<PaymentRecordDetail> result = paymentService.getPaymentRecordsWithDetails(
+                    seasonId, teamName, paymentStatus, recordType, pageNum, pageSize);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("content", result.getContent());
+            response.put("totalElements", result.getTotalElements());
+            response.put("totalPages", result.getTotalPages());
+            response.put("currentPage", pageNum);
+            response.put("pageSize", pageSize);
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            System.err.println("查询支付记录失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(Map.of("error", "查询失败: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * 标记为已支付（单个或批量）
+     */
+    @PostMapping("/payments/mark-paid")
+    public ResponseEntity<Map<String, Object>> markAsPaid(@RequestBody Map<String, Object> request) {
+        try {
+            @SuppressWarnings("unchecked")
+            List<Number> recordIdsNum = (List<Number>) request.get("recordIds");
+            String operatorAccount = (String) request.get("operatorAccount");
+            
+            if (recordIdsNum == null || recordIdsNum.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "记录ID列表不能为空"));
+            }
+            
+            if (operatorAccount == null || operatorAccount.trim().isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "操作人账号不能为空"));
+            }
+            
+            // 转换为 Long 类型
+            List<Long> convertedIds = recordIdsNum.stream()
+                    .map(Number::longValue)
+                    .collect(Collectors.toList());
+            
+            paymentService.markAsPaid(convertedIds, operatorAccount);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", String.format("成功标记 %d 条记录为已支付", convertedIds.size()));
+            response.put("affectedCount", convertedIds.size());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            System.err.println("标记支付失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(Map.of("error", "操作失败: " + e.getMessage()));
+        }
+    }
+    
+    /**
+     * 撤销支付（删除支付记录）
+     */
+    @PostMapping("/payments/revoke-paid")
+    public ResponseEntity<Map<String, Object>> revokePaid(@RequestBody Map<String, Object> request) {
+        try {
+            @SuppressWarnings("unchecked")
+            List<Number> recordIdsNum = (List<Number>) request.get("recordIds");
+            
+            if (recordIdsNum == null || recordIdsNum.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "记录ID列表不能为空"));
+            }
+            
+            // 转换为 Long 类型
+            List<Long> convertedIds = recordIdsNum.stream()
+                    .map(Number::longValue)
+                    .collect(Collectors.toList());
+            
+            paymentService.revokePaid(convertedIds);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", String.format("成功撤销 %d 条记录的支付状态", convertedIds.size()));
+            response.put("affectedCount", convertedIds.size());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            System.err.println("撤销支付失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(Map.of("error", "操作失败: " + e.getMessage()));
+        }
+    }
+    
+    // ==================== 团徽管理接口 ====================
+    
+    /**
+     * 获取所有出现过的团队名称（从所有赛季的考勤记录中提取）
+     */
+    @GetMapping("/teams/all")
+    public ResponseEntity<List<String>> getAllTeamNames() {
+        try {
+            Set<String> teamNames = new HashSet<>();
+            
+            // 从所有考勤记录中提取团队名称
+            List<AttendanceSession> allSessions = attendanceSessionRepository.findAll();
+            ObjectMapper mapper = new ObjectMapper();
+            
+            for (AttendanceSession session : allSessions) {
+                if (session.getMemberData() != null && !session.getMemberData().isEmpty()) {
+                    try {
+                        @SuppressWarnings("unchecked")
+                        List<Map<String, Object>> memberData = (List<Map<String, Object>>) mapper.readValue(session.getMemberData(), List.class);
+                        for (Map<String, Object> member : memberData) {
+                            String groupName = (String) member.get("分组");
+                            if (groupName != null && !groupName.trim().isEmpty()) {
+                                teamNames.add(groupName.trim());
+                            }
+                        }
+                    } catch (Exception e) {
+                        System.err.println("解析成员数据失败: " + e.getMessage());
+                    }
+                }
+            }
+            
+            // 转换为列表并排序
+            List<String> teams = new ArrayList<>(teamNames);
+            teams.sort(String::compareTo);
+            
+            return ResponseEntity.ok(teams);
+        } catch (Exception e) {
+            System.err.println("获取团队列表失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(new ArrayList<>());
+        }
+    }
+    
+    /**
+     * 上传或更新团徽
+     */
+    @PostMapping(value = "/team-logos", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> uploadTeamLogo(
+            @RequestParam("teamName") String teamName,
+            @RequestParam("file") MultipartFile file) {
+        try {
+            // 验证文件类型
+            String contentType = file.getContentType();
+            if (contentType == null || !contentType.startsWith("image/")) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", "只支持图片文件上传"
+                ));
+            }
+            
+            // 更严格的图片格式验证
+            String[] allowedTypes = {"image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"};
+            boolean isValidType = false;
+            for (String type : allowedTypes) {
+                if (type.equalsIgnoreCase(contentType)) {
+                    isValidType = true;
+                    break;
+                }
+            }
+            if (!isValidType) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", "不支持的图片格式，仅支持：jpg, jpeg, png, gif, webp"
+                ));
+            }
+            
+            // 创建上传目录（使用配置的路径）
+            String uploadDir = teamLogosUploadDir;
+            // 确保路径是绝对路径（与 WebConfig 保持一致）
+            File dir = new File(uploadDir);
+            if (!dir.isAbsolute()) {
+                // 如果是相对路径，转换为绝对路径
+                uploadDir = dir.getAbsolutePath();
+            }
+            // 确保路径以分隔符结尾
+            if (!uploadDir.endsWith(File.separator)) {
+                uploadDir += File.separator;
+            }
+            // 重新创建 File 对象（使用转换后的绝对路径）
+            dir = new File(uploadDir);
+            if (!dir.exists()) {
+                boolean created = dir.mkdirs();
+                if (!created) {
+                    System.err.println("无法创建目录: " + uploadDir);
+                    return ResponseEntity.badRequest().body(Map.of(
+                        "success", false,
+                        "error", "无法创建上传目录: " + uploadDir
+                    ));
+                }
+            }
+            System.out.println("上传文件到目录: " + uploadDir);
+            
+            // 生成文件名（使用团队名+时间戳+扩展名，避免冲突）
+            String originalFilename = file.getOriginalFilename();
+            String extension = "";
+            if (originalFilename != null && originalFilename.contains(".")) {
+                extension = originalFilename.substring(originalFilename.lastIndexOf("."));
+            } else {
+                // 根据 content type 确定扩展名
+                if (contentType.contains("jpeg") || contentType.contains("jpg")) {
+                    extension = ".jpg";
+                } else if (contentType.contains("png")) {
+                    extension = ".png";
+                } else if (contentType.contains("gif")) {
+                    extension = ".gif";
+                } else if (contentType.contains("webp")) {
+                    extension = ".webp";
+                } else {
+                    extension = ".png"; // 默认
+                }
+            }
+            
+            String filename = teamName + "_" + System.currentTimeMillis() + extension;
+            String filePath = uploadDir + filename;
+            File destFile = new File(filePath);
+            
+            // 保存文件
+            file.transferTo(destFile);
+            
+            // 保存路径到数据库
+            String logoPath = "/images/team_logos/" + filename;
+            Optional<TeamLogo> existingLogo = teamLogoRepository.findByTeamName(teamName);
+            
+            TeamLogo teamLogo;
+            if (existingLogo.isPresent()) {
+                // 更新现有记录
+                teamLogo = existingLogo.get();
+                // 删除旧文件
+                String oldFilename = teamLogo.getLogoPath().substring(teamLogo.getLogoPath().lastIndexOf("/") + 1);
+                String oldPath = uploadDir + oldFilename;
+                File oldFile = new File(oldPath);
+                if (oldFile.exists()) {
+                    oldFile.delete();
+                }
+                teamLogo.setLogoPath(logoPath);
+            } else {
+                // 创建新记录
+                teamLogo = new TeamLogo();
+                teamLogo.setTeamName(teamName);
+                teamLogo.setLogoPath(logoPath);
+            }
+            
+            teamLogoRepository.save(teamLogo);
+            
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "团徽上传成功",
+                "logoPath", logoPath,
+                "teamName", teamName
+            ));
+        } catch (Exception e) {
+            System.err.println("上传团徽失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "error", "上传失败: " + e.getMessage()
+            ));
+        }
+    }
+    
+    /**
+     * 获取所有团徽列表
+     */
+    @GetMapping("/team-logos")
+    public ResponseEntity<List<Map<String, Object>>> getAllTeamLogos() {
+        try {
+            List<TeamLogo> logos = teamLogoRepository.findAll();
+            List<Map<String, Object>> result = logos.stream()
+                    .map(logo -> {
+                        Map<String, Object> map = new HashMap<>();
+                        map.put("teamName", logo.getTeamName());
+                        map.put("logoPath", logo.getLogoPath());
+                        map.put("createdAt", logo.getCreatedAt());
+                        map.put("updatedAt", logo.getUpdatedAt());
+                        return map;
+                    })
+                    .collect(Collectors.toList());
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            System.err.println("获取团徽列表失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(new ArrayList<>());
+        }
+    }
+    
+    /**
+     * 删除团徽
+     */
+    @DeleteMapping("/team-logos/{teamName}")
+    public ResponseEntity<Map<String, Object>> deleteTeamLogo(@PathVariable String teamName) {
+        try {
+            Optional<TeamLogo> logoOpt = teamLogoRepository.findByTeamName(teamName);
+            if (logoOpt.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", "未找到该团队的团徽"
+                ));
+            }
+            
+            TeamLogo logo = logoOpt.get();
+            // 使用配置的路径删除文件（与 WebConfig 保持一致）
+            String uploadDir = teamLogosUploadDir;
+            // 确保路径是绝对路径
+            File dir = new File(uploadDir);
+            if (!dir.isAbsolute()) {
+                // 如果是相对路径，转换为绝对路径
+                uploadDir = dir.getAbsolutePath();
+            }
+            // 确保路径以分隔符结尾
+            if (!uploadDir.endsWith(File.separator)) {
+                uploadDir += File.separator;
+            }
+            String filename = logo.getLogoPath().substring(logo.getLogoPath().lastIndexOf("/") + 1);
+            String filePath = uploadDir + filename;
+            File file = new File(filePath);
+            if (file.exists()) {
+                file.delete();
+            }
+            
+            teamLogoRepository.delete(logo);
+            
+            return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "团徽删除成功"
+            ));
+        } catch (Exception e) {
+            System.err.println("删除团徽失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "error", "删除失败: " + e.getMessage()
+            ));
         }
     }
 }

@@ -84,6 +84,14 @@ jwt:
   secret: your-super-secret-jwt-key-that-is-at-least-256-bits-long-for-production-use
   expiration: 86400000  # 24小时，单位毫秒
 
+# 应用配置
+app:
+  upload:
+    # 团徽上传目录，生产环境建议使用绝对路径
+    # Windows 示例：C:/uploads/team_logos 或 ${user.home}/uploads/team_logos
+    # Linux 示例：/var/www/uploads/team_logos 或 /home/app/uploads/team_logos
+    team-logos-dir: ${user.home}/uploads/team_logos
+
 # 应用信息
 info:
   app:

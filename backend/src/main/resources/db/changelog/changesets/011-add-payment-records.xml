@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+    <!-- 创建支付记录表 -->
+    <changeSet id="011-001-create-payment-records-table" author="system">
+        <createTable tableName="payment_records">
+            <column name="id" type="BIGSERIAL">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="settlement_record_id" type="BIGINT">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="payment_time" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="operator_account" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        
+        <!-- 添加外键约束 -->
+        <addForeignKeyConstraint
+            baseTableName="payment_records"
+            baseColumnNames="settlement_record_id"
+            constraintName="fk_payment_settlement"
+            referencedTableName="settlement_records"
+            referencedColumnNames="id"
+            onDelete="CASCADE"/>
+            
+        <!-- 添加索引 -->
+        <createIndex indexName="idx_payment_records_settlement_id" tableName="payment_records">
+            <column name="settlement_record_id"/>
+        </createIndex>
+        <createIndex indexName="idx_payment_records_payment_time" tableName="payment_records">
+            <column name="payment_time"/>
+        </createIndex>
+        <createIndex indexName="idx_payment_records_operator" tableName="payment_records">
+            <column name="operator_account"/>
+        </createIndex>
+    </changeSet>
+
+    <!-- 添加表注释 -->
+    <changeSet id="011-002-add-payment-records-comments" author="system">
+        <sql>
+            COMMENT ON TABLE payment_records IS '支付记录表：记录金额的线下支付情况';
+            COMMENT ON COLUMN payment_records.id IS '主键ID';
+            COMMENT ON COLUMN payment_records.settlement_record_id IS '关联的结算记录ID';
+            COMMENT ON COLUMN payment_records.payment_time IS '支付时间';
+            COMMENT ON COLUMN payment_records.operator_account IS '操作人账号';
+            COMMENT ON COLUMN payment_records.created_at IS '创建时间';
+        </sql>
+    </changeSet>
+
+    <!-- 创建支付管理权限 -->
+    <changeSet id="011-003-create-payment-permission" author="system">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="0">
+                SELECT COUNT(*) FROM permissions WHERE code = 'PAYMENT:MANAGE'
+            </sqlCheck>
+        </preConditions>
+        
+        <insert tableName="permissions">
+            <column name="code" value="PAYMENT:MANAGE"/>
+            <column name="name" value="支付管理"/>
+            <column name="module" value="PAYMENT"/>
+            <column name="resource" value="MANAGE"/>
+            <column name="action" value="ALL"/>
+            <column name="description" value="查看和操作金额支付记录"/>
+            <column name="created_at" valueComputed="CURRENT_TIMESTAMP"/>
+            <column name="updated_at" valueComputed="CURRENT_TIMESTAMP"/>
+        </insert>
+    </changeSet>
+
+    <!-- 为SUPER_ADMIN分配支付管理权限 -->
+    <changeSet id="011-004-assign-payment-permission-to-super-admin" author="system">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <sqlCheck expectedResult="1">
+                    SELECT COUNT(*) FROM roles WHERE code = 'SUPER_ADMIN'
+                </sqlCheck>
+                <sqlCheck expectedResult="1">
+                    SELECT COUNT(*) FROM permissions WHERE code = 'PAYMENT:MANAGE'
+                </sqlCheck>
+                <sqlCheck expectedResult="0">
+                    SELECT COUNT(*) FROM role_permissions rp
+                    WHERE rp.role_id = (SELECT id FROM roles WHERE code = 'SUPER_ADMIN')
+                    AND rp.permission_id = (SELECT id FROM permissions WHERE code = 'PAYMENT:MANAGE')
+                </sqlCheck>
+            </and>
+        </preConditions>
+        
+        <sql>
+            INSERT INTO role_permissions (role_id, permission_id, created_at)
+            SELECT 
+                (SELECT id FROM roles WHERE code = 'SUPER_ADMIN'),
+                (SELECT id FROM permissions WHERE code = 'PAYMENT:MANAGE'),
+                CURRENT_TIMESTAMP;
+        </sql>
+    </changeSet>
+
+</databaseChangeLog>
+
+

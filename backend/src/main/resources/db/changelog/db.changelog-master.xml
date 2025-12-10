@@ -35,4 +35,10 @@
     <!-- 修复SUPER_ADMIN角色和简化权限（确保新环境正确初始化） -->
     <include file="changesets/010-fix-super-admin-and-permissions.xml" relativeToChangelogFile="true"/>
 
+    <!-- 添加支付记录表和支付管理权限 -->
+    <include file="changesets/011-add-payment-records.xml" relativeToChangelogFile="true"/>
+
+    <!-- 添加团徽表 -->
+    <include file="changesets/012-add-team-logos.xml" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

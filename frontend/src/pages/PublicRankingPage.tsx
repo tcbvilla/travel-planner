@@ -436,7 +436,7 @@ const PublicRankingPage: React.FC<PublicRankingPageProps> = ({ onBackToLogin }) 
                 ) : (
                   <>
                     <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', color: '#fff' }}>
+                      <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', color: '#fff' }}>
                         <thead>
                           <tr style={{ background: '#404040' }}>
                             <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>排名</th>
@@ -598,7 +598,7 @@ const PublicRankingPage: React.FC<PublicRankingPageProps> = ({ onBackToLogin }) 
                 ) : (
                   <>
                     <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', color: '#fff' }}>
+                      <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', color: '#fff' }}>
                         <thead>
                           <tr style={{ background: '#404040' }}>
                             <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>排名</th>

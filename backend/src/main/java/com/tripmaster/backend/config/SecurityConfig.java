@@ -35,6 +35,8 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // 允许认证相关的API
                 .requestMatchers("/api/auth/**").permitAll()
+                // 允许静态资源访问
+                .requestMatchers("/images/**").permitAll()
                 // 允许所有其他请求（后续会添加权限控制）
                 .anyRequest().permitAll()
             );

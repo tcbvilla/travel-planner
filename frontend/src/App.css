@@ -202,3 +202,8 @@ tr[style*="background: #f8d7da"] td {
   font-weight: 900 !important;
   font-size: 14px !important;
 }
+
+/* 赛季榜单标题使用黑色 - 覆盖全局白色文字 */
+.ranking-title {
+  color: #000 !important;
+}

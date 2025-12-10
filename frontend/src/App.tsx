@@ -18,7 +18,7 @@ import ProtectedRoute from './auth/ProtectedRoute'
 import UserManagement from './components/admin/UserManagement'
 import PermissionWrapper from './components/PermissionWrapper'
 import PermissionButton from './components/PermissionButton'
-import PublicRankingPage from './pages/PublicRankingPage'
+import PublicPages from './pages/PublicPages'
 import './App.css'
 
 // 注册Chart.js组件
@@ -419,9 +419,10 @@ const GroupStatsExportComponent = ({
             fontSize: '36px', 
             fontWeight: 'bold',
             color: '#fff',
-            textShadow: '2px 2px 4px rgba(0,0,0,0.5)'
+            textShadow: '2px 2px 4px rgba(0,0,0,0.5)',
+            fontFamily: 'RuiZiChaoPai, Arial, sans-serif'
           }}>
-            小组统计报告
+            考勤统计结果
           </h1>
           <p style={{ 
             margin: '10px 0 0 0', 
@@ -1083,7 +1084,7 @@ function AppContent() {
   const [threshold, setThreshold] = useState<number>(1)
   const [rows, setRows] = useState<DisplayRow[]>([])
   const [groupStats, setGroupStats] = useState<GroupStat[]>([])
-  const [activeTab, setActiveTab] = useState<'add' | 'view' | 'season' | 'ranking' | 'statistics' | 'config' | 'admin'>('add')
+  const [activeTab, setActiveTab] = useState<'add' | 'view' | 'season' | 'ranking' | 'statistics' | 'payment' | 'config' | 'admin'>('add')
   const [activeSubTab, setActiveSubTab] = useState<'members' | 'groups'>('members')
   const [activeStatsTab, setActiveStatsTab] = useState<'team' | 'individual'>('team')
   const [activeAdminSubTab, setActiveAdminSubTab] = useState<'users' | 'roles'>('users')
@@ -1122,6 +1123,18 @@ function AppContent() {
   const [selectedMember, setSelectedMember] = useState('')
   const [isSearching, setIsSearching] = useState(false)
 
+  // 支付管理相关状态
+  const [paymentRecords, setPaymentRecords] = useState<any[]>([])
+  const [paymentSeasonId, setPaymentSeasonId] = useState<number | null>(null)
+  const [paymentTeamName, setPaymentTeamName] = useState('')
+  const [paymentStatus, setPaymentStatus] = useState('ALL')  // ALL, PAID, UNPAID
+  const [paymentRecordType, setPaymentRecordType] = useState('ALL')  // ALL, SETTLEMENT, MANUAL, SYNTHESIS
+  const [paymentCurrentPage, setPaymentCurrentPage] = useState(1)
+  const [paymentTotalPages, setPaymentTotalPages] = useState(0)
+  const [paymentTotalElements, setPaymentTotalElements] = useState(0)
+  const [selectedPaymentRecords, setSelectedPaymentRecords] = useState<number[]>([])
+  const [isLoadingPayment, setIsLoadingPayment] = useState(false)
+
   // 当切换到赛季管理页面时自动加载赛季列表
   useEffect(() => {
     if (activeTab === 'season') {
@@ -1135,6 +1148,10 @@ function AppContent() {
     }
     if (activeTab === 'ranking') {
       loadAllSeasons()
+    }
+    if (activeTab === 'payment') {
+      loadAllSeasons()
+      loadPaymentRecords()
     }
   }, [activeTab])
 
@@ -1338,6 +1355,14 @@ function AppContent() {
   const [bonusConfig, setBonusConfig] = useState<any>({ teamSizeBonusRules: [] })
   const [loadingBonusConfig, setLoadingBonusConfig] = useState(false)
   const [savingBonusConfig, setSavingBonusConfig] = useState(false)
+  
+  // 团徽管理相关状态
+  const [teamLogos, setTeamLogos] = useState<any[]>([])
+  const [allTeamNamesForLogo, setAllTeamNamesForLogo] = useState<string[]>([])
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [selectedTeamName, setSelectedTeamName] = useState('')
+  const [manualTeamName, setManualTeamName] = useState('')
+  const [logoFile, setLogoFile] = useState<File | null>(null)
   
   const [loadingLogs, setLoadingLogs] = useState(false)
   const [currentLogPage, setCurrentLogPage] = useState(0)
@@ -1699,7 +1724,18 @@ function AppContent() {
     setError(null)
     
     try {
-      const response = await fetch(`/api/v1/attendance/statistics/team-cash-summary?startDate=${statsStartDate}&endDate=${statsEndDate}&attendanceType=${statsAttendanceType}&teamName=${selectedStatsTeam}`)
+      const params = new URLSearchParams({
+        startDate: statsStartDate,
+        endDate: statsEndDate,
+        teamName: selectedStatsTeam
+      })
+      if (statsAttendanceType && statsAttendanceType !== '全部') {
+        params.append('attendanceType', statsAttendanceType)
+      } else {
+        params.append('attendanceType', '全部')
+      }
+      
+      const response = await fetch(`/api/v1/attendance/statistics/team-cash-summary?${params.toString()}`)
       
       if (response.ok) {
         const data = await response.json()
@@ -1728,6 +1764,14 @@ function AppContent() {
     // 清除错误信息
     setError(null)
   }, [selectedStatsTeam])
+  
+  // 监听人员选择变化，清除上一个人员的数据
+  useEffect(() => {
+    // 当人员选择变化时（包括清空选择），清除个人统计数据
+    setPersonalStats(null)
+    // 清除错误信息
+    setError(null)
+  }, [selectedMember])
   
   // ==================== 个人统计相关函数 ====================
   
@@ -1787,7 +1831,7 @@ function AppContent() {
       const params = new URLSearchParams({
         startDate: statsStartDate,
         endDate: statsEndDate,
-        memberName: encodeURIComponent(selectedMember)
+        memberName: selectedMember
       })
       
       // 只有当不是"全部"时才传考勤类型参数
@@ -1811,6 +1855,152 @@ function AppContent() {
       setIsLoadingPersonal(false)
     }
   }
+
+  // ==================== 支付管理相关函数 ====================
+  
+  // 加载支付记录
+  const loadPaymentRecords = async () => {
+    setIsLoadingPayment(true)
+    setError(null)
+    
+    try {
+      const params = new URLSearchParams({
+        pageNum: paymentCurrentPage.toString(),
+        pageSize: '10'
+      })
+      
+      if (paymentSeasonId) {
+        params.append('seasonId', paymentSeasonId.toString())
+      }
+      if (paymentTeamName) {
+        params.append('teamName', paymentTeamName)
+      }
+      if (paymentStatus && paymentStatus !== 'ALL') {
+        params.append('paymentStatus', paymentStatus)
+      }
+      if (paymentRecordType && paymentRecordType !== 'ALL') {
+        params.append('recordType', paymentRecordType)
+      }
+      
+      const response = await fetch(`/api/v1/attendance/payments?${params.toString()}`)
+      
+      if (response.ok) {
+        const data = await response.json()
+        setPaymentRecords(data.content || [])
+        setPaymentTotalPages(data.totalPages || 0)
+        setPaymentTotalElements(data.totalElements || 0)
+      } else {
+        const errorData = await response.json()
+        setError(`获取支付记录失败: ${errorData.error || '未知错误'}`)
+      }
+    } catch (error) {
+      console.error('获取支付记录失败:', error)
+      setError('网络错误: ' + error)
+    } finally {
+      setIsLoadingPayment(false)
+    }
+  }
+  
+  // 标记为已支付
+  const markAsPaid = async (recordIds: number[]) => {
+    if (recordIds.length === 0) {
+      alert('请选择至少一条记录')
+      return
+    }
+    
+    if (!user?.username) {
+      alert('无法获取操作人信息')
+      return
+    }
+    
+    try {
+      const response = await fetch('/api/v1/attendance/payments/mark-paid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recordIds: recordIds,
+          operatorAccount: user.username
+        })
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        alert(data.message || '支付成功')
+        // 重新加载支付记录
+        await loadPaymentRecords()
+        // 清空选择
+        setSelectedPaymentRecords([])
+      } else {
+        const errorData = await response.json()
+        alert(`操作失败: ${errorData.error || '未知错误'}`)
+      }
+    } catch (error) {
+      console.error('标记支付失败:', error)
+      alert('网络错误: ' + error)
+    }
+  }
+  
+  // 撤销支付
+  const revokePaid = async (recordIds: number[]) => {
+    if (recordIds.length === 0) {
+      alert('请选择至少一条记录')
+      return
+    }
+    
+    if (!confirm(`确认撤销 ${recordIds.length} 条记录的支付状态吗？`)) {
+      return
+    }
+    
+    try {
+      const response = await fetch('/api/v1/attendance/payments/revoke-paid', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recordIds: recordIds
+        })
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        alert(data.message || '撤销成功')
+        // 重新加载支付记录
+        await loadPaymentRecords()
+        // 清空选择
+        setSelectedPaymentRecords([])
+      } else {
+        const errorData = await response.json()
+        alert(`操作失败: ${errorData.error || '未知错误'}`)
+      }
+    } catch (error) {
+      console.error('撤销支付失败:', error)
+      alert('网络错误: ' + error)
+    }
+  }
+  
+  // 切换支付记录选择
+  const togglePaymentRecordSelection = (recordId: number) => {
+    if (selectedPaymentRecords.includes(recordId)) {
+      setSelectedPaymentRecords(selectedPaymentRecords.filter(id => id !== recordId))
+    } else {
+      setSelectedPaymentRecords([...selectedPaymentRecords, recordId])
+    }
+  }
+  
+  // 全选/取消全选支付记录
+  const toggleAllPaymentRecords = () => {
+    if (selectedPaymentRecords.length === paymentRecords.length) {
+      setSelectedPaymentRecords([])
+    } else {
+      setSelectedPaymentRecords(paymentRecords.map(record => record.settlementRecordId))
+    }
+  }
+  
+  // 监听支付筛选条件变化，重新加载数据（仅监听分页变化）
+  useEffect(() => {
+    if (activeTab === 'payment') {
+      loadPaymentRecords()
+    }
+  }, [paymentCurrentPage])
 
   // 新增函数：批量更新团队参加考勤状态
   const updateTeamAttendance = async () => {
@@ -1929,13 +2119,14 @@ function AppContent() {
           const day = parseInt(match[3]);
           const hour = parseInt(match[4]);
           const minute = parseInt(match[5]);
+          const second = parseInt(match[6]);
           
           // 格式化时间
-          const formatTime = (y: number, m: number, d: number, h: number, min: number) => {
-            return `${y}年${m.toString().padStart(2, '0')}月${d.toString().padStart(2, '0')}日${h.toString().padStart(2, '0')}时${min.toString().padStart(2, '0')}分`;
+          const formatTime = (y: number, m: number, d: number, h: number, min: number, sec: number) => {
+            return `${y}年${m.toString().padStart(2, '0')}月${d.toString().padStart(2, '0')}日${h.toString().padStart(2, '0')}时${min.toString().padStart(2, '0')}分${sec.toString().padStart(2, '0')}秒`;
           };
           
-          return formatTime(year, month, day, hour, minute);
+          return formatTime(year, month, day, hour, minute, second);
         }
       } catch (error) {
         console.error('解析文件名时间失败:', error);
@@ -3114,6 +3305,107 @@ function AppContent() {
       setSavingBonusConfig(false)
     }
   }
+  
+  // 加载所有团队名称（用于团徽管理）
+  const loadAllTeamNames = async () => {
+    try {
+      const response = await fetch('/api/v1/attendance/teams/all')
+      if (response.ok) {
+        const teams = await response.json()
+        setAllTeamNamesForLogo(teams)
+      }
+    } catch (error) {
+      console.error('加载团队列表失败:', error)
+    }
+  }
+  
+  // 加载所有团徽
+  const loadTeamLogos = async () => {
+    try {
+      console.log('开始加载团徽列表...')
+      const response = await fetch('/api/v1/attendance/team-logos')
+      console.log('团徽响应状态:', response.status, response.statusText)
+      if (response.ok) {
+        const logos = await response.json()
+        console.log('加载到的团徽数据:', logos)
+        console.log('团徽数量:', logos.length)
+        setTeamLogos(logos)
+        console.log('团徽数据已设置到 state')
+      } else {
+        console.error('加载团徽列表失败，状态码:', response.status)
+        const errorText = await response.text()
+        console.error('错误响应:', errorText)
+      }
+    } catch (error) {
+      console.error('加载团徽列表失败:', error)
+    }
+  }
+  
+  // 上传团徽
+  const uploadTeamLogo = async () => {
+    if (!logoFile) {
+      alert('请选择图片文件')
+      return
+    }
+    
+    const teamName = selectedTeamName || manualTeamName.trim()
+    if (!teamName) {
+      alert('请输入或选择团队名称')
+      return
+    }
+    
+    setUploadingLogo(true)
+    try {
+      const formData = new FormData()
+      formData.append('teamName', teamName)
+      formData.append('file', logoFile)
+      
+      const response = await fetch('/api/v1/attendance/team-logos', {
+        method: 'POST',
+        body: formData
+      })
+      
+      const result = await response.json()
+      if (response.ok) {
+        alert('团徽上传成功！')
+        setLogoFile(null)
+        setSelectedTeamName('')
+        setManualTeamName('')
+        await loadTeamLogos()
+      } else {
+        alert('上传失败: ' + (result.error || '未知错误'))
+      }
+    } catch (error) {
+      console.error('上传团徽失败:', error)
+      alert('上传失败: 网络错误')
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+  
+  // 删除团徽
+  const deleteTeamLogo = async (teamName: string) => {
+    if (!confirm(`确定要删除 ${teamName} 的团徽吗？`)) {
+      return
+    }
+    
+    try {
+      const response = await fetch(`/api/v1/attendance/team-logos/${encodeURIComponent(teamName)}`, {
+        method: 'DELETE'
+      })
+      
+      const result = await response.json()
+      if (response.ok) {
+        alert('团徽删除成功！')
+        await loadTeamLogos()
+      } else {
+        alert('删除失败: ' + (result.error || '未知错误'))
+      }
+    } catch (error) {
+      console.error('删除团徽失败:', error)
+      alert('删除失败: 网络错误')
+    }
+  }
 
   // 添加新的加成规则
   const addBonusRule = () => {
@@ -3178,10 +3470,11 @@ function AppContent() {
     setLoadingRankingData(true)
     setLoadingTeamItems(true)
     try {
-      // 并行加载榜单数据和队伍物品统计
-      const [rankingResponse, itemsResponse] = await Promise.all([
+      // 并行加载榜单数据、队伍物品统计和团徽
+      const [rankingResponse, itemsResponse, logosResponse] = await Promise.all([
         fetch(`/api/v1/attendance/seasons/${seasonId}/ranking`),
-        fetch(`/api/v1/attendance/seasons/${seasonId}/team-items-summary`)
+        fetch(`/api/v1/attendance/seasons/${seasonId}/team-items-summary`),
+        fetch('/api/v1/attendance/team-logos')
       ])
       
       if (rankingResponse.ok) {
@@ -3200,6 +3493,11 @@ function AppContent() {
       } else {
         console.error('获取队伍物品统计失败')
         setTeamItemsSummary([])
+      }
+      
+      if (logosResponse.ok) {
+        const logos = await logosResponse.json()
+        setTeamLogos(logos)
       }
     } catch (error) {
       console.error('获取榜单数据失败:', error)
@@ -3493,7 +3791,7 @@ function AppContent() {
   // 如果显示公开排名页面，直接返回公开排名页面
   if (showPublicRanking) {
     return (
-      <PublicRankingPage 
+      <PublicPages 
         onBackToLogin={() => setShowPublicRanking(false)}
       />
     )
@@ -3589,7 +3887,7 @@ function AppContent() {
               transition: 'all 0.3s ease'
             }}
           >
-            查看榜单
+            赛季榜单
           </button>
         </PermissionWrapper>
         <PermissionWrapper permission="RANKING:VIEW">
@@ -3610,11 +3908,31 @@ function AppContent() {
             数据统计
           </button>
         </PermissionWrapper>
+        <PermissionWrapper permission="PAYMENT:MANAGE">
+          <button
+            onClick={() => setActiveTab('payment')}
+            style={{
+              padding: '12px 24px',
+              border: 'none',
+              background: activeTab === 'payment' ? '#007bff' : '#555555',
+              color: '#fff',
+              cursor: 'pointer',
+              fontSize: '16px',
+              fontWeight: activeTab === 'payment' ? 'bold' : 'normal',
+              borderRadius: '4px',
+              transition: 'all 0.3s ease'
+            }}
+          >
+            支付管理
+          </button>
+        </PermissionWrapper>
         <PermissionWrapper permission="CONFIG:MANAGE">
           <button
             onClick={() => {
               setActiveTab('config')
               loadBonusConfig()
+              loadAllTeamNames()
+              loadTeamLogos()
             }}
             style={{
               padding: '12px 24px',
@@ -3628,7 +3946,7 @@ function AppContent() {
               transition: 'all 0.3s ease'
             }}
           >
-            加成配置
+            配置管理
           </button>
         </PermissionWrapper>
         {/* 用户管理 - 仅超级管理员可见 */}
@@ -3826,8 +4144,8 @@ function AppContent() {
       )}
 
       {activeTab === 'view' && (
-      <div>
-          <h2>查看考勤记录</h2>
+      <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px', minWidth: '1100px' }}>
+          <h2 style={{ color: '#fff' }}>查看考勤记录</h2>
           
           {/* 错误提示 */}
           {error && (
@@ -3844,7 +4162,7 @@ function AppContent() {
           )}
           
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', minWidth: '1000px', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: '#f8f9fa' }}>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>考勤名称</th>
@@ -3854,7 +4172,7 @@ function AppContent() {
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>出勤标准</th>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>起始时间</th>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>结束时间</th>
-                  <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>状态</th>
+                  <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', minWidth: '80px' }}>状态</th>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>创建时间</th>
                   <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left' }}>操作</th>
                 </tr>
@@ -3883,7 +4201,7 @@ function AppContent() {
                     <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
                       {session.endTime ? new Date(session.endTime).toLocaleString() : '未设置'}
                     </td>
-                    <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                    <td style={{ padding: '12px', border: '1px solid #dee2e6', minWidth: '80px', whiteSpace: 'nowrap' }}>
                       {session.status === 'ADDED' && '已添加'}
                       {session.status === 'SAVED' && '已保存'}
                       {session.status === 'SETTLED' && '已结算'}
@@ -3941,7 +4259,7 @@ function AppContent() {
       )}
 
       {activeTab === 'season' && (
-        <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px' }}>
+        <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px', minWidth: '900px' }}>
           <h2 style={{ color: '#fff', marginBottom: '20px' }}>赛季管理</h2>
           
           {/* 添加赛季表单 */}
@@ -4064,7 +4382,7 @@ function AppContent() {
               <div style={{ color: '#fff', textAlign: 'center', padding: '20px' }}>暂无赛季数据</div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <table style={{ width: '100%', minWidth: '850px', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: '#404040' }}>
                       <th style={{ padding: '12px', border: '1px solid #555', textAlign: 'left', color: '#fff' }}>赛季名称</th>
@@ -6428,10 +6746,21 @@ function AppContent() {
       )}
 
       {activeTab === 'ranking' && (
-        <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px' }}>
+        <div style={{ 
+          background: '#2d2d2d', 
+          backgroundImage: 'url(/images/背景.png)',
+          backgroundSize: '100% 100%',
+          backgroundPosition: 'center center',
+          backgroundRepeat: 'no-repeat',
+          backgroundAttachment: 'local',
+          padding: '60px', 
+          borderRadius: '8px', 
+          minWidth: '1100px',
+          position: 'relative'
+        }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <h2 style={{ color: '#fff', margin: 0 }}>查看榜单</h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginLeft: '40px', marginTop: '40px' }}>
+              <h2 className="ranking-title" style={{ margin: 0, fontFamily: 'RuiZiChaoPai, Arial, sans-serif' }}>赛季榜单</h2>
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button
                   onClick={openLogModal}
@@ -6485,7 +6814,7 @@ function AppContent() {
             </div>
             
             {/* 赛季选择下拉框 */}
-            <div style={{ position: 'relative' }} className="ranking-season-dropdown-container">
+            <div style={{ position: 'relative', marginLeft: '-40px', marginTop: '40px' }} className="ranking-season-dropdown-container">
               <div style={{ 
                 display: 'flex', 
                 alignItems: 'center', 
@@ -6605,12 +6934,22 @@ function AppContent() {
       <div>
               {/* 榜单标题 */}
               <div style={{ marginBottom: '24px', textAlign: 'center' }}>
+                {/* Logo 图片 */}
+                <div style={{ marginBottom: '16px', marginTop: '40px' }}>
+                  <img 
+                    src="/images/logo.png" 
+                    alt="戰盟" 
+                    style={{ 
+                      maxWidth: '300px', 
+                      height: 'auto',
+                      display: 'block',
+                      margin: '0 auto'
+                    }} 
+                  />
+                </div>
                 <h3 style={{ color: '#fff', margin: '0 0 8px 0' }}>
-                  {rankingSeasonName} - 小组奖金榜单
+                  {rankingSeasonName} 戰盟风云榜
                 </h3>
-                <p style={{ color: '#ccc', margin: 0, fontSize: '14px' }}>
-                  共 {rankingData.length} 个小组参与结算
-                </p>
       </div>
 
               {/* 柱状图 */}
@@ -6621,7 +6960,7 @@ function AppContent() {
                 marginBottom: '20px'
               }}>
                 <h4 style={{ color: '#333', margin: '0 0 20px 0', textAlign: 'center' }}>
-                  小组总奖金柱状图
+                  奖金排行
                 </h4>
                 <div style={{ 
                   display: 'flex', 
@@ -6793,7 +7132,7 @@ function AppContent() {
                   justifyContent: 'space-between',
                   alignItems: 'center'
                 }}>
-                  <h4 style={{ margin: 0, color: '#fff' }}>队伍物品统计</h4>
+                  <h4 style={{ margin: 0, color: '#fff' }}>花粪统计</h4>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <button
                       onClick={() => setItemsDisplayMode('icons')}
@@ -6827,17 +7166,18 @@ function AppContent() {
                 </div>
 
                 {loadingTeamItems ? (
-                  <div style={{ textAlign: 'center', padding: '40px', color: '#ccc' }}>
+                  <div style={{ textAlign: 'center', padding: '40px', color: '#ccc', minHeight: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     加载中...
                   </div>
                 ) : teamItemsSummary.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px', color: '#ccc' }}>
+                  <div style={{ textAlign: 'center', padding: '40px', color: '#ccc', minHeight: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     暂无数据
                   </div>
                 ) : itemsDisplayMode === 'table' ? (
                   <div style={{ overflowX: 'auto' }}>
                     <table style={{ 
                       width: '100%', 
+                      minWidth: '1000px',
                       borderCollapse: 'collapse',
                       backgroundColor: '#3d3d3d'
                     }}>
@@ -6908,8 +7248,29 @@ function AppContent() {
                               padding: '12px 8px', 
                               border: '1px solid #555', 
                               color: '#fff',
-                              fontWeight: 'bold'
+                              fontWeight: 'bold',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px'
                             }}>
+                              {(() => {
+                                const logo = teamLogos.find((l: any) => l.teamName === team.teamName)
+                                return logo ? (
+                                  <img 
+                                    src={logo.logoPath} 
+                                    alt={team.teamName}
+                                    style={{ 
+                                      width: '24px', 
+                                      height: '24px', 
+                                      objectFit: 'contain',
+                                      borderRadius: '4px'
+                                    }}
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).style.display = 'none'
+                                    }}
+                                  />
+                                ) : null
+                              })()}
                               {team.teamName}
                             </td>
                             <td style={{ 
@@ -6976,8 +7337,29 @@ function AppContent() {
                           minWidth: '120px',
                           color: '#fff',
                           fontWeight: 'bold',
-                          fontSize: '14px'
+                          fontSize: '14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
                         }}>
+                          {(() => {
+                            const logo = teamLogos.find((l: any) => l.teamName === team.teamName)
+                            return logo ? (
+                              <img 
+                                src={logo.logoPath} 
+                                alt={team.teamName}
+                                style={{ 
+                                  width: '24px', 
+                                  height: '24px', 
+                                  objectFit: 'contain',
+                                  borderRadius: '4px'
+                                }}
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = 'none'
+                                }}
+                              />
+                            ) : null
+                          })()}
                           {team.teamName}
                         </div>
                         
@@ -7089,7 +7471,7 @@ function AppContent() {
                 }}>
                   <div style={{ textAlign: 'center' }}>排名</div>
                   <div>小组名称</div>
-                  <div style={{ textAlign: 'right' }}>总奖金</div>
+                  <div style={{ textAlign: 'right' }}>已结算/总奖金</div>
                 </div>
                 
                 {rankingData.map((team, index) => (
@@ -7113,9 +7495,11 @@ function AppContent() {
                     <div style={{ 
                       textAlign: 'right',
                       fontWeight: 'bold',
-                      color: team.totalReward >= 0 ? '#f44336' : '#333'
+                      fontSize: '14px'
                     }}>
-                      {team.totalReward > 0 ? '+' : ''}{team.totalReward}
+                      <span style={{ color: '#28a745' }}>{team.settledReward > 0 ? '+' : ''}{team.settledReward}</span>
+                      <span style={{ color: '#666' }}>/</span>
+                      <span style={{ color: team.totalReward >= 0 ? '#f44336' : '#333' }}>{team.totalReward > 0 ? '+' : ''}{team.totalReward}</span>
                     </div>
                   </div>
                 ))}
@@ -7154,7 +7538,7 @@ function AppContent() {
 
       {/* 数据统计页面 */}
       {activeTab === 'statistics' && (
-        <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px' }}>
+        <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px', minWidth: '1000px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h2 style={{ color: '#fff', margin: 0 }}>数据统计</h2>
           </div>
@@ -7926,7 +8310,12 @@ function AppContent() {
                       padding: '40px', 
                       color: '#999',
                       background: '#1a1a1a',
-                      borderRadius: '8px'
+                      borderRadius: '8px',
+                      minHeight: '300px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center'
                     }}>
                       <div style={{ fontSize: '16px', marginBottom: '8px' }}>暂无现金记录</div>
                       <div style={{ fontSize: '14px' }}>该团队在选定时间段内没有现金奖惩记录</div>
@@ -8286,7 +8675,12 @@ function AppContent() {
                           padding: '40px', 
                           color: '#999',
                           background: '#1a1a1a',
-                          borderRadius: '8px'
+                          borderRadius: '8px',
+                          minHeight: '300px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center'
                         }}>
                           <div style={{ fontSize: '16px', marginBottom: '8px' }}>暂无考勤记录</div>
                           <div style={{ fontSize: '14px' }}>该人员在选定时间段内没有考勤记录</div>
@@ -8503,7 +8897,11 @@ function AppContent() {
                 <div style={{ 
                   textAlign: 'center', 
                   padding: '40px',
-                  color: '#ccc' 
+                  color: '#ccc',
+                  minHeight: '300px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
                 }}>
                   暂无符合条件的结算记录
                 </div>
@@ -8659,9 +9057,433 @@ function AppContent() {
         </div>
       )}
 
+      {/* 支付管理页面 */}
+      {activeTab === 'payment' && (
+        <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px', minWidth: '1200px' }}>
+          <h2 style={{ color: '#fff', margin: '0 0 20px 0' }}>支付管理</h2>
+          
+          {/* 筛选区域 */}
+          <div style={{ 
+            background: '#3d3d3d', 
+            padding: '20px', 
+            borderRadius: '8px',
+            marginBottom: '20px'
+          }}>
+            <h3 style={{ margin: '0 0 16px 0', color: '#fff' }}>筛选条件</h3>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+              {/* 赛季选择 */}
+              <div>
+                <label style={{ color: '#ccc', display: 'block', marginBottom: '8px' }}>赛季</label>
+                <select
+                  value={paymentSeasonId || ''}
+                  onChange={(e) => setPaymentSeasonId(e.target.value ? Number(e.target.value) : null)}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    background: '#2d2d2d',
+                    color: '#fff',
+                    border: '1px solid #555',
+                    borderRadius: '4px'
+                  }}
+                >
+                  <option value="">全部赛季</option>
+                  {allSeasons.map(season => (
+                    <option key={season.id} value={season.id}>{season.name}</option>
+                  ))}
+                </select>
+              </div>
+              
+              {/* 团队名称搜索 */}
+              <div>
+                <label style={{ color: '#ccc', display: 'block', marginBottom: '8px' }}>团队名称</label>
+                <input
+                  type="text"
+                  value={paymentTeamName}
+                  onChange={(e) => setPaymentTeamName(e.target.value)}
+                  placeholder="输入团队名称搜索"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      setPaymentCurrentPage(1)
+                      loadPaymentRecords()
+                    }
+                  }}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    background: '#2d2d2d',
+                    color: '#fff',
+                    border: '1px solid #555',
+                    borderRadius: '4px'
+                  }}
+                />
+              </div>
+              
+              {/* 支付状态 */}
+              <div>
+                <label style={{ color: '#ccc', display: 'block', marginBottom: '8px' }}>支付状态</label>
+                <select
+                  value={paymentStatus}
+                  onChange={(e) => setPaymentStatus(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    background: '#2d2d2d',
+                    color: '#fff',
+                    border: '1px solid #555',
+                    borderRadius: '4px'
+                  }}
+                >
+                  <option value="ALL">全部</option>
+                  <option value="UNPAID">待支付</option>
+                  <option value="PAID">已支付</option>
+                </select>
+              </div>
+              
+              {/* 来源类型 */}
+              <div>
+                <label style={{ color: '#ccc', display: 'block', marginBottom: '8px' }}>来源类型</label>
+                <select
+                  value={paymentRecordType}
+                  onChange={(e) => setPaymentRecordType(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '8px',
+                    background: '#2d2d2d',
+                    color: '#fff',
+                    border: '1px solid #555',
+                    borderRadius: '4px'
+                  }}
+                >
+                  <option value="ALL">全部</option>
+                  <option value="SETTLEMENT">结算记录</option>
+                  <option value="MANUAL">手动添加</option>
+                  <option value="SYNTHESIS">合成记录</option>
+                </select>
+              </div>
+            </div>
+            
+            {/* 搜索按钮 */}
+            <div style={{ marginTop: '16px', display: 'flex', gap: '12px' }}>
+              <button
+                onClick={() => {
+                  setPaymentCurrentPage(1)
+                  loadPaymentRecords()
+                }}
+                disabled={isLoadingPayment}
+                style={{
+                  padding: '10px 24px',
+                  background: isLoadingPayment ? '#6c757d' : '#007bff',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: isLoadingPayment ? 'not-allowed' : 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}
+              >
+                {isLoadingPayment ? '搜索中...' : '搜索'}
+              </button>
+              <button
+                onClick={() => {
+                  setPaymentSeasonId(null)
+                  setPaymentTeamName('')
+                  setPaymentStatus('ALL')
+                  setPaymentRecordType('ALL')
+                  setPaymentCurrentPage(1)
+                  setTimeout(() => loadPaymentRecords(), 100)
+                }}
+                disabled={isLoadingPayment}
+                style={{
+                  padding: '10px 24px',
+                  background: '#6c757d',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: isLoadingPayment ? 'not-allowed' : 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                重置
+              </button>
+            </div>
+          </div>
+          
+          {/* 批量操作区域 */}
+          {selectedPaymentRecords.length > 0 && (
+            <div style={{ 
+              background: '#3d3d3d', 
+              padding: '16px', 
+              borderRadius: '8px',
+              marginBottom: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px'
+            }}>
+              <span style={{ color: '#fff' }}>
+                已选择 {selectedPaymentRecords.length} 条记录
+              </span>
+              <button
+                onClick={() => markAsPaid(selectedPaymentRecords)}
+                style={{
+                  padding: '8px 16px',
+                  background: '#28a745',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                批量支付
+              </button>
+              <button
+                onClick={() => revokePaid(selectedPaymentRecords)}
+                style={{
+                  padding: '8px 16px',
+                  background: '#dc3545',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                批量撤销支付
+              </button>
+              <button
+                onClick={() => setSelectedPaymentRecords([])}
+                style={{
+                  padding: '8px 16px',
+                  background: '#555',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                取消选择
+              </button>
+            </div>
+          )}
+          
+          {/* 金额记录列表 */}
+          <div style={{ overflowX: 'auto', minHeight: '400px', width: '100%' }}>
+            {isLoadingPayment ? (
+              <div style={{ 
+                textAlign: 'center', 
+                padding: '40px', 
+                color: '#999',
+                background: '#1a1a1a',
+                borderRadius: '8px',
+                minHeight: '400px',
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                加载中...
+              </div>
+            ) : paymentRecords.length > 0 ? (
+              <table style={{ width: '100%', minWidth: '1100px', borderCollapse: 'collapse', background: '#1a1a1a' }}>
+                <thead>
+                  <tr style={{ background: '#333' }}>
+                    <th style={{ padding: '12px', color: '#fff', textAlign: 'left' }}>
+                      <input
+                        type="checkbox"
+                        checked={selectedPaymentRecords.length === paymentRecords.length && paymentRecords.length > 0}
+                        onChange={toggleAllPaymentRecords}
+                        style={{ cursor: 'pointer' }}
+                      />
+                    </th>
+                    <th style={{ padding: '12px', color: '#fff', textAlign: 'left' }}>序号</th>
+                    <th style={{ padding: '12px', color: '#fff', textAlign: 'left' }}>赛季</th>
+                    <th style={{ padding: '12px', color: '#fff', textAlign: 'left' }}>团队</th>
+                    <th style={{ padding: '12px', color: '#fff', textAlign: 'left' }}>金额/数量</th>
+                    <th style={{ padding: '12px', color: '#fff', textAlign: 'left' }}>来源</th>
+                    <th style={{ padding: '12px', color: '#fff', textAlign: 'left' }}>关联考勤</th>
+                    <th style={{ padding: '12px', color: '#fff', textAlign: 'left' }}>支付状态</th>
+                    <th style={{ padding: '12px', color: '#fff', textAlign: 'left' }}>支付时间</th>
+                    <th style={{ padding: '12px', color: '#fff', textAlign: 'left' }}>操作人</th>
+                    <th style={{ padding: '12px', color: '#fff', textAlign: 'left' }}>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paymentRecords.map((record, index) => (
+                    <tr key={record.settlementRecordId} style={{ borderBottom: '1px solid #333' }}>
+                      <td style={{ padding: '12px' }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedPaymentRecords.includes(record.settlementRecordId)}
+                          onChange={() => togglePaymentRecordSelection(record.settlementRecordId)}
+                          style={{ cursor: 'pointer' }}
+                        />
+                      </td>
+                      <td style={{ padding: '12px', color: '#ccc' }}>
+                        {(paymentCurrentPage - 1) * 10 + index + 1}
+                      </td>
+                      <td style={{ padding: '12px', color: '#ccc' }}>
+                        {record.seasonName || '-'}
+                      </td>
+                      <td style={{ padding: '12px', color: '#fff', fontWeight: 'bold' }}>
+                        {record.teamName}
+                      </td>
+                      <td style={{ padding: '12px' }}>
+                        {record.rewardMode === 'CASH' ? (
+                          <span style={{ 
+                            color: record.cashAmount >= 0 ? '#28a745' : '#dc3545',
+                            fontWeight: 'bold'
+                          }}>
+                            {record.cashAmount >= 0 ? '+' : ''}{record.cashAmount}元
+                          </span>
+                        ) : (
+                          <span style={{ color: '#ccc' }}>
+                            {record.codeValue} x{record.quantity}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: '12px', color: '#999', fontSize: '13px' }}>
+                        {record.recordType}
+                      </td>
+                      <td style={{ padding: '12px', color: '#ccc', fontSize: '13px' }}>
+                        {record.attendanceSessionName || '-'}
+                      </td>
+                      <td style={{ padding: '12px' }}>
+                        <span style={{ 
+                          padding: '4px 8px',
+                          borderRadius: '4px',
+                          fontSize: '12px',
+                          fontWeight: 'bold',
+                          background: record.isPaid ? '#28a745' : '#ffc107',
+                          color: record.isPaid ? '#fff' : '#000'
+                        }}>
+                          {record.isPaid ? '已支付' : '待支付'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px', color: '#ccc', fontSize: '13px' }}>
+                        {record.paymentTime ? new Date(record.paymentTime).toLocaleString() : '-'}
+                      </td>
+                      <td style={{ padding: '12px', color: '#ccc', fontSize: '13px' }}>
+                        {record.operatorAccount || '-'}
+                      </td>
+                      <td style={{ padding: '12px' }}>
+                        {record.isPaid ? (
+                          <button
+                            onClick={() => revokePaid([record.settlementRecordId])}
+                            style={{
+                              padding: '6px 12px',
+                              background: '#dc3545',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontSize: '12px'
+                            }}
+                          >
+                            撤销支付
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => markAsPaid([record.settlementRecordId])}
+                            style={{
+                              padding: '6px 12px',
+                              background: '#28a745',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              fontSize: '12px'
+                            }}
+                          >
+                            支付
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div style={{ 
+                textAlign: 'center', 
+                padding: '40px', 
+                color: '#999', 
+                background: '#1a1a1a', 
+                borderRadius: '8px',
+                minHeight: '400px',
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                暂无支付记录
+              </div>
+            )}
+          </div>
+          
+          {/* 分页控件 */}
+          {paymentTotalPages > 0 && (
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              marginTop: '20px',
+              padding: '16px',
+              background: '#3d3d3d',
+              borderRadius: '8px'
+            }}>
+              <div style={{ color: '#ccc' }}>
+                共 {paymentTotalElements} 条记录，第 {paymentCurrentPage} / {paymentTotalPages} 页
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => setPaymentCurrentPage(Math.max(1, paymentCurrentPage - 1))}
+                  disabled={paymentCurrentPage === 1}
+                  style={{
+                    padding: '8px 16px',
+                    background: paymentCurrentPage === 1 ? '#555' : '#007bff',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: paymentCurrentPage === 1 ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  上一页
+                </button>
+                <button
+                  onClick={() => setPaymentCurrentPage(Math.min(paymentTotalPages, paymentCurrentPage + 1))}
+                  disabled={paymentCurrentPage === paymentTotalPages}
+                  style={{
+                    padding: '8px 16px',
+                    background: paymentCurrentPage === paymentTotalPages ? '#555' : '#007bff',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: paymentCurrentPage === paymentTotalPages ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  下一页
+                </button>
+              </div>
+            </div>
+          )}
+          
+          {/* 错误信息显示 */}
+          {error && (
+            <div style={{ 
+              background: '#dc3545', 
+              color: '#fff', 
+              padding: '12px', 
+              borderRadius: '4px',
+              marginTop: '16px'
+            }}>
+              {error}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 加成配置页面 */}
       {activeTab === 'config' && (
-        <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px' }}>
+        <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px', minWidth: '900px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h2 style={{ color: '#fff', margin: 0 }}>团队人数加成配置</h2>
             <div>
@@ -8876,6 +9698,204 @@ function AppContent() {
               <li>配置保存后立即生效，影响后续的考勤计算</li>
               <li>可以设置多个不重叠的人数区间，覆盖不同规模的团队</li>
             </ul>
+          </div>
+          
+          {/* 团徽管理 */}
+          <div style={{ 
+            marginTop: '40px', 
+            padding: '20px', 
+            background: '#2d2d2d', 
+            borderRadius: '8px',
+            border: '1px solid #444'
+          }}>
+            <h2 style={{ color: '#fff', margin: '0 0 20px 0' }}>团徽管理</h2>
+            
+            {/* 上传表单 */}
+            <div style={{ 
+              background: '#3d3d3d', 
+              padding: '20px', 
+              borderRadius: '8px',
+              marginBottom: '20px'
+            }}>
+              <h3 style={{ color: '#fff', margin: '0 0 15px 0', fontSize: '16px' }}>上传团徽</h3>
+              
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ color: '#ccc', display: 'block', marginBottom: '5px' }}>
+                  选择团队：
+                </label>
+                <select
+                  value={selectedTeamName}
+                  onChange={(e) => {
+                    setSelectedTeamName(e.target.value)
+                    setManualTeamName('')
+                  }}
+                  style={{
+                    padding: '8px',
+                    background: '#555',
+                    color: '#fff',
+                    border: '1px solid #666',
+                    borderRadius: '4px',
+                    width: '200px',
+                    marginRight: '10px'
+                  }}
+                >
+                  <option value="">-- 从列表选择 --</option>
+                  {allTeamNamesForLogo.map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+                <span style={{ color: '#ccc', margin: '0 10px' }}>或</span>
+                <input
+                  type="text"
+                  value={manualTeamName}
+                  onChange={(e) => {
+                    setManualTeamName(e.target.value)
+                    setSelectedTeamName('')
+                  }}
+                  placeholder="手动输入团队名称"
+                  style={{
+                    padding: '8px',
+                    background: '#555',
+                    color: '#fff',
+                    border: '1px solid #666',
+                    borderRadius: '4px',
+                    width: '200px'
+                  }}
+                />
+              </div>
+              
+              <div style={{ marginBottom: '15px' }}>
+                <label style={{ color: '#ccc', display: 'block', marginBottom: '5px' }}>
+                  选择图片：
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      setLogoFile(file)
+                    }
+                  }}
+                  style={{
+                    padding: '8px',
+                    background: '#555',
+                    color: '#fff',
+                    border: '1px solid #666',
+                    borderRadius: '4px',
+                    width: '300px'
+                  }}
+                />
+                {logoFile && (
+                  <div style={{ marginTop: '10px', color: '#4CAF50' }}>
+                    已选择: {logoFile.name}
+                  </div>
+                )}
+              </div>
+              
+              <button
+                onClick={uploadTeamLogo}
+                disabled={uploadingLogo || !logoFile || (!selectedTeamName && !manualTeamName.trim())}
+                style={{
+                  padding: '8px 16px',
+                  background: uploadingLogo || !logoFile || (!selectedTeamName && !manualTeamName.trim()) ? '#6c757d' : '#28a745',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: uploadingLogo || !logoFile || (!selectedTeamName && !manualTeamName.trim()) ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {uploadingLogo ? '上传中...' : '上传团徽'}
+              </button>
+            </div>
+            
+            {/* 团徽列表 */}
+            <div>
+              <h3 style={{ color: '#fff', margin: '0 0 15px 0', fontSize: '16px' }}>已上传的团徽</h3>
+              {teamLogos.length === 0 ? (
+                <div style={{ 
+                  color: '#ccc', 
+                  textAlign: 'center', 
+                  padding: '40px',
+                  border: '2px dashed #555',
+                  borderRadius: '8px'
+                }}>
+                  暂无团徽，请上传
+                </div>
+              ) : (
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', 
+                  gap: '15px' 
+                }}>
+                  {teamLogos.map((logo) => {
+                    console.log('渲染团徽:', logo.teamName, '路径:', logo.logoPath)
+                    return (
+                      <div key={logo.teamName} style={{ 
+                        background: '#3d3d3d', 
+                        padding: '15px', 
+                        borderRadius: '8px',
+                        border: '1px solid #555'
+                      }}>
+                        <div style={{ 
+                          width: '100%', 
+                          height: '120px', 
+                          background: '#2d2d2d',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginBottom: '10px',
+                          overflow: 'hidden'
+                        }}>
+                          <img 
+                            src={logo.logoPath} 
+                            alt={logo.teamName}
+                            style={{ 
+                              maxWidth: '100%', 
+                              maxHeight: '100%', 
+                              objectFit: 'contain' 
+                            }}
+                            onLoad={() => {
+                              console.log('图片加载成功:', logo.logoPath)
+                            }}
+                            onError={(e) => {
+                              console.error('图片加载失败:', logo.logoPath, '错误:', e)
+                              const target = e.target as HTMLImageElement
+                              console.error('失败时的图片src:', target.src)
+                              target.src = '/images/placeholder.png'
+                            }}
+                          />
+                        </div>
+                      <div style={{ 
+                        color: '#fff', 
+                        fontWeight: 'bold', 
+                        marginBottom: '5px',
+                        textAlign: 'center'
+                      }}>
+                        {logo.teamName}
+                      </div>
+                      <button
+                        onClick={() => deleteTeamLogo(logo.teamName)}
+                        style={{
+                          width: '100%',
+                          padding: '6px',
+                          background: '#dc3545',
+                          color: '#fff',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '12px'
+                        }}
+                      >
+                        删除
+                      </button>
+                    </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -9132,7 +10152,7 @@ function AppContent() {
             flexDirection: 'column'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, color: '#fff' }}>榜单详情 - 队伍物品统计</h3>
+              <h3 style={{ margin: 0, color: '#fff' }}>榜单详情 - 花粪统计</h3>
               <button
                 onClick={() => setShowTeamItemsModal(false)}
                 style={{
@@ -9232,8 +10252,29 @@ function AppContent() {
                           padding: '12px 8px', 
                           border: '1px solid #555', 
                           color: '#fff',
-                          fontWeight: 'bold'
+                          fontWeight: 'bold',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px'
                         }}>
+                          {(() => {
+                            const logo = teamLogos.find((l: any) => l.teamName === team.teamName)
+                            return logo ? (
+                              <img 
+                                src={logo.logoPath} 
+                                alt={team.teamName}
+                                style={{ 
+                                  width: '24px', 
+                                  height: '24px', 
+                                  objectFit: 'contain',
+                                  borderRadius: '4px'
+                                }}
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).style.display = 'none'
+                                }}
+                              />
+                            ) : null
+                          })()}
                           {team.teamName}
                         </td>
                         <td style={{ 
@@ -9896,13 +10937,13 @@ function AppContent() {
                     加载中...
                   </div>
                 ) : personalRankingData.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px', color: '#fff' }}>
+                  <div style={{ textAlign: 'center', padding: '40px', color: '#fff', minHeight: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     暂无数据
                   </div>
                 ) : (
                   <>
                     <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', color: '#fff' }}>
+                      <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', color: '#fff' }}>
                         <thead>
                           <tr style={{ background: '#404040' }}>
                             <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>排名</th>
@@ -10058,13 +11099,13 @@ function AppContent() {
                     加载中...
                   </div>
                 ) : teamRankingData.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px', color: '#fff' }}>
+                  <div style={{ textAlign: 'center', padding: '40px', color: '#fff', minHeight: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     暂无数据
                   </div>
                 ) : (
                   <>
                     <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', color: '#fff' }}>
+                      <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', color: '#fff' }}>
                         <thead>
                           <tr style={{ background: '#404040' }}>
                             <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>排名</th>
