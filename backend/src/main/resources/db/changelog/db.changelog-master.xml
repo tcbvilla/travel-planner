@@ -41,4 +41,7 @@
     <!-- 添加团徽表 -->
     <include file="changesets/012-add-team-logos.xml" relativeToChangelogFile="true"/>
 
+    <!-- 添加排名排除名单表 -->
+    <include file="changesets/013-add-ranking-exclusions.xml" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

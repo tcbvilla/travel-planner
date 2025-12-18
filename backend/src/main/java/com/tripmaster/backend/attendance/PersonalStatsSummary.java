@@ -13,6 +13,8 @@ public class PersonalStatsSummary {
     private int absentSessions;       // 缺勤次数
     private double attendanceRate;    // 出勤率
     private List<PersonalAttendanceRecord> records; // 详细记录列表
+    private Integer rank;              // 排名（新增）
+    private Integer totalRank;         // 总人数（新增）
     
     public PersonalStatsSummary() {
         this.totalSessions = 0;

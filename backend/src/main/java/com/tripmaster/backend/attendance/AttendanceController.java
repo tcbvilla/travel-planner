@@ -71,6 +71,9 @@ public class AttendanceController {
     @Autowired
     private TeamLogoRepository teamLogoRepository;
     
+    @Autowired
+    private RankingExclusionRepository rankingExclusionRepository;
+    
     @Value("${app.upload.team-logos-dir:${user.home}/uploads/team_logos}")
     private String teamLogosUploadDir;
 
@@ -3259,6 +3262,115 @@ public class AttendanceController {
             summary.setRecords(records);
             summary.calculateAttendanceRate(); // 在设置records之后计算出勤率
             
+            // ========== 计算排名 ==========
+            // 第一步：获取排除名单
+            List<String> exclusionList = rankingExclusionRepository.findAll().stream()
+                    .map(RankingExclusion::getMemberName)
+                    .collect(Collectors.toList());
+            
+            // 第二步：统计时间范围内所有人员的出勤数据（排除排除名单中的人员）
+            Map<String, PersonalRankingData> allMemberStats = new HashMap<>();
+            ObjectMapper rankingMapper = new ObjectMapper();
+            
+            for (AttendanceSession session : sessions) {
+                if (session.getMemberData() == null || session.getMemberData().isEmpty()) {
+                    continue;
+                }
+                
+                try {
+                    List<MemberData> memberDataList = rankingMapper.readValue(session.getMemberData(),
+                            rankingMapper.getTypeFactory().constructCollectionType(List.class, MemberData.class));
+                    
+                    for (MemberData member : memberDataList) {
+                        String name = member.get成员();
+                        if (name == null || name.trim().isEmpty()) {
+                            continue;
+                        }
+                        
+                        // 排除排除名单中的人员
+                        if (exclusionList.contains(name)) {
+                            continue;
+                        }
+                        
+                        PersonalRankingData stats = allMemberStats.computeIfAbsent(name, 
+                                k -> new PersonalRankingData(name));
+                        
+                        // 如果参加了考勤
+                        if (member.is参加考勤()) {
+                            stats.setAttendedSessions(stats.getAttendedSessions() + 1);
+                            
+                            // 判断是否达标（实际出勤）
+                            boolean isQualified = false;
+                            if ("区间助攻考勤".equals(session.getAttendanceType())) {
+                                isQualified = (member.get助攻后值() - member.get助攻前值()) >= session.getThreshold();
+                            } else {
+                                isQualified = (member.get后值() - member.get前值()) >= session.getThreshold();
+                            }
+                            
+                            if (isQualified) {
+                                stats.setQualifiedSessions(stats.getQualifiedSessions() + 1);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("解析考勤记录失败（排名计算）: " + e.getMessage());
+                    continue;
+                }
+            }
+            
+            // 第三步：计算出勤率
+            List<PersonalRankingData> rankingList = new ArrayList<>(allMemberStats.values());
+            for (PersonalRankingData data : rankingList) {
+                if (data.getAttendedSessions() > 0) {
+                    double rate = (double) data.getQualifiedSessions() / data.getAttendedSessions() * 100.0;
+                    data.setAttendanceRate(Math.round(rate * 100.0) / 100.0);
+                } else {
+                    data.setAttendanceRate(0.0);
+                }
+            }
+            
+            // 第四步：排序
+            rankingList.sort(Comparator.comparing(PersonalRankingData::getAttendanceRate).reversed()
+                    .thenComparing(PersonalRankingData::getQualifiedSessions, Comparator.reverseOrder())
+                    .thenComparing(PersonalRankingData::getMemberName));
+            
+            // 第五步：计算排名（有并列规则）
+            int currentRank = 1;
+            for (int i = 0; i < rankingList.size(); i++) {
+                PersonalRankingData current = rankingList.get(i);
+                
+                if (i > 0) {
+                    PersonalRankingData previous = rankingList.get(i - 1);
+                    // 如果出勤率和出勤次数都相同，则排名相同
+                    if (Math.abs(current.getAttendanceRate() - previous.getAttendanceRate()) < 0.01 &&
+                        current.getQualifiedSessions() == previous.getQualifiedSessions()) {
+                        current.setRank(previous.getRank());
+                    } else {
+                        currentRank = i + 1;
+                        current.setRank(currentRank);
+                    }
+                } else {
+                    current.setRank(1);
+                    currentRank = 1;
+                }
+            }
+            
+            // 第六步：找到当前人员的排名
+            PersonalRankingData memberRanking = rankingList.stream()
+                    .filter(data -> data.getMemberName().equals(memberName))
+                    .findFirst()
+                    .orElse(null);
+            
+            if (memberRanking != null) {
+                summary.setRank(memberRanking.getRank());
+                summary.setTotalRank(rankingList.size());
+            } else {
+                // 如果当前人员不在排名中（可能是排除名单中的人员，或者没有参加任何考勤）
+                summary.setRank(null);
+                summary.setTotalRank(rankingList.size());
+            }
+            // ========== 排名计算结束 ==========
+            
             return ResponseEntity.ok(summary);
         } catch (Exception e) {
             System.err.println("获取个人统计失败: " + e.getMessage());
@@ -3348,6 +3460,11 @@ public class AttendanceController {
             Season season = seasonRepository.findById(seasonId)
                     .orElseThrow(() -> new RuntimeException("未找到赛季: " + seasonId));
             
+            // 第一步：先获取排除名单（在统计之前就获取，确保排除名单中的人员不参与排名计算）
+            List<String> exclusionList = rankingExclusionRepository.findAll().stream()
+                    .map(RankingExclusion::getMemberName)
+                    .collect(Collectors.toList());
+            
             // 查询赛季内所有已结算的考勤记录（排除手动添加类型）
             List<AttendanceSession> allSessions = attendanceSessionRepository.findBySeasonIdAndSettledExcludingManual(seasonId);
             
@@ -3358,7 +3475,7 @@ public class AttendanceController {
                         .collect(Collectors.toList());
             }
             
-            // 统计每个人的出勤数据
+            // 统计每个人的出勤数据（排除排除名单中的人员）
             Map<String, PersonalRankingData> memberStats = new HashMap<>();
             ObjectMapper mapper = new ObjectMapper();
             
@@ -3375,6 +3492,11 @@ public class AttendanceController {
                         String name = member.get成员();
                         if (name == null || name.trim().isEmpty()) {
                             continue;
+                        }
+                        
+                        // 关键修改：在统计时就排除排除名单中的人员，不统计他们的数据
+                        if (exclusionList.contains(name)) {
+                            continue; // 跳过排除名单中的人员，不参与排名计算
                         }
                         
                         PersonalRankingData stats = memberStats.computeIfAbsent(name, 
@@ -3417,12 +3539,12 @@ public class AttendanceController {
                 }
             }
             
-            // 第一步：先按默认排序（desc，从高到低）排序完整列表
+            // 第二步：排序（此时已经排除了排除名单中的人员）
             rankingList.sort(Comparator.comparing(PersonalRankingData::getAttendanceRate).reversed()
                     .thenComparing(PersonalRankingData::getQualifiedSessions, Comparator.reverseOrder())
                     .thenComparing(PersonalRankingData::getMemberName));
             
-            // 第二步：在完整列表上计算排名（不考虑姓名筛选）
+            // 第三步：计算排名（此时已经排除了排除名单中的人员，所以排名是正确的）
             int currentRank = 1;
             for (int i = 0; i < rankingList.size(); i++) {
                 PersonalRankingData current = rankingList.get(i);
@@ -3443,21 +3565,21 @@ public class AttendanceController {
                 }
             }
             
-            // 第三步：应用姓名模糊查询过滤（排名已计算，保持不变）
+            // 第四步：应用姓名模糊查询过滤（排名已计算，保持不变）
             if (memberName != null && !memberName.trim().isEmpty()) {
                 rankingList = rankingList.stream()
                         .filter(data -> data.getMemberName().contains(memberName.trim()))
                         .collect(Collectors.toList());
             }
             
-            // 第四步：如果用户选择了asc排序，重新排序（但排名保持不变）
+            // 第五步：如果用户选择了asc排序，重新排序（但排名保持不变）
             if ("asc".equalsIgnoreCase(sortOrder)) {
                 rankingList.sort(Comparator.comparing(PersonalRankingData::getAttendanceRate)
                         .thenComparing(PersonalRankingData::getQualifiedSessions, Comparator.reverseOrder())
                         .thenComparing(PersonalRankingData::getMemberName));
             }
             
-            // 第五步：分页
+            // 第六步：分页
             int total = rankingList.size();
             int start = page * size;
             int end = Math.min(start + size, total);
@@ -4007,6 +4129,121 @@ public class AttendanceController {
                 "success", false,
                 "error", "删除失败: " + e.getMessage()
             ));
+        }
+    }
+    
+    // ==================== 排名排除名单管理接口 ====================
+    
+    /**
+     * 获取排名排除名单
+     */
+    @GetMapping("/ranking/exclusion-list")
+    public ResponseEntity<Map<String, Object>> getRankingExclusionList() {
+        try {
+            List<String> members = rankingExclusionRepository.findAll().stream()
+                    .map(RankingExclusion::getMemberName)
+                    .collect(Collectors.toList());
+            Map<String, Object> result = new HashMap<>();
+            result.put("members", members);
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            System.err.println("获取排名排除名单失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    /**
+     * 保存排名排除名单
+     */
+    @PostMapping("/ranking/exclusion-list")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> saveRankingExclusionList(@RequestBody Map<String, Object> request) {
+        try {
+            @SuppressWarnings("unchecked")
+            List<String> members = (List<String>) request.get("members");
+            if (members == null) {
+                return ResponseEntity.badRequest().body(Map.of("error", "members参数不能为空"));
+            }
+            
+            // 删除所有现有记录
+            rankingExclusionRepository.deleteAll();
+            
+            // 添加新记录
+            for (String memberName : members) {
+                if (memberName != null && !memberName.trim().isEmpty()) {
+                    RankingExclusion exclusion = new RankingExclusion();
+                    exclusion.setMemberName(memberName.trim());
+                    rankingExclusionRepository.save(exclusion);
+                }
+            }
+            
+            return ResponseEntity.ok(Map.of("success", true));
+        } catch (Exception e) {
+            System.err.println("保存排名排除名单失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    /**
+     * 删除排名排除名单中的成员
+     */
+    @DeleteMapping("/ranking/exclusion-list/{memberName}")
+    @Transactional
+    public ResponseEntity<Map<String, Object>> removeRankingExclusionMember(@PathVariable String memberName) {
+        try {
+            String decodedMemberName = java.net.URLDecoder.decode(memberName, StandardCharsets.UTF_8);
+            rankingExclusionRepository.deleteByMemberName(decodedMemberName);
+            return ResponseEntity.ok(Map.of("success", true));
+        } catch (Exception e) {
+            System.err.println("删除排名排除成员失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    /**
+     * 获取赛季中所有参与考勤的成员（包括未参与排名的）
+     */
+    @GetMapping("/seasons/{seasonId}/all-members")
+    public ResponseEntity<List<String>> getAllMembersInSeason(@PathVariable Long seasonId) {
+        try {
+            // 查询赛季内所有已结算的考勤记录（排除手动添加类型）
+            List<AttendanceSession> allSessions = attendanceSessionRepository.findBySeasonIdAndSettledExcludingManual(seasonId);
+            
+            Set<String> memberNames = new HashSet<>();
+            ObjectMapper mapper = new ObjectMapper();
+            
+            for (AttendanceSession session : allSessions) {
+                if (session.getMemberData() == null || session.getMemberData().isEmpty()) {
+                    continue;
+                }
+                
+                try {
+                    List<MemberData> memberDataList = mapper.readValue(session.getMemberData(),
+                            mapper.getTypeFactory().constructCollectionType(List.class, MemberData.class));
+                    
+                    for (MemberData member : memberDataList) {
+                        String name = member.get成员();
+                        if (name != null && !name.trim().isEmpty()) {
+                            memberNames.add(name.trim());
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("解析考勤记录失败: " + e.getMessage());
+                    continue;
+                }
+            }
+            
+            List<String> sortedMembers = new ArrayList<>(memberNames);
+            Collections.sort(sortedMembers);
+            
+            return ResponseEntity.ok(sortedMembers);
+        } catch (Exception e) {
+            System.err.println("获取赛季所有成员失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(Collections.emptyList());
         }
     }
 }

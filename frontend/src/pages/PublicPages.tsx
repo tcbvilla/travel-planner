@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
-import html2canvas from 'html2canvas'
+import { useState, useEffect } from 'react'
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -54,8 +53,7 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
 
-  // 查看排名弹窗相关状态
-  const [showRankingModal, setShowRankingModal] = useState(false)
+  // 查看排名相关状态
   const [rankingType, setRankingType] = useState<'personal' | 'team'>('personal')
   const [personalRankingData, setPersonalRankingData] = useState<any[]>([])
   const [personalRankingLoading, setPersonalRankingLoading] = useState(false)
@@ -101,7 +99,6 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
   const [selectedMember, setSelectedMember] = useState('')
   const [isSearching, setIsSearching] = useState(false)
   const [activeStatsTab, setActiveStatsTab] = useState<'team' | 'individual'>('team')
-  const personalExportRef = useRef<HTMLDivElement>(null)
 
   // ==================== 赛季榜单相关函数 ====================
   
@@ -218,7 +215,16 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
       setStartDate('')
       setEndDate('')
       loadSettlementDetails(rankingSeasonId)
+      // 阻止背景滚动
+      document.body.style.overflow = 'hidden'
     }
+  }
+
+  // 关闭结算明细弹窗
+  const closeDetailModal = () => {
+    setShowDetailModal(false)
+    // 恢复背景滚动
+    document.body.style.overflow = ''
   }
 
   // 应用筛选条件
@@ -248,32 +254,7 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
 
   // ==================== 查看排名相关函数 ====================
   
-  // 打开查看排名弹窗
-  const openRankingModal = () => {
-    if (!rankingSeasonId) {
-      alert('请先选择赛季')
-      return
-    }
-    setShowRankingModal(true)
-    setRankingType('personal')
-    loadAvailableRankingAttendanceTypes()
-    loadPersonalRanking()
-  }
-
-  // 关闭查看排名弹窗
-  const closeRankingModal = () => {
-    setShowRankingModal(false)
-    setPersonalRankingData([])
-    setTeamRankingData([])
-    setSelectedRankingAttendanceTypes([])
-    setRankingMemberName('')
-    setRankingTeamName('')
-    setRankingSortOrder('desc')
-    setPersonalRankingPage(0)
-    setTeamRankingPage(0)
-  }
-
-  // 加载可用考勤类型（排名弹窗专用）
+  // 加载可用考勤类型
   const loadAvailableRankingAttendanceTypes = async () => {
     try {
       const response = await fetch('/api/v1/attendance/attendance-types')
@@ -379,28 +360,40 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
 
   // 搜索和筛选变化时重新加载
   useEffect(() => {
-    if (showRankingModal && rankingType === 'personal') {
+    if (rankingSeasonId && rankingType === 'personal') {
       setPersonalRankingPage(0)
       loadPersonalRanking()
     }
-  }, [selectedRankingAttendanceTypes, rankingMemberName, rankingSortOrder])
+  }, [selectedRankingAttendanceTypes, rankingMemberName, rankingSortOrder, rankingSeasonId, rankingType])
 
   useEffect(() => {
-    if (showRankingModal && rankingType === 'team') {
+    if (rankingSeasonId && rankingType === 'team') {
       setTeamRankingPage(0)
       loadTeamRanking()
     }
-  }, [selectedRankingAttendanceTypes, rankingTeamName, rankingSortOrder])
+  }, [selectedRankingAttendanceTypes, rankingTeamName, rankingSortOrder, rankingSeasonId, rankingType])
 
   useEffect(() => {
-    if (showRankingModal) {
+    if (rankingSeasonId) {
       if (rankingType === 'personal') {
         loadPersonalRanking()
       } else {
         loadTeamRanking()
       }
     }
-  }, [rankingType, personalRankingPage, teamRankingPage])
+  }, [rankingType, personalRankingPage, teamRankingPage, rankingSeasonId])
+
+  // 当选择赛季时，初始化排名数据
+  useEffect(() => {
+    if (rankingSeasonId) {
+      loadAvailableRankingAttendanceTypes()
+      if (rankingType === 'personal') {
+        loadPersonalRanking()
+      } else {
+        loadTeamRanking()
+      }
+    }
+  }, [rankingSeasonId, rankingType])
 
   // ==================== 数据统计相关函数 ====================
   
@@ -630,38 +623,6 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
     setError(null)
   }, [selectedMember])
 
-  // 导出个人统计数据
-  const handleExportPersonalStats = async () => {
-    if (!personalStats || !personalExportRef.current) {
-      alert('无法导出：数据不完整')
-      return
-    }
-
-    try {
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
-      const canvas = await html2canvas(personalExportRef.current, {
-        backgroundColor: '#1a1a1a',
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
-        width: 1000,
-        height: personalExportRef.current.scrollHeight,
-        scrollX: 0,
-        scrollY: 0,
-        windowWidth: 1000,
-        windowHeight: personalExportRef.current.scrollHeight
-      })
-      
-      const link = document.createElement('a')
-      link.download = `${personalStats.memberName}_个人统计_${personalStats.timeRange}.jpg`
-      link.href = canvas.toDataURL('image/jpeg', 0.9)
-      link.click()
-    } catch (error) {
-      console.error('导出失败:', error)
-      alert('导出失败，请重试')
-    }
-  }
 
   // 监听团队选择变化，清除上一个团队的数据
   useEffect(() => {
@@ -688,6 +649,13 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
     document.addEventListener('mousedown', handleClickOutside)
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
+
+  // 组件卸载时恢复背景滚动
+  useEffect(() => {
+    return () => {
+      document.body.style.overflow = ''
     }
   }, [])
 
@@ -771,7 +739,7 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
           backgroundPosition: 'center center',
           backgroundRepeat: 'no-repeat',
           backgroundAttachment: 'local',
-          padding: '60px', 
+          padding: '250px 100px', 
           borderRadius: '8px', 
           minWidth: '1100px',
           position: 'relative'
@@ -779,22 +747,6 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginLeft: '40px', marginTop: '40px' }}>
               <h2 className="ranking-title" style={{ margin: 0, fontFamily: 'RuiZiChaoPai, Arial, sans-serif' }}>赛季榜单</h2>
-              {rankingSeasonId && (
-                <button
-                  onClick={openRankingModal}
-                  style={{
-                    padding: '8px 16px',
-                    background: '#17a2b8',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    fontSize: '14px'
-                  }}
-                >
-                  查看排名
-                </button>
-              )}
             </div>
             
             {/* 赛季选择下拉框 */}
@@ -1434,58 +1386,368 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                 )}
               </div>
 
-              {/* 排行榜表格 */}
-              <div style={{ 
-                background: '#3d3d3d', 
-                borderRadius: '8px',
-                overflow: 'hidden',
-                marginBottom: '20px'
-              }}>
-                <div style={{ 
-                  display: 'grid', 
-                  gridTemplateColumns: '60px 1fr 120px', 
-                  gap: '0',
-                  background: '#4a4a4a',
-                  padding: '12px',
-                  fontWeight: 'bold',
-                  color: '#fff',
-                  fontSize: '14px'
-                }}>
-                  <div style={{ textAlign: 'center' }}>排名</div>
-                  <div>小组名称</div>
-                  <div style={{ textAlign: 'right' }}>已结算/总奖金</div>
-                </div>
-                
-                {rankingData.map((team, index) => (
-                  <div key={team.teamName} style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: '60px 1fr 120px', 
-                    gap: '0',
-                    padding: '12px',
-                    borderBottom: index < rankingData.length - 1 ? '1px solid #555' : 'none',
-                    background: index % 2 === 0 ? '#3d3d3d' : '#353535',
-                    color: '#fff'
-                  }}>
-                    <div style={{ 
-                      textAlign: 'center',
-                      fontWeight: 'bold',
-                      color: index < 3 ? '#ffd700' : '#fff'
-                    }}>
-                      #{team.rank}
+              {/* 查看排名内容 */}
+              {/* 排名类型切换 */}
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '20px', justifyContent: 'center' }}>
+                <button
+                  onClick={() => {
+                    setRankingType('personal')
+                    if (rankingSeasonId) {
+                      loadAvailableRankingAttendanceTypes()
+                    }
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    background: rankingType === 'personal' ? '#007bff' : '#555',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  个人排名
+                </button>
+                <button
+                  onClick={() => {
+                    setRankingType('team')
+                    if (rankingSeasonId) {
+                      loadAvailableRankingAttendanceTypes()
+                    }
+                  }}
+                  style={{
+                    padding: '8px 16px',
+                    background: rankingType === 'team' ? '#007bff' : '#555',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  团队排名
+                </button>
+              </div>
+
+              {/* 个人排名内容 */}
+              {rankingType === 'personal' && (
+                <div>
+                  {/* 筛选条件 */}
+                  <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {/* 考勤类别多选 */}
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '8px', color: '#fff', fontWeight: 'bold' }}>
+                        考勤类别（可多选）:
+                      </label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        {availableRankingAttendanceTypes.map(type => (
+                          <label
+                            key={type}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '6px 12px',
+                              background: selectedRankingAttendanceTypes.includes(type) ? '#007bff' : '#555',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              color: '#fff'
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedRankingAttendanceTypes.includes(type)}
+                              onChange={() => toggleRankingAttendanceType(type)}
+                              style={{ cursor: 'pointer' }}
+                            />
+                            {type}
+                          </label>
+                        ))}
+                      </div>
                     </div>
-                    <div>{team.teamName}</div>
-                    <div style={{ 
-                      textAlign: 'right',
-                      fontWeight: 'bold',
-                      fontSize: '14px'
-                    }}>
-                      <span style={{ color: '#28a745' }}>{team.settledReward > 0 ? '+' : ''}{team.settledReward}</span>
-                      <span style={{ color: '#666' }}>/</span>
-                      <span style={{ color: team.totalReward >= 0 ? '#f44336' : '#333' }}>{team.totalReward > 0 ? '+' : ''}{team.totalReward}</span>
+
+                    {/* 姓名搜索和排序 */}
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', marginBottom: '8px', color: '#fff', fontWeight: 'bold' }}>
+                          姓名搜索:
+                        </label>
+                        <input
+                          type="text"
+                          value={rankingMemberName}
+                          onChange={(e) => setRankingMemberName(e.target.value)}
+                          placeholder="输入姓名进行模糊查询"
+                          style={{
+                            width: '100%',
+                            padding: '8px 12px',
+                            border: '1px solid #555',
+                            borderRadius: '4px',
+                            background: '#1a1a1a',
+                            color: '#fff',
+                            fontSize: '14px'
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '8px', color: '#fff', fontWeight: 'bold' }}>
+                          排序方式:
+                        </label>
+                        <select
+                          value={rankingSortOrder}
+                          onChange={(e) => setRankingSortOrder(e.target.value as 'asc' | 'desc')}
+                          style={{
+                            padding: '8px 12px',
+                            border: '1px solid #555',
+                            borderRadius: '4px',
+                            background: '#1a1a1a',
+                            color: '#fff',
+                            fontSize: '14px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <option value="desc">出勤率从高到低</option>
+                          <option value="asc">出勤率从低到高</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
+
+                  {/* 排名表格 */}
+                  {personalRankingLoading ? (
+                    <div style={{ textAlign: 'center', padding: '40px', color: '#fff' }}>
+                      加载中...
+                    </div>
+                  ) : personalRankingData.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '40px', color: '#fff', minHeight: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      暂无数据
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', color: '#fff' }}>
+                          <thead>
+                            <tr style={{ background: '#404040' }}>
+                              <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>排名</th>
+                              <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>人员</th>
+                              <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>出勤率</th>
+                              <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>实际出勤次数</th>
+                              <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>应参与考勤次数</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {personalRankingData.map((item, index) => (
+                              <tr key={index} style={{ background: index % 2 === 0 ? '#2d2d2d' : '#1a1a1a' }}>
+                                <td style={{ padding: '12px', border: '1px solid #555' }}>{item.rank}</td>
+                                <td style={{ padding: '12px', border: '1px solid #555' }}>{item.memberName}</td>
+                                <td style={{ padding: '12px', border: '1px solid #555' }}>
+                                  {item.attendanceRate.toFixed(2)}%
+                                </td>
+                                <td style={{ padding: '12px', border: '1px solid #555' }}>{item.qualifiedSessions}</td>
+                                <td style={{ padding: '12px', border: '1px solid #555' }}>{item.attendedSessions}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* 分页 */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
+                        <div style={{ color: '#fff' }}>
+                          共 {personalRankingTotal} 条记录，第 {personalRankingPage + 1} 页，共 {Math.ceil(personalRankingTotal / personalRankingSize)} 页
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            onClick={() => setPersonalRankingPage(prev => Math.max(0, prev - 1))}
+                            disabled={personalRankingPage === 0}
+                            style={{
+                              padding: '6px 12px',
+                              background: personalRankingPage === 0 ? '#555' : '#007bff',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: personalRankingPage === 0 ? 'not-allowed' : 'pointer'
+                            }}
+                          >
+                            上一页
+                          </button>
+                          <button
+                            onClick={() => setPersonalRankingPage(prev => prev + 1)}
+                            disabled={personalRankingPage >= Math.ceil(personalRankingTotal / personalRankingSize) - 1}
+                            style={{
+                              padding: '6px 12px',
+                              background: personalRankingPage >= Math.ceil(personalRankingTotal / personalRankingSize) - 1 ? '#555' : '#007bff',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: personalRankingPage >= Math.ceil(personalRankingTotal / personalRankingSize) - 1 ? 'not-allowed' : 'pointer'
+                            }}
+                          >
+                            下一页
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* 团队排名内容 */}
+              {rankingType === 'team' && (
+                <div>
+                  {/* 筛选条件 */}
+                  <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {/* 考勤类别多选 */}
+                    <div>
+                      <label style={{ display: 'block', marginBottom: '8px', color: '#fff', fontWeight: 'bold' }}>
+                        考勤类别（可多选）:
+                      </label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                        {availableRankingAttendanceTypes.map(type => (
+                          <label
+                            key={type}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                              padding: '6px 12px',
+                              background: selectedRankingAttendanceTypes.includes(type) ? '#007bff' : '#555',
+                              borderRadius: '4px',
+                              cursor: 'pointer',
+                              color: '#fff'
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedRankingAttendanceTypes.includes(type)}
+                              onChange={() => toggleRankingAttendanceType(type)}
+                              style={{ cursor: 'pointer' }}
+                            />
+                            {type}
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 团队名搜索和排序 */}
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <div style={{ flex: 1 }}>
+                        <label style={{ display: 'block', marginBottom: '8px', color: '#fff', fontWeight: 'bold' }}>
+                          团队名搜索:
+                        </label>
+                        <input
+                          type="text"
+                          value={rankingTeamName}
+                          onChange={(e) => setRankingTeamName(e.target.value)}
+                          placeholder="输入团队名进行模糊查询"
+                          style={{
+                            width: '100%',
+                            padding: '8px 12px',
+                            border: '1px solid #555',
+                            borderRadius: '4px',
+                            background: '#1a1a1a',
+                            color: '#fff',
+                            fontSize: '14px'
+                          }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', marginBottom: '8px', color: '#fff', fontWeight: 'bold' }}>
+                          排序方式:
+                        </label>
+                        <select
+                          value={rankingSortOrder}
+                          onChange={(e) => setRankingSortOrder(e.target.value as 'asc' | 'desc')}
+                          style={{
+                            padding: '8px 12px',
+                            border: '1px solid #555',
+                            borderRadius: '4px',
+                            background: '#1a1a1a',
+                            color: '#fff',
+                            fontSize: '14px',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <option value="desc">平均出勤率从高到低</option>
+                          <option value="asc">平均出勤率从低到高</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 排名表格 */}
+                  {teamRankingLoading ? (
+                    <div style={{ textAlign: 'center', padding: '40px', color: '#fff' }}>
+                      加载中...
+                    </div>
+                  ) : teamRankingData.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '40px', color: '#fff', minHeight: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      暂无数据
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ overflowX: 'auto' }}>
+                        <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', color: '#fff' }}>
+                          <thead>
+                            <tr style={{ background: '#404040' }}>
+                              <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>排名</th>
+                              <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>团队名</th>
+                              <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>平均出勤率（加成后）</th>
+                              <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>参与考勤次数</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {teamRankingData.map((item, index) => (
+                              <tr key={index} style={{ background: index % 2 === 0 ? '#2d2d2d' : '#1a1a1a' }}>
+                                <td style={{ padding: '12px', border: '1px solid #555' }}>{item.rank}</td>
+                                <td style={{ padding: '12px', border: '1px solid #555' }}>{item.teamName}</td>
+                                <td style={{ padding: '12px', border: '1px solid #555' }}>
+                                  {item.averageAttendanceRate.toFixed(2)}%
+                                </td>
+                                <td style={{ padding: '12px', border: '1px solid #555' }}>{item.totalSessions}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* 分页 */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
+                        <div style={{ color: '#fff' }}>
+                          共 {teamRankingTotal} 条记录，第 {teamRankingPage + 1} 页，共 {Math.ceil(teamRankingTotal / teamRankingSize)} 页
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button
+                            onClick={() => setTeamRankingPage(prev => Math.max(0, prev - 1))}
+                            disabled={teamRankingPage === 0}
+                            style={{
+                              padding: '6px 12px',
+                              background: teamRankingPage === 0 ? '#555' : '#007bff',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: teamRankingPage === 0 ? 'not-allowed' : 'pointer'
+                            }}
+                          >
+                            上一页
+                          </button>
+                          <button
+                            onClick={() => setTeamRankingPage(prev => prev + 1)}
+                            disabled={teamRankingPage >= Math.ceil(teamRankingTotal / teamRankingSize) - 1}
+                            style={{
+                              padding: '6px 12px',
+                              background: teamRankingPage >= Math.ceil(teamRankingTotal / teamRankingSize) - 1 ? '#555' : '#007bff',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: teamRankingPage >= Math.ceil(teamRankingTotal / teamRankingSize) - 1 ? 'not-allowed' : 'pointer'
+                            }}
+                          >
+                            下一页
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
 
               {/* 查看明细按钮 */}
               <div style={{ 
@@ -2528,6 +2790,12 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                           <div style={{ color: '#fff', fontSize: '24px', fontWeight: 'bold' }}>
                             {personalStats.attendanceRate.toFixed(1)}%
                           </div>
+                          {/* 显示排名 */}
+                          {personalStats.rank && personalStats.totalRank && (
+                            <div style={{ color: '#fff', fontSize: '12px', marginTop: '4px', opacity: 0.9 }}>
+                              排名: {personalStats.rank}/{personalStats.totalRank}
+                            </div>
+                          )}
                         </div>
                       </div>
                       
@@ -2635,30 +2903,43 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
 
       {/* 结算明细弹窗 */}
       {showDetailModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            background: '#2d2d2d',
-            padding: '24px',
-            borderRadius: '8px',
-            border: '1px solid #555',
-            maxWidth: '80%',
-            maxHeight: '80%',
-            width: '900px',
-            overflow: 'hidden',
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
             display: 'flex',
-            flexDirection: 'column'
-          }}>
+            justifyContent: 'center',
+            alignItems: 'flex-start',
+            zIndex: 1000,
+            overflow: 'auto',
+            padding: '20px 0'
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              closeDetailModal()
+            }
+          }}
+        >
+          <div 
+            style={{
+              background: '#2d2d2d',
+              padding: '24px',
+              borderRadius: '8px',
+              border: '1px solid #555',
+              maxWidth: '90%',
+              width: '900px',
+              display: 'flex',
+              flexDirection: 'column',
+              margin: '20px auto',
+              overflow: 'hidden',
+              maxHeight: 'calc(100vh - 40px)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* 弹窗标题 */}
             <div style={{
               display: 'flex',
@@ -2666,13 +2947,14 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
               alignItems: 'center',
               marginBottom: '20px',
               borderBottom: '1px solid #555',
-              paddingBottom: '16px'
+              paddingBottom: '16px',
+              flexShrink: 0
             }}>
               <h3 style={{ color: '#fff', margin: 0 }}>
                 {rankingSeasonName} - 结算明细
               </h3>
               <button
-                onClick={() => setShowDetailModal(false)}
+                onClick={closeDetailModal}
                 style={{
                   background: '#f44336',
                   color: '#fff',
@@ -2687,13 +2969,88 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
               </button>
             </div>
 
-            {/* 筛选条件 */}
+            {/* 可滚动内容区域 - 包含小组奖金排名、筛选条件和明细 */}
             <div style={{ 
-              background: '#3d3d3d', 
-              padding: '16px', 
-              borderRadius: '6px',
-              marginBottom: '16px' 
+              flex: 1, 
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              minHeight: 0,
+              display: 'flex',
+              flexDirection: 'column'
             }}>
+              {/* 小组奖金排名 - 限制高度 */}
+              <div style={{ 
+                marginBottom: '24px',
+                flexShrink: 0
+              }}>
+                <h4 style={{ color: '#fff', margin: '0 0 16px 0' }}>
+                  {rankingSeasonName} - 小组奖金排名
+                </h4>
+                <div style={{ 
+                  background: '#3d3d3d', 
+                  borderRadius: '8px',
+                  overflow: 'hidden',
+                  maxHeight: '300px',
+                  overflowY: 'auto'
+                }}>
+                  <div style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: '60px 1fr 120px', 
+                    gap: '0',
+                    background: '#4a4a4a',
+                    padding: '12px',
+                    fontWeight: 'bold',
+                    color: '#fff',
+                    fontSize: '14px',
+                    position: 'sticky',
+                    top: 0,
+                    zIndex: 10
+                  }}>
+                    <div style={{ textAlign: 'center' }}>排名</div>
+                    <div>小组名称</div>
+                    <div style={{ textAlign: 'right' }}>已结算/总奖金</div>
+                  </div>
+                  
+                  {rankingData.map((team, index) => (
+                    <div key={team.teamName} style={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: '60px 1fr 120px', 
+                      gap: '0',
+                      padding: '12px',
+                      borderBottom: index < rankingData.length - 1 ? '1px solid #555' : 'none',
+                      background: index % 2 === 0 ? '#3d3d3d' : '#353535',
+                      color: '#fff'
+                    }}>
+                      <div style={{ 
+                        textAlign: 'center',
+                        fontWeight: 'bold',
+                        color: index < 3 ? '#ffd700' : '#fff'
+                      }}>
+                        #{team.rank}
+                      </div>
+                      <div>{team.teamName}</div>
+                      <div style={{ 
+                        textAlign: 'right',
+                        fontWeight: 'bold',
+                        fontSize: '14px'
+                      }}>
+                        <span style={{ color: '#28a745' }}>{team.settledReward > 0 ? '+' : ''}{team.settledReward}</span>
+                        <span style={{ color: '#666' }}>/</span>
+                        <span style={{ color: team.totalReward >= 0 ? '#f44336' : '#333' }}>{team.totalReward > 0 ? '+' : ''}{team.totalReward}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* 筛选条件 */}
+              <div style={{ 
+                background: '#3d3d3d', 
+                padding: '16px', 
+                borderRadius: '6px',
+                marginBottom: '16px',
+                flexShrink: 0
+              }}>
               <div style={{ 
                 display: 'grid', 
                 gridTemplateColumns: '1fr 1fr', 
@@ -2821,497 +3178,98 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
               </div>
             </div>
 
-            {/* 明细内容 */}
-            <div style={{ flex: 1, overflow: 'auto' }}>
-              {loadingDetails ? (
-                <div style={{ 
-                  textAlign: 'center', 
-                  padding: '40px',
-                  color: '#fff' 
-                }}>
-                  加载中...
-                </div>
-              ) : settlementDetails.length === 0 ? (
-                <div style={{ 
-                  textAlign: 'center', 
-                  padding: '40px',
-                  color: '#ccc',
-                  minHeight: '300px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  暂无符合条件的结算记录
-                </div>
-              ) : (
-                <>
-                  {/* 表格头部 - 删除操作列 */}
+              {/* 明细内容 */}
+              <div style={{ 
+                flex: 1,
+                minHeight: 0
+              }}>
+                {loadingDetails ? (
                   <div style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: '150px 120px 200px 120px 1fr', 
-                    gap: '12px',
-                    background: '#4a4a4a',
-                    padding: '12px',
-                    borderRadius: '4px',
-                    fontWeight: 'bold',
-                    color: '#fff',
-                    fontSize: '14px',
-                    marginBottom: '8px'
+                    textAlign: 'center', 
+                    padding: '40px',
+                    color: '#fff' 
                   }}>
-                    <div>结算时间</div>
-                    <div>团队</div>
-                    <div>奖惩详情</div>
-                    <div>记录类型</div>
-                    <div>考勤名称</div>
+                    加载中...
                   </div>
-                  
-                  {/* 表格内容 - 删除操作列 */}
-                  <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
-                    {settlementDetails.map((detail, index) => (
-                      <div key={index} style={{ 
-                        display: 'grid', 
-                        gridTemplateColumns: '150px 120px 200px 120px 1fr', 
-                        gap: '12px',
-                        padding: '12px',
-                        background: index % 2 === 0 ? '#3d3d3d' : '#353535',
-                        color: '#fff',
-                        fontSize: '13px',
-                        borderRadius: '4px',
-                        marginBottom: '4px',
-                        alignItems: 'center'
-                      }}>
-                        <div>{detail.settlementTime}</div>
-                        <div>{detail.teamName}</div>
-                        <div style={{ 
-                          color: detail.codeValue === '花' ? '#4caf50' : '#f44336',
-                          fontWeight: 'bold'
-                        }}>
-                          {detail.codeValue === '现金' ? detail.quantity : `${detail.codeValue} × ${detail.quantity}`}
-                        </div>
-                        <div style={{
-                          color: detail.isSynthetic ? '#ff9800' : '#2196f3',
-                          fontWeight: 'bold',
-                          fontSize: '12px'
-                        }}>
-                          {detail.synthesisType || '原始记录'}
-                        </div>
-                        <div>{detail.attendanceName}</div>
-                      </div>
-                    ))}
+                ) : settlementDetails.length === 0 ? (
+                  <div style={{ 
+                    textAlign: 'center', 
+                    padding: '40px',
+                    color: '#ccc',
+                    minHeight: '300px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    暂无符合条件的结算记录
                   </div>
-                </>
-              )}
+                ) : (
+                  <>
+                    {/* 表格头部 */}
+                    <div style={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: '150px 120px 200px 120px 1fr', 
+                      gap: '12px',
+                      background: '#4a4a4a',
+                      padding: '12px',
+                      borderRadius: '4px',
+                      fontWeight: 'bold',
+                      color: '#fff',
+                      fontSize: '14px',
+                      marginBottom: '8px',
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 10
+                    }}>
+                      <div>结算时间</div>
+                      <div>团队</div>
+                      <div>奖惩详情</div>
+                      <div>记录类型</div>
+                      <div>考勤名称</div>
+                    </div>
+                    
+                    {/* 表格内容 - 移除内部的 maxHeight，让外层容器控制滚动 */}
+                    <div>
+                      {settlementDetails.map((detail, index) => (
+                        <div key={index} style={{ 
+                          display: 'grid', 
+                          gridTemplateColumns: '150px 120px 200px 120px 1fr', 
+                          gap: '12px',
+                          padding: '12px',
+                          background: index % 2 === 0 ? '#3d3d3d' : '#353535',
+                          color: '#fff',
+                          fontSize: '13px',
+                          borderRadius: '4px',
+                          marginBottom: '4px',
+                          alignItems: 'center'
+                        }}>
+                          <div>{detail.settlementTime}</div>
+                          <div>{detail.teamName}</div>
+                          <div style={{ 
+                            color: detail.codeValue === '花' ? '#4caf50' : '#f44336',
+                            fontWeight: 'bold'
+                          }}>
+                            {detail.codeValue === '现金' ? detail.quantity : `${detail.codeValue} × ${detail.quantity}`}
+                          </div>
+                          <div style={{
+                            color: detail.isSynthetic ? '#ff9800' : '#2196f3',
+                            fontWeight: 'bold',
+                            fontSize: '12px'
+                          }}>
+                            {detail.synthesisType || '原始记录'}
+                          </div>
+                          <div>{detail.attendanceName}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* 查看排名弹窗 */}
-      {showRankingModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.7)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 2000
-        }}
-        onClick={(e) => {
-          if (e.target === e.currentTarget) {
-            closeRankingModal()
-          }
-        }}
-        >
-          <div style={{
-            background: '#2d2d2d',
-            borderRadius: '8px',
-            padding: '24px',
-            width: '90%',
-            maxWidth: '1200px',
-            maxHeight: '90vh',
-            overflow: 'auto',
-            color: '#fff'
-          }}
-          onClick={(e) => e.stopPropagation()}
-          >
-            {/* 弹窗标题 */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0, color: '#fff' }}>查看排名</h2>
-              <button
-                onClick={closeRankingModal}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#fff',
-                  fontSize: '24px',
-                  cursor: 'pointer',
-                  padding: '0',
-                  width: '30px',
-                  height: '30px'
-                }}
-              >
-                ×
-              </button>
-            </div>
-
-            {/* 排名类型切换 */}
-            <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
-              <button
-                onClick={() => setRankingType('personal')}
-                style={{
-                  padding: '8px 16px',
-                  background: rankingType === 'personal' ? '#007bff' : '#555',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
-              >
-                个人排名
-              </button>
-              <button
-                onClick={() => setRankingType('team')}
-                style={{
-                  padding: '8px 16px',
-                  background: rankingType === 'team' ? '#007bff' : '#555',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer'
-                }}
-              >
-                团队排名
-              </button>
-            </div>
-
-            {/* 个人排名内容 */}
-            {rankingType === 'personal' && (
-              <div>
-                {/* 筛选条件 */}
-                <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {/* 考勤类别多选 */}
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '8px', color: '#fff', fontWeight: 'bold' }}>
-                      考勤类别（可多选）:
-                    </label>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                      {availableRankingAttendanceTypes.map(type => (
-                        <label
-                          key={type}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '6px 12px',
-                            background: selectedRankingAttendanceTypes.includes(type) ? '#007bff' : '#555',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            color: '#fff'
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedRankingAttendanceTypes.includes(type)}
-                            onChange={() => toggleRankingAttendanceType(type)}
-                            style={{ cursor: 'pointer' }}
-                          />
-                          {type}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* 姓名搜索和排序 */}
-                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', marginBottom: '8px', color: '#fff', fontWeight: 'bold' }}>
-                        姓名搜索:
-                      </label>
-                      <input
-                        type="text"
-                        value={rankingMemberName}
-                        onChange={(e) => setRankingMemberName(e.target.value)}
-                        placeholder="输入姓名进行模糊查询"
-                        style={{
-                          width: '100%',
-                          padding: '8px 12px',
-                          border: '1px solid #555',
-                          borderRadius: '4px',
-                          background: '#1a1a1a',
-                          color: '#fff',
-                          fontSize: '14px'
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '8px', color: '#fff', fontWeight: 'bold' }}>
-                        排序方式:
-                      </label>
-                      <select
-                        value={rankingSortOrder}
-                        onChange={(e) => setRankingSortOrder(e.target.value as 'asc' | 'desc')}
-                        style={{
-                          padding: '8px 12px',
-                          border: '1px solid #555',
-                          borderRadius: '4px',
-                          background: '#1a1a1a',
-                          color: '#fff',
-                          fontSize: '14px',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <option value="desc">出勤率从高到低</option>
-                        <option value="asc">出勤率从低到高</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 排名表格 */}
-                {personalRankingLoading ? (
-                  <div style={{ textAlign: 'center', padding: '40px', color: '#fff' }}>
-                    加载中...
-                  </div>
-                ) : personalRankingData.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px', color: '#fff', minHeight: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    暂无数据
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', color: '#fff' }}>
-                        <thead>
-                          <tr style={{ background: '#404040' }}>
-                            <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>排名</th>
-                            <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>人员</th>
-                            <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>出勤率</th>
-                            <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>实际出勤次数</th>
-                            <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>应参与考勤次数</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {personalRankingData.map((item, index) => (
-                            <tr key={index} style={{ background: index % 2 === 0 ? '#2d2d2d' : '#1a1a1a' }}>
-                              <td style={{ padding: '12px', border: '1px solid #555' }}>{item.rank}</td>
-                              <td style={{ padding: '12px', border: '1px solid #555' }}>{item.memberName}</td>
-                              <td style={{ padding: '12px', border: '1px solid #555' }}>
-                                {item.attendanceRate.toFixed(2)}%
-                              </td>
-                              <td style={{ padding: '12px', border: '1px solid #555' }}>{item.qualifiedSessions}</td>
-                              <td style={{ padding: '12px', border: '1px solid #555' }}>{item.attendedSessions}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* 分页 */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
-                      <div style={{ color: '#fff' }}>
-                        共 {personalRankingTotal} 条记录，第 {personalRankingPage + 1} 页，共 {Math.ceil(personalRankingTotal / personalRankingSize)} 页
-                      </div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                          onClick={() => setPersonalRankingPage(prev => Math.max(0, prev - 1))}
-                          disabled={personalRankingPage === 0}
-                          style={{
-                            padding: '6px 12px',
-                            background: personalRankingPage === 0 ? '#555' : '#007bff',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: personalRankingPage === 0 ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          上一页
-                        </button>
-                        <button
-                          onClick={() => setPersonalRankingPage(prev => prev + 1)}
-                          disabled={personalRankingPage >= Math.ceil(personalRankingTotal / personalRankingSize) - 1}
-                          style={{
-                            padding: '6px 12px',
-                            background: personalRankingPage >= Math.ceil(personalRankingTotal / personalRankingSize) - 1 ? '#555' : '#007bff',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: personalRankingPage >= Math.ceil(personalRankingTotal / personalRankingSize) - 1 ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          下一页
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* 团队排名内容 */}
-            {rankingType === 'team' && (
-              <div>
-                {/* 筛选条件 */}
-                <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {/* 考勤类别多选 */}
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '8px', color: '#fff', fontWeight: 'bold' }}>
-                      考勤类别（可多选）:
-                    </label>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                      {availableRankingAttendanceTypes.map(type => (
-                        <label
-                          key={type}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '6px',
-                            padding: '6px 12px',
-                            background: selectedRankingAttendanceTypes.includes(type) ? '#007bff' : '#555',
-                            borderRadius: '4px',
-                            cursor: 'pointer',
-                            color: '#fff'
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={selectedRankingAttendanceTypes.includes(type)}
-                            onChange={() => toggleRankingAttendanceType(type)}
-                            style={{ cursor: 'pointer' }}
-                          />
-                          {type}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* 团队名搜索和排序 */}
-                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ display: 'block', marginBottom: '8px', color: '#fff', fontWeight: 'bold' }}>
-                        团队名搜索:
-                      </label>
-                      <input
-                        type="text"
-                        value={rankingTeamName}
-                        onChange={(e) => setRankingTeamName(e.target.value)}
-                        placeholder="输入团队名进行模糊查询"
-                        style={{
-                          width: '100%',
-                          padding: '8px 12px',
-                          border: '1px solid #555',
-                          borderRadius: '4px',
-                          background: '#1a1a1a',
-                          color: '#fff',
-                          fontSize: '14px'
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', marginBottom: '8px', color: '#fff', fontWeight: 'bold' }}>
-                        排序方式:
-                      </label>
-                      <select
-                        value={rankingSortOrder}
-                        onChange={(e) => setRankingSortOrder(e.target.value as 'asc' | 'desc')}
-                        style={{
-                          padding: '8px 12px',
-                          border: '1px solid #555',
-                          borderRadius: '4px',
-                          background: '#1a1a1a',
-                          color: '#fff',
-                          fontSize: '14px',
-                          cursor: 'pointer'
-                        }}
-                      >
-                        <option value="desc">平均出勤率从高到低</option>
-                        <option value="asc">平均出勤率从低到高</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 排名表格 */}
-                {teamRankingLoading ? (
-                  <div style={{ textAlign: 'center', padding: '40px', color: '#fff' }}>
-                    加载中...
-                  </div>
-                ) : teamRankingData.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '40px', color: '#fff', minHeight: '300px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    暂无数据
-                  </div>
-                ) : (
-                  <>
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', color: '#fff' }}>
-                        <thead>
-                          <tr style={{ background: '#404040' }}>
-                            <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>排名</th>
-                            <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>团队名</th>
-                            <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>平均出勤率（加成后）</th>
-                            <th style={{ padding: '12px', textAlign: 'left', border: '1px solid #555' }}>参与考勤次数</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {teamRankingData.map((item, index) => (
-                            <tr key={index} style={{ background: index % 2 === 0 ? '#2d2d2d' : '#1a1a1a' }}>
-                              <td style={{ padding: '12px', border: '1px solid #555' }}>{item.rank}</td>
-                              <td style={{ padding: '12px', border: '1px solid #555' }}>{item.teamName}</td>
-                              <td style={{ padding: '12px', border: '1px solid #555' }}>
-                                {item.averageAttendanceRate.toFixed(2)}%
-                              </td>
-                              <td style={{ padding: '12px', border: '1px solid #555' }}>{item.totalSessions}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* 分页 */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
-                      <div style={{ color: '#fff' }}>
-                        共 {teamRankingTotal} 条记录，第 {teamRankingPage + 1} 页，共 {Math.ceil(teamRankingTotal / teamRankingSize)} 页
-                      </div>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <button
-                          onClick={() => setTeamRankingPage(prev => Math.max(0, prev - 1))}
-                          disabled={teamRankingPage === 0}
-                          style={{
-                            padding: '6px 12px',
-                            background: teamRankingPage === 0 ? '#555' : '#007bff',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: teamRankingPage === 0 ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          上一页
-                        </button>
-                        <button
-                          onClick={() => setTeamRankingPage(prev => prev + 1)}
-                          disabled={teamRankingPage >= Math.ceil(teamRankingTotal / teamRankingSize) - 1}
-                          style={{
-                            padding: '6px 12px',
-                            background: teamRankingPage >= Math.ceil(teamRankingTotal / teamRankingSize) - 1 ? '#555' : '#007bff',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: teamRankingPage >= Math.ceil(teamRankingTotal / teamRankingSize) - 1 ? 'not-allowed' : 'pointer'
-                          }}
-                        >
-                          下一页
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }
