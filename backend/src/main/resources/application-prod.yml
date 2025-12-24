@@ -11,6 +11,12 @@ spring:
   application:
     name: game-attendance-backend
   
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 10MB
+  
   # 数据源配置
   datasource:
     url: jdbc:postgresql://localhost:5432/game_attendance?user=postgres&password=postgres&sslmode=disable&authenticationPlugin=org.postgresql.plugin.authentication.cleartext.PasswordAuthenticator

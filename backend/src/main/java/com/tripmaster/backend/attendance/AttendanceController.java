@@ -17,6 +17,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.InputStreamReader;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -30,6 +31,9 @@ import java.util.Arrays;
 import com.tripmaster.backend.attendance.BattleResult;
 import com.tripmaster.backend.attendance.SessionStatus;
 import java.math.BigDecimal;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.http.HttpHeaders;
 
 @RestController
 @RequestMapping("/api/v1/attendance")
@@ -3938,28 +3942,31 @@ public class AttendanceController {
             @RequestParam("teamName") String teamName,
             @RequestParam("file") MultipartFile file) {
         try {
-            // 验证文件类型
+            // 验证文件类型 - 只支持JPG和PNG
             String contentType = file.getContentType();
-            if (contentType == null || !contentType.startsWith("image/")) {
-                return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "error", "只支持图片文件上传"
-                ));
-            }
-            
-            // 更严格的图片格式验证
-            String[] allowedTypes = {"image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"};
+            String[] allowedTypes = {"image/jpeg", "image/jpg", "image/png"};
             boolean isValidType = false;
-            for (String type : allowedTypes) {
-                if (type.equalsIgnoreCase(contentType)) {
-                    isValidType = true;
-                    break;
+            if (contentType != null) {
+                for (String type : allowedTypes) {
+                    if (type.equalsIgnoreCase(contentType)) {
+                        isValidType = true;
+                        break;
+                    }
                 }
             }
             if (!isValidType) {
                 return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
-                    "error", "不支持的图片格式，仅支持：jpg, jpeg, png, gif, webp"
+                    "error", "只支持JPG和PNG格式的图片文件"
+                ));
+            }
+            
+            // 验证文件大小 - 最大10MB
+            long maxSize = 10 * 1024 * 1024; // 10MB
+            if (file.getSize() > maxSize) {
+                return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "error", "文件大小不能超过10MB"
                 ));
             }
             
@@ -3992,21 +3999,27 @@ public class AttendanceController {
             // 生成文件名（使用团队名+时间戳+扩展名，避免冲突）
             String originalFilename = file.getOriginalFilename();
             String extension = "";
-            if (originalFilename != null && originalFilename.contains(".")) {
-                extension = originalFilename.substring(originalFilename.lastIndexOf("."));
-            } else {
-                // 根据 content type 确定扩展名
+            // 根据 content type 确定扩展名（只支持JPG和PNG）
+            if (contentType != null) {
                 if (contentType.contains("jpeg") || contentType.contains("jpg")) {
                     extension = ".jpg";
                 } else if (contentType.contains("png")) {
                     extension = ".png";
-                } else if (contentType.contains("gif")) {
-                    extension = ".gif";
-                } else if (contentType.contains("webp")) {
-                    extension = ".webp";
                 } else {
                     extension = ".png"; // 默认
                 }
+            } else if (originalFilename != null && originalFilename.contains(".")) {
+                // 如果contentType为空，尝试从文件名获取扩展名
+                String fileExt = originalFilename.substring(originalFilename.lastIndexOf(".")).toLowerCase();
+                if (fileExt.equals(".jpg") || fileExt.equals(".jpeg")) {
+                    extension = ".jpg";
+                } else if (fileExt.equals(".png")) {
+                    extension = ".png";
+                } else {
+                    extension = ".png"; // 默认
+                }
+            } else {
+                extension = ".png"; // 默认
             }
             
             String filename = teamName + "_" + System.currentTimeMillis() + extension;
@@ -4244,6 +4257,593 @@ public class AttendanceController {
             System.err.println("获取赛季所有成员失败: " + e.getMessage());
             e.printStackTrace();
             return ResponseEntity.status(500).body(Collections.emptyList());
+        }
+    }
+    
+    /**
+     * 导出成员详情为Excel
+     */
+    @GetMapping("/sessions/{id}/export-members")
+    public ResponseEntity<byte[]> exportMemberDetails(@PathVariable Long id) {
+        try {
+            AttendanceSession session = attendanceSessionRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("考勤会话不存在"));
+            
+            if (session.getMemberData() == null || session.getMemberData().isEmpty()) {
+                return ResponseEntity.badRequest().build();
+            }
+            
+            ObjectMapper mapper = new ObjectMapper();
+            List<DisplayRow> memberData;
+            
+            try {
+                // 尝试解析为DisplayRow
+                List<DisplayRow> parsedRows = mapper.readValue(session.getMemberData(), 
+                    mapper.getTypeFactory().constructCollectionType(List.class, DisplayRow.class));
+                
+                // 重新计算差值，确保正确（因为保存时可能没有保存差值）
+                memberData = new ArrayList<>();
+                for (DisplayRow row : parsedRows) {
+                    // 重新计算差值
+                    row.set差值(row.get后值() - row.get前值());
+                    row.set助攻差值(row.get助攻后值() - row.get助攻前值());
+                    memberData.add(row);
+                }
+            } catch (Exception e) {
+                // 如果解析失败，尝试解析为MemberData并转换
+                List<MemberData> memberDataList = mapper.readValue(session.getMemberData(), 
+                    mapper.getTypeFactory().constructCollectionType(List.class, MemberData.class));
+                
+                memberData = new ArrayList<>();
+                for (MemberData data : memberDataList) {
+                    DisplayRow row = new DisplayRow();
+                    row.set成员(data.get成员());
+                    row.set分组(data.get分组());
+                    row.set前值(data.get前值());
+                    row.set后值(data.get后值());
+                    row.set差值(data.get后值() - data.get前值());
+                    row.set助攻前值(data.get助攻前值());
+                    row.set助攻后值(data.get助攻后值());
+                    row.set助攻差值(data.get助攻后值() - data.get助攻前值());
+                    
+                    // 根据考勤类型选择达标判断标准
+                    if ("区间助攻考勤".equals(session.getAttendanceType())) {
+                        row.set达标((data.get助攻后值() - data.get助攻前值()) >= (session.getThreshold() != null ? session.getThreshold() : 1));
+                    } else {
+                        row.set达标((data.get后值() - data.get前值()) >= (session.getThreshold() != null ? session.getThreshold() : 1));
+                    }
+                    row.set参加考勤(data.is参加考勤());
+                    memberData.add(row);
+                }
+            }
+            
+            // 创建工作簿
+            Workbook workbook = new XSSFWorkbook();
+            Sheet sheet = workbook.createSheet("成员详情");
+            
+            // 创建标题行样式
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerFont.setFontHeightInPoints((short) 12);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setBorderBottom(BorderStyle.THIN);
+            headerStyle.setBorderTop(BorderStyle.THIN);
+            headerStyle.setBorderLeft(BorderStyle.THIN);
+            headerStyle.setBorderRight(BorderStyle.THIN);
+            headerStyle.setAlignment(HorizontalAlignment.CENTER);
+            
+            // 创建数据行样式
+            CellStyle dataStyle = workbook.createCellStyle();
+            dataStyle.setBorderBottom(BorderStyle.THIN);
+            dataStyle.setBorderTop(BorderStyle.THIN);
+            dataStyle.setBorderLeft(BorderStyle.THIN);
+            dataStyle.setBorderRight(BorderStyle.THIN);
+            
+            // 创建标题行
+            Row headerRow = sheet.createRow(0);
+            String[] headers = {"成员", "分组", "战功前值", "战功后值", "战功差值", 
+                               "助攻前值", "助攻后值", "助攻差值", "是否参加考勤", "是否达标"};
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+            
+            // 填充数据
+            int rowNum = 1;
+            for (DisplayRow member : memberData) {
+                Row row = sheet.createRow(rowNum++);
+                
+                int colNum = 0;
+                row.createCell(colNum++).setCellValue(member.get成员());
+                row.createCell(colNum++).setCellValue(member.get分组());
+                row.createCell(colNum++).setCellValue(member.get前值());
+                row.createCell(colNum++).setCellValue(member.get后值());
+                row.createCell(colNum++).setCellValue(member.get差值());
+                row.createCell(colNum++).setCellValue(member.get助攻前值());
+                row.createCell(colNum++).setCellValue(member.get助攻后值());
+                row.createCell(colNum++).setCellValue(member.get助攻差值());
+                row.createCell(colNum++).setCellValue(member.is参加考勤() ? "参加" : "不参加");
+                row.createCell(colNum++).setCellValue(member.is达标() ? "出勤" : "未出勤");
+                
+                // 应用样式
+                for (int i = 0; i < headers.length; i++) {
+                    row.getCell(i).setCellStyle(dataStyle);
+                }
+            }
+            
+            // 自动调整列宽
+            for (int i = 0; i < headers.length; i++) {
+                sheet.autoSizeColumn(i);
+                // 设置最小列宽
+                if (sheet.getColumnWidth(i) < 3000) {
+                    sheet.setColumnWidth(i, 3000);
+                }
+            }
+            
+            // 将工作簿写入字节数组
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            workbook.write(outputStream);
+            workbook.close();
+            
+            // 设置响应头 - 不设置文件名，避免中文编码问题（前端会自己生成文件名）
+            HttpHeaders responseHeaders = new HttpHeaders();
+            responseHeaders.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+            
+            // 不设置 Content-Disposition，前端会自己生成文件名
+            
+            return ResponseEntity.ok()
+                    .headers(responseHeaders)
+                    .body(outputStream.toByteArray());
+                    
+        } catch (Exception e) {
+            System.err.println("导出成员详情失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+    
+    /**
+     * 导出个人排名为Excel
+     */
+    @GetMapping("/ranking/personal/export")
+    public ResponseEntity<byte[]> exportPersonalRanking(
+            @RequestParam Long seasonId,
+            @RequestParam(required = false) List<String> attendanceTypes,
+            @RequestParam(required = false, defaultValue = "") String memberName,
+            @RequestParam(required = false, defaultValue = "desc") String sortOrder) {
+        try {
+            // 获取赛季信息
+            Season season = seasonRepository.findById(seasonId)
+                    .orElseThrow(() -> new RuntimeException("未找到赛季: " + seasonId));
+            
+            // 获取排除名单
+            List<String> exclusionList = rankingExclusionRepository.findAll().stream()
+                    .map(RankingExclusion::getMemberName)
+                    .collect(Collectors.toList());
+            
+            // 查询赛季内所有已结算的考勤记录（排除手动添加类型）
+            List<AttendanceSession> allSessions = attendanceSessionRepository.findBySeasonIdAndSettledExcludingManual(seasonId);
+            
+            // 如果指定了考勤类型，进行过滤
+            if (attendanceTypes != null && !attendanceTypes.isEmpty()) {
+                allSessions = allSessions.stream()
+                        .filter(session -> attendanceTypes.contains(session.getAttendanceType()))
+                        .collect(Collectors.toList());
+            }
+            
+            // 统计每个人的出勤数据（排除排除名单中的人员）
+            Map<String, PersonalRankingData> memberStats = new HashMap<>();
+            ObjectMapper mapper = new ObjectMapper();
+            
+            for (AttendanceSession session : allSessions) {
+                if (session.getMemberData() == null || session.getMemberData().isEmpty()) {
+                    continue;
+                }
+                
+                try {
+                    List<MemberData> memberDataList = mapper.readValue(session.getMemberData(),
+                            mapper.getTypeFactory().constructCollectionType(List.class, MemberData.class));
+                    
+                    for (MemberData member : memberDataList) {
+                        String name = member.get成员();
+                        if (name == null || name.trim().isEmpty()) {
+                            continue;
+                        }
+                        
+                        // 排除排除名单中的人员
+                        if (exclusionList.contains(name)) {
+                            continue;
+                        }
+                        
+                        PersonalRankingData stats = memberStats.computeIfAbsent(name, 
+                                k -> new PersonalRankingData(name));
+                        
+                        if (member.is参加考勤()) {
+                            stats.setAttendedSessions(stats.getAttendedSessions() + 1);
+                            
+                            boolean isQualified = false;
+                            if ("区间助攻考勤".equals(session.getAttendanceType())) {
+                                isQualified = (member.get助攻后值() - member.get助攻前值()) >= session.getThreshold();
+                            } else {
+                                isQualified = (member.get后值() - member.get前值()) >= session.getThreshold();
+                            }
+                            
+                            if (isQualified) {
+                                stats.setQualifiedSessions(stats.getQualifiedSessions() + 1);
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("解析考勤记录失败: " + e.getMessage());
+                    continue;
+                }
+            }
+            
+            // 计算出勤率
+            List<PersonalRankingData> rankingList = new ArrayList<>(memberStats.values());
+            for (PersonalRankingData data : rankingList) {
+                if (data.getAttendedSessions() > 0) {
+                    double rate = (double) data.getQualifiedSessions() / data.getAttendedSessions() * 100.0;
+                    data.setAttendanceRate(Math.round(rate * 100.0) / 100.0);
+                } else {
+                    data.setAttendanceRate(0.0);
+                }
+            }
+            
+            // 排序
+            rankingList.sort(Comparator.comparing(PersonalRankingData::getAttendanceRate).reversed()
+                    .thenComparing(PersonalRankingData::getQualifiedSessions, Comparator.reverseOrder())
+                    .thenComparing(PersonalRankingData::getMemberName));
+            
+            // 计算排名
+            int currentRank = 1;
+            for (int i = 0; i < rankingList.size(); i++) {
+                PersonalRankingData current = rankingList.get(i);
+                
+                if (i > 0) {
+                    PersonalRankingData previous = rankingList.get(i - 1);
+                    if (Math.abs(current.getAttendanceRate() - previous.getAttendanceRate()) < 0.01 &&
+                        current.getQualifiedSessions() == previous.getQualifiedSessions()) {
+                        current.setRank(previous.getRank());
+                    } else {
+                        currentRank = i + 1;
+                        current.setRank(currentRank);
+                    }
+                } else {
+                    current.setRank(1);
+                    currentRank = 1;
+                }
+            }
+            
+            // 应用姓名模糊查询过滤
+            if (memberName != null && !memberName.trim().isEmpty()) {
+                rankingList = rankingList.stream()
+                        .filter(data -> data.getMemberName().contains(memberName.trim()))
+                        .collect(Collectors.toList());
+            }
+            
+            // 如果用户选择了asc排序，重新排序
+            if ("asc".equalsIgnoreCase(sortOrder)) {
+                rankingList.sort(Comparator.comparing(PersonalRankingData::getAttendanceRate)
+                        .thenComparing(PersonalRankingData::getQualifiedSessions, Comparator.reverseOrder())
+                        .thenComparing(PersonalRankingData::getMemberName));
+            }
+            
+            // 创建工作簿
+            Workbook workbook = new XSSFWorkbook();
+            Sheet sheet = workbook.createSheet("个人排名");
+            
+            // 创建标题行样式
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerFont.setFontHeightInPoints((short) 12);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setBorderBottom(BorderStyle.THIN);
+            headerStyle.setBorderTop(BorderStyle.THIN);
+            headerStyle.setBorderLeft(BorderStyle.THIN);
+            headerStyle.setBorderRight(BorderStyle.THIN);
+            headerStyle.setAlignment(HorizontalAlignment.CENTER);
+            
+            // 创建数据行样式
+            CellStyle dataStyle = workbook.createCellStyle();
+            dataStyle.setBorderBottom(BorderStyle.THIN);
+            dataStyle.setBorderTop(BorderStyle.THIN);
+            dataStyle.setBorderLeft(BorderStyle.THIN);
+            dataStyle.setBorderRight(BorderStyle.THIN);
+            
+            // 创建标题行
+            Row headerRow = sheet.createRow(0);
+            String[] headers = {"排名", "姓名", "出勤率(%)", "实际出勤次数", "参与考勤次数"};
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+            
+            // 填充数据
+            int rowNum = 1;
+            for (PersonalRankingData data : rankingList) {
+                Row row = sheet.createRow(rowNum++);
+                
+                int colNum = 0;
+                row.createCell(colNum++).setCellValue(data.getRank() != null ? data.getRank() : 0);
+                row.createCell(colNum++).setCellValue(data.getMemberName());
+                row.createCell(colNum++).setCellValue(data.getAttendanceRate());
+                row.createCell(colNum++).setCellValue(data.getQualifiedSessions());
+                row.createCell(colNum++).setCellValue(data.getAttendedSessions());
+                
+                // 应用样式
+                for (int i = 0; i < headers.length; i++) {
+                    row.getCell(i).setCellStyle(dataStyle);
+                }
+            }
+            
+            // 自动调整列宽
+            for (int i = 0; i < headers.length; i++) {
+                sheet.autoSizeColumn(i);
+                if (sheet.getColumnWidth(i) < 3000) {
+                    sheet.setColumnWidth(i, 3000);
+                }
+            }
+            
+            // 将工作簿写入字节数组
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            workbook.write(outputStream);
+            workbook.close();
+            
+            // 设置响应头
+            HttpHeaders responseHeaders = new HttpHeaders();
+            responseHeaders.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+            
+            return ResponseEntity.ok()
+                    .headers(responseHeaders)
+                    .body(outputStream.toByteArray());
+                    
+        } catch (Exception e) {
+            System.err.println("导出个人排名失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+    
+    /**
+     * 导出团队排名为Excel
+     */
+    @GetMapping("/ranking/team/export")
+    public ResponseEntity<byte[]> exportTeamRanking(
+            @RequestParam Long seasonId,
+            @RequestParam(required = false) List<String> attendanceTypes,
+            @RequestParam(required = false, defaultValue = "") String teamName,
+            @RequestParam(required = false, defaultValue = "desc") String sortOrder) {
+        try {
+            // 获取赛季信息
+            Season season = seasonRepository.findById(seasonId)
+                    .orElseThrow(() -> new RuntimeException("未找到赛季: " + seasonId));
+            
+            // 查询赛季内所有已结算的考勤记录（排除手动添加类型）
+            List<AttendanceSession> allSessions = attendanceSessionRepository.findBySeasonIdAndSettledExcludingManual(seasonId);
+            
+            // 如果指定了考勤类型，进行过滤
+            if (attendanceTypes != null && !attendanceTypes.isEmpty()) {
+                allSessions = allSessions.stream()
+                        .filter(session -> attendanceTypes.contains(session.getAttendanceType()))
+                        .collect(Collectors.toList());
+            }
+            
+            // 统计每个团队的平均出勤率
+            Map<String, List<Double>> teamRatesMap = new HashMap<>();
+            ObjectMapper mapper = new ObjectMapper();
+            
+            for (AttendanceSession session : allSessions) {
+                if (session.getMemberData() == null || session.getMemberData().isEmpty()) {
+                    continue;
+                }
+                
+                try {
+                    List<MemberData> memberDataList = mapper.readValue(session.getMemberData(),
+                            mapper.getTypeFactory().constructCollectionType(List.class, MemberData.class));
+                    
+                    // 按团队分组统计
+                    Map<String, List<MemberData>> teamMembersMap = memberDataList.stream()
+                            .filter(member -> member.get分组() != null && !member.get分组().trim().isEmpty())
+                            .collect(Collectors.groupingBy(MemberData::get分组));
+                    
+                    // 计算每个团队在这次考勤中的出勤率（加成后）
+                    for (Map.Entry<String, List<MemberData>> entry : teamMembersMap.entrySet()) {
+                        String team = entry.getKey();
+                        List<MemberData> teamMembers = entry.getValue();
+                        
+                        // 计算参加考勤的人数
+                        long attendingCount = teamMembers.stream()
+                                .mapToLong(member -> member.is参加考勤() ? 1 : 0)
+                                .sum();
+                        
+                        if (attendingCount == 0) {
+                            continue;
+                        }
+                        
+                        // 计算达标人数
+                        long qualifiedCount = teamMembers.stream()
+                                .mapToLong(member -> {
+                                    if (!member.is参加考勤()) {
+                                        return 0;
+                                    }
+                                    boolean isQualified;
+                                    if ("区间助攻考勤".equals(session.getAttendanceType())) {
+                                        isQualified = (member.get助攻后值() - member.get助攻前值()) >= session.getThreshold();
+                                    } else {
+                                        isQualified = (member.get后值() - member.get前值()) >= session.getThreshold();
+                                    }
+                                    return isQualified ? 1 : 0;
+                                })
+                                .sum();
+                        
+                        // 计算出勤率
+                        double attendanceRate = (double) qualifiedCount / attendingCount * 100.0;
+                        attendanceRate = Math.round(attendanceRate * 100.0) / 100.0;
+                        
+                        // 应用加成
+                        int memberCount = (int) attendingCount;
+                        TeamSizeBonusRule applicableRule = bonusConfigService.getApplicableBonusRule(memberCount);
+                        double bonusRate = attendanceRate;
+                        
+                        if (applicableRule != null) {
+                            bonusRate = attendanceRate + applicableRule.getAttendanceRateBonus();
+                            if (bonusRate > 100.0) {
+                                bonusRate = 100.0;
+                            }
+                            bonusRate = Math.round(bonusRate * 100.0) / 100.0;
+                        }
+                        
+                        // 添加到团队出勤率列表
+                        teamRatesMap.computeIfAbsent(team, k -> new ArrayList<>()).add(bonusRate);
+                    }
+                } catch (Exception e) {
+                    System.err.println("解析考勤记录失败: " + e.getMessage());
+                    continue;
+                }
+            }
+            
+            // 计算每个团队的平均出勤率
+            List<TeamRankingData> rankingList = new ArrayList<>();
+            for (Map.Entry<String, List<Double>> entry : teamRatesMap.entrySet()) {
+                String team = entry.getKey();
+                List<Double> rates = entry.getValue();
+                
+                if (rates.isEmpty()) {
+                    continue;
+                }
+                
+                TeamRankingData teamData = new TeamRankingData(team);
+                teamData.setTotalSessions(rates.size());
+                
+                // 计算平均值
+                double sum = rates.stream().mapToDouble(Double::doubleValue).sum();
+                double average = sum / rates.size();
+                teamData.setAverageAttendanceRate(Math.round(average * 100.0) / 100.0);
+                
+                rankingList.add(teamData);
+            }
+            
+            // 排序
+            rankingList.sort(Comparator.comparing(TeamRankingData::getAverageAttendanceRate).reversed()
+                    .thenComparing(TeamRankingData::getTeamName));
+            
+            // 计算排名
+            int currentRank = 1;
+            for (int i = 0; i < rankingList.size(); i++) {
+                TeamRankingData current = rankingList.get(i);
+                
+                if (i > 0) {
+                    TeamRankingData previous = rankingList.get(i - 1);
+                    if (Math.abs(current.getAverageAttendanceRate() - previous.getAverageAttendanceRate()) < 0.01) {
+                        current.setRank(previous.getRank());
+                    } else {
+                        currentRank = i + 1;
+                        current.setRank(currentRank);
+                    }
+                } else {
+                    current.setRank(1);
+                    currentRank = 1;
+                }
+            }
+            
+            // 应用团队名模糊查询过滤
+            if (teamName != null && !teamName.trim().isEmpty()) {
+                rankingList = rankingList.stream()
+                        .filter(data -> data.getTeamName().contains(teamName.trim()))
+                        .collect(Collectors.toList());
+            }
+            
+            // 如果用户选择了asc排序，重新排序
+            if ("asc".equalsIgnoreCase(sortOrder)) {
+                rankingList.sort(Comparator.comparing(TeamRankingData::getAverageAttendanceRate)
+                        .thenComparing(TeamRankingData::getTeamName));
+            }
+            
+            // 创建工作簿
+            Workbook workbook = new XSSFWorkbook();
+            Sheet sheet = workbook.createSheet("团队排名");
+            
+            // 创建标题行样式
+            CellStyle headerStyle = workbook.createCellStyle();
+            Font headerFont = workbook.createFont();
+            headerFont.setBold(true);
+            headerFont.setFontHeightInPoints((short) 12);
+            headerStyle.setFont(headerFont);
+            headerStyle.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+            headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+            headerStyle.setBorderBottom(BorderStyle.THIN);
+            headerStyle.setBorderTop(BorderStyle.THIN);
+            headerStyle.setBorderLeft(BorderStyle.THIN);
+            headerStyle.setBorderRight(BorderStyle.THIN);
+            headerStyle.setAlignment(HorizontalAlignment.CENTER);
+            
+            // 创建数据行样式
+            CellStyle dataStyle = workbook.createCellStyle();
+            dataStyle.setBorderBottom(BorderStyle.THIN);
+            dataStyle.setBorderTop(BorderStyle.THIN);
+            dataStyle.setBorderLeft(BorderStyle.THIN);
+            dataStyle.setBorderRight(BorderStyle.THIN);
+            
+            // 创建标题行
+            Row headerRow = sheet.createRow(0);
+            String[] headers = {"排名", "团队名称", "平均出勤率(%)", "参与考勤次数"};
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+            }
+            
+            // 填充数据
+            int rowNum = 1;
+            for (TeamRankingData data : rankingList) {
+                Row row = sheet.createRow(rowNum++);
+                
+                int colNum = 0;
+                row.createCell(colNum++).setCellValue(data.getRank() != null ? data.getRank() : 0);
+                row.createCell(colNum++).setCellValue(data.getTeamName());
+                row.createCell(colNum++).setCellValue(data.getAverageAttendanceRate());
+                row.createCell(colNum++).setCellValue(data.getTotalSessions());
+                
+                // 应用样式
+                for (int i = 0; i < headers.length; i++) {
+                    row.getCell(i).setCellStyle(dataStyle);
+                }
+            }
+            
+            // 自动调整列宽
+            for (int i = 0; i < headers.length; i++) {
+                sheet.autoSizeColumn(i);
+                if (sheet.getColumnWidth(i) < 3000) {
+                    sheet.setColumnWidth(i, 3000);
+                }
+            }
+            
+            // 将工作簿写入字节数组
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            workbook.write(outputStream);
+            workbook.close();
+            
+            // 设置响应头
+            HttpHeaders responseHeaders = new HttpHeaders();
+            responseHeaders.setContentType(MediaType.APPLICATION_OCTET_STREAM);
+            
+            return ResponseEntity.ok()
+                    .headers(responseHeaders)
+                    .body(outputStream.toByteArray());
+                    
+        } catch (Exception e) {
+            System.err.println("导出团队排名失败: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().build();
         }
     }
 }

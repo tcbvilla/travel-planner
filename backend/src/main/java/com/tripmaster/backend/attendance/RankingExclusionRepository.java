@@ -12,3 +12,4 @@ public interface RankingExclusionRepository extends JpaRepository<RankingExclusi
     void deleteByMemberName(String memberName);
 }
 
+

@@ -3,6 +3,11 @@ server:
 spring:
   application:
     name: game-attendance-backend
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 10MB
   datasource:
     url: jdbc:postgresql://localhost:5432/game_attendance
     driver-class-name: org.postgresql.Driver
