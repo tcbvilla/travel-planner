@@ -358,6 +358,20 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
     })
   }
 
+  // 全选/取消全选考勤类型
+  const toggleAllRankingAttendanceTypes = () => {
+    const allSelected = availableRankingAttendanceTypes.length > 0 && 
+      availableRankingAttendanceTypes.every(type => selectedRankingAttendanceTypes.includes(type))
+    
+    if (allSelected) {
+      // 如果全部选中，则取消全选
+      setSelectedRankingAttendanceTypes([])
+    } else {
+      // 否则全选
+      setSelectedRankingAttendanceTypes([...availableRankingAttendanceTypes])
+    }
+  }
+
   // 搜索和筛选变化时重新加载
   useEffect(() => {
     if (rankingSeasonId && rankingType === 'personal') {
@@ -901,6 +915,7 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                 <div style={{ 
                   display: 'flex', 
                   alignItems: 'center', 
+                  justifyContent: 'center',
                   gap: '8px',
                   height: '400px',
                   padding: '0 20px',
@@ -947,13 +962,13 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                         }}>
                           {isPositive && (
                             <div className="positive-value" style={{ 
-                              fontSize: '11px',
+                              fontSize: '14px',
                               fontWeight: 'bold',
                               textAlign: 'center'
                             }}>
                               +{team.totalReward}
                               <div className="positive-percentage" style={{ 
-                                fontSize: '9px',
+                                fontSize: '12px',
                                 marginTop: '2px'
                               }}>
                                 {percentage}%
@@ -1020,13 +1035,13 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                         }}>
                           {!isPositive && (
                             <div className="negative-value" style={{ 
-                              fontSize: '11px',
+                              fontSize: '14px',
                               fontWeight: 'bold',
                               textAlign: 'center'
                             }}>
                               {team.totalReward}
                               <div className="negative-percentage" style={{ 
-                                fontSize: '9px',
+                                fontSize: '12px',
                                 marginTop: '2px'
                               }}>
                                 {percentage}%
@@ -1037,7 +1052,7 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                         
                         {/* 小组名称 */}
                         <div className="team-name" style={{ 
-                          fontSize: '11px',
+                          fontSize: '14px',
                           marginTop: '8px',
                           textAlign: 'center',
                           wordBreak: 'break-all',
@@ -1183,6 +1198,7 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                               border: '1px solid #555', 
                               color: '#fff',
                               fontWeight: 'bold',
+                              fontSize: '18px',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '8px'
@@ -1194,8 +1210,8 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                                     src={logo.logoPath} 
                                     alt={team.teamName}
                                     style={{ 
-                                      width: '24px', 
-                                      height: '24px', 
+                                      width: '48px', 
+                                      height: '48px', 
                                       objectFit: 'contain',
                                       borderRadius: '4px'
                                     }}
@@ -1211,7 +1227,8 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                               padding: '12px 8px', 
                               border: '1px solid #555', 
                               textAlign: 'center', 
-                              color: team.花瓣 > 0 ? '#4caf50' : '#ccc'
+                              color: team.花瓣 > 0 ? '#4caf50' : '#ccc',
+                              fontSize: '18px'
                             }}>
                               {team.花瓣}
                             </td>
@@ -1219,7 +1236,8 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                               padding: '12px 8px', 
                               border: '1px solid #555', 
                               textAlign: 'center', 
-                              color: team.花 > 0 ? '#4caf50' : '#ccc'
+                              color: team.花 > 0 ? '#4caf50' : '#ccc',
+                              fontSize: '18px'
                             }}>
                               {team.花}
                             </td>
@@ -1227,7 +1245,8 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                               padding: '12px 8px', 
                               border: '1px solid #555', 
                               textAlign: 'center', 
-                              color: team.屎粒 > 0 ? '#f44336' : '#ccc'
+                              color: team.屎粒 > 0 ? '#f44336' : '#ccc',
+                              fontSize: '18px'
                             }}>
                               {team.屎粒}
                             </td>
@@ -1235,7 +1254,8 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                               padding: '12px 8px', 
                               border: '1px solid #555', 
                               textAlign: 'center', 
-                              color: team.屎 > 0 ? '#f44336' : '#ccc'
+                              color: team.屎 > 0 ? '#f44336' : '#ccc',
+                              fontSize: '18px'
                             }}>
                               {team.屎}
                             </td>
@@ -1244,7 +1264,8 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                               border: '1px solid #555', 
                               textAlign: 'center', 
                               color: team.现金 > 0 ? '#f44336' : team.现金 < 0 ? '#333' : '#ccc',
-                              fontWeight: team.现金 !== 0 ? 'bold' : 'normal'
+                              fontWeight: team.现金 !== 0 ? 'bold' : 'normal',
+                              fontSize: '18px'
                             }}>
                               {team.现金 > 0 ? '+' : ''}{team.现金}
                             </td>
@@ -1271,7 +1292,7 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                           minWidth: '120px',
                           color: '#fff',
                           fontWeight: 'bold',
-                          fontSize: '14px',
+                          fontSize: '18px',
                           display: 'flex',
                           alignItems: 'center',
                           gap: '8px'
@@ -1283,8 +1304,8 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                                 src={logo.logoPath} 
                                 alt={team.teamName}
                                 style={{ 
-                                  width: '24px', 
-                                  height: '24px', 
+                                  width: '48px', 
+                                  height: '48px', 
                                   objectFit: 'contain',
                                   borderRadius: '4px'
                                 }}
@@ -1365,7 +1386,7 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                             textAlign: 'right',
                             color: team.现金 > 0 ? '#f44336' : '#333',
                             fontWeight: 'bold',
-                            fontSize: '14px',
+                            fontSize: '18px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'flex-end',
@@ -1434,9 +1455,30 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                   <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {/* 考勤类别多选 */}
                     <div>
-                      <label style={{ display: 'block', marginBottom: '8px', color: '#fff', fontWeight: 'bold' }}>
-                        考勤类别（可多选）:
-                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <label style={{ color: '#fff', fontWeight: 'bold' }}>
+                          考勤类别（可多选）:
+                        </label>
+                        <button
+                          onClick={toggleAllRankingAttendanceTypes}
+                          style={{
+                            padding: '4px 12px',
+                            background: availableRankingAttendanceTypes.length > 0 && 
+                              availableRankingAttendanceTypes.every(type => selectedRankingAttendanceTypes.includes(type))
+                              ? '#dc3545' : '#28a745',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          {availableRankingAttendanceTypes.length > 0 && 
+                            availableRankingAttendanceTypes.every(type => selectedRankingAttendanceTypes.includes(type))
+                            ? '取消全选' : '全选'}
+                        </button>
+                      </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                         {availableRankingAttendanceTypes.map(type => (
                           <label
@@ -1596,9 +1638,30 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                   <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {/* 考勤类别多选 */}
                     <div>
-                      <label style={{ display: 'block', marginBottom: '8px', color: '#fff', fontWeight: 'bold' }}>
-                        考勤类别（可多选）:
-                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <label style={{ color: '#fff', fontWeight: 'bold' }}>
+                          考勤类别（可多选）:
+                        </label>
+                        <button
+                          onClick={toggleAllRankingAttendanceTypes}
+                          style={{
+                            padding: '4px 12px',
+                            background: availableRankingAttendanceTypes.length > 0 && 
+                              availableRankingAttendanceTypes.every(type => selectedRankingAttendanceTypes.includes(type))
+                              ? '#dc3545' : '#28a745',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          {availableRankingAttendanceTypes.length > 0 && 
+                            availableRankingAttendanceTypes.every(type => selectedRankingAttendanceTypes.includes(type))
+                            ? '取消全选' : '全选'}
+                        </button>
+                      </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                         {availableRankingAttendanceTypes.map(type => (
                           <label

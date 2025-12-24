@@ -846,6 +846,8 @@ function AppContent() {
   // 导出组件引用
   const exportRef = useRef<HTMLDivElement>(null)
   const personalExportRef = useRef<HTMLDivElement>(null)
+  const personalRankingExportRef = useRef<HTMLDivElement>(null)
+  const teamRankingExportRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -928,6 +930,54 @@ function AppContent() {
   }, []) // 空依赖数组，确保只执行一次
 
 
+
+  // 导出成员详情为Excel
+  const handleExportMemberDetails = async () => {
+    if (!selectedSession) {
+      alert('请先选择考勤记录')
+      return
+    }
+
+    try {
+      const response = await fetch(`/api/v1/attendance/sessions/${selectedSession.id}/export-members`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error('导出失败')
+      }
+
+      // 前端直接生成文件名：成员详情（4个固定汉字）+ 时间戳
+      const now = new Date()
+      const year = now.getFullYear()
+      const month = String(now.getMonth() + 1).padStart(2, '0')
+      const day = String(now.getDate()).padStart(2, '0')
+      const hours = String(now.getHours()).padStart(2, '0')
+      const minutes = String(now.getMinutes()).padStart(2, '0')
+      const seconds = String(now.getSeconds()).padStart(2, '0')
+      const timestamp = `${year}${month}${day}_${hours}${minutes}${seconds}`
+      const fileName = `成员详情_${timestamp}.xlsx`
+
+      // 将响应转换为Blob并下载
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      console.log('成员详情导出成功')
+    } catch (error) {
+      console.error('导出成员详情失败:', error)
+      alert('导出失败: ' + (error instanceof Error ? error.message : String(error)))
+    }
+  }
 
   // 导出小组统计图片
   const handleExportGroupStats = async () => {
@@ -3472,6 +3522,20 @@ function AppContent() {
       return
     }
     
+    // 验证文件类型 - 只支持JPG和PNG
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png']
+    if (!allowedTypes.includes(logoFile.type)) {
+      alert('只支持JPG和PNG格式的图片文件')
+      return
+    }
+    
+    // 验证文件大小（10MB = 10 * 1024 * 1024 字节）
+    const maxSize = 10 * 1024 * 1024 // 10MB
+    if (logoFile.size > maxSize) {
+      alert('文件大小不能超过10MB')
+      return
+    }
+    
     const teamName = selectedTeamName || manualTeamName.trim()
     if (!teamName) {
       alert('请输入或选择团队名称')
@@ -3696,6 +3760,485 @@ function AppContent() {
         return [...prev, type]
       }
     })
+  }
+
+  // 全选/取消全选考勤类型
+  const toggleAllRankingAttendanceTypes = () => {
+    const allSelected = availableRankingAttendanceTypes.length > 0 && 
+      availableRankingAttendanceTypes.every(type => selectedRankingAttendanceTypes.includes(type))
+    
+    if (allSelected) {
+      // 如果全部选中，则取消全选
+      setSelectedRankingAttendanceTypes([])
+    } else {
+      // 否则全选
+      setSelectedRankingAttendanceTypes([...availableRankingAttendanceTypes])
+    }
+  }
+
+  // 导出个人排名为Excel
+  const handleExportPersonalRanking = async () => {
+    if (!rankingSeasonId) {
+      alert('请先选择赛季')
+      return
+    }
+
+    try {
+      const params = new URLSearchParams({
+        seasonId: rankingSeasonId.toString(),
+        sortOrder: rankingSortOrder
+      })
+      
+      if (selectedRankingAttendanceTypes.length > 0) {
+        selectedRankingAttendanceTypes.forEach(type => {
+          params.append('attendanceTypes', type)
+        })
+      }
+      
+      if (rankingMemberName.trim()) {
+        params.append('memberName', rankingMemberName.trim())
+      }
+      
+      const response = await fetch(`/api/v1/attendance/ranking/personal/export?${params.toString()}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error('导出失败')
+      }
+
+      // 前端生成文件名：个人排名+时间戳
+      const now = new Date()
+      const year = now.getFullYear()
+      const month = String(now.getMonth() + 1).padStart(2, '0')
+      const day = String(now.getDate()).padStart(2, '0')
+      const hours = String(now.getHours()).padStart(2, '0')
+      const minutes = String(now.getMinutes()).padStart(2, '0')
+      const seconds = String(now.getSeconds()).padStart(2, '0')
+      const timestamp = `${year}${month}${day}_${hours}${minutes}${seconds}`
+      const fileName = `个人排名_${timestamp}.xlsx`
+
+      // 将响应转换为Blob并下载
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      console.log('个人排名导出成功')
+    } catch (error) {
+      console.error('导出个人排名失败:', error)
+      alert('导出失败: ' + (error instanceof Error ? error.message : String(error)))
+    }
+  }
+
+  // 导出团队排名为Excel
+  const handleExportTeamRanking = async () => {
+    if (!rankingSeasonId) {
+      alert('请先选择赛季')
+      return
+    }
+
+    try {
+      const params = new URLSearchParams({
+        seasonId: rankingSeasonId.toString(),
+        sortOrder: rankingSortOrder
+      })
+      
+      if (selectedRankingAttendanceTypes.length > 0) {
+        selectedRankingAttendanceTypes.forEach(type => {
+          params.append('attendanceTypes', type)
+        })
+      }
+      
+      if (rankingTeamName.trim()) {
+        params.append('teamName', rankingTeamName.trim())
+      }
+      
+      const response = await fetch(`/api/v1/attendance/ranking/team/export?${params.toString()}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error('导出失败')
+      }
+
+      // 前端生成文件名：团队排名+时间戳
+      const now = new Date()
+      const year = now.getFullYear()
+      const month = String(now.getMonth() + 1).padStart(2, '0')
+      const day = String(now.getDate()).padStart(2, '0')
+      const hours = String(now.getHours()).padStart(2, '0')
+      const minutes = String(now.getMinutes()).padStart(2, '0')
+      const seconds = String(now.getSeconds()).padStart(2, '0')
+      const timestamp = `${year}${month}${day}_${hours}${minutes}${seconds}`
+      const fileName = `团队排名_${timestamp}.xlsx`
+
+      // 将响应转换为Blob并下载
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      console.log('团队排名导出成功')
+    } catch (error) {
+      console.error('导出团队排名失败:', error)
+      alert('导出失败: ' + (error instanceof Error ? error.message : String(error)))
+    }
+  }
+
+  // 导出个人排名为图片（导出所有数据，不分页）
+  const handleExportPersonalRankingImage = async () => {
+    if (!rankingSeasonId) {
+      alert('请先选择赛季')
+      return
+    }
+
+    try {
+      // 先获取所有数据（不分页）
+      const params = new URLSearchParams({
+        seasonId: rankingSeasonId.toString(),
+        page: '0',
+        size: '10000', // 设置一个很大的值以获取所有数据
+        sortOrder: rankingSortOrder
+      })
+      
+      if (selectedRankingAttendanceTypes.length > 0) {
+        selectedRankingAttendanceTypes.forEach(type => {
+          params.append('attendanceTypes', type)
+        })
+      }
+      
+      if (rankingMemberName.trim()) {
+        params.append('memberName', rankingMemberName.trim())
+      }
+      
+      const response = await fetch(`/api/v1/attendance/ranking/personal?${params.toString()}`)
+      if (!response.ok) {
+        throw new Error('获取数据失败')
+      }
+      
+      const data = await response.json()
+      const allData = data.content || []
+      
+      if (allData.length === 0) {
+        alert('没有可导出的数据')
+        return
+      }
+      
+      // 获取赛季名称 - 优先从allSeasons中查找，如果找不到则通过API获取
+      let seasonName = '未知赛季'
+      const season = allSeasons.find((s: any) => s.id === rankingSeasonId)
+      if (season) {
+        seasonName = season.name
+      } else {
+        // 如果allSeasons中没有，尝试通过API获取
+        try {
+          const seasonResponse = await fetch(`/api/v1/attendance/seasons/${rankingSeasonId}`)
+          if (seasonResponse.ok) {
+            const seasonData = await seasonResponse.json()
+            seasonName = seasonData.name || '未知赛季'
+          }
+        } catch (error) {
+          console.error('获取赛季信息失败:', error)
+        }
+      }
+      
+      // 创建隐藏的导出容器
+      const exportContainer = document.createElement('div')
+      exportContainer.style.position = 'absolute'
+      exportContainer.style.left = '-9999px'
+      exportContainer.style.top = '-9999px'
+      exportContainer.style.backgroundColor = '#1a1a1a'
+      exportContainer.style.padding = '20px'
+      
+      // 创建标题
+      const title = document.createElement('h2')
+      title.textContent = `${seasonName}个人出勤排行`
+      title.style.color = '#fff'
+      title.style.fontSize = '24px'
+      title.style.fontWeight = 'bold'
+      title.style.margin = '0 0 20px 0'
+      title.style.textAlign = 'center'
+      exportContainer.appendChild(title)
+      
+      // 创建表格
+      const table = document.createElement('table')
+      table.style.width = '100%'
+      table.style.minWidth = '700px'
+      table.style.borderCollapse = 'collapse'
+      table.style.color = '#fff'
+      
+      // 创建表头
+      const thead = document.createElement('thead')
+      const headerRow = document.createElement('tr')
+      headerRow.style.background = '#404040'
+      const headers = ['排名', '人员', '出勤率', '实际出勤次数', '应参与考勤次数']
+      headers.forEach(headerText => {
+        const th = document.createElement('th')
+        th.textContent = headerText
+        th.style.padding = '12px'
+        th.style.textAlign = 'left'
+        th.style.border = '1px solid #555'
+        headerRow.appendChild(th)
+      })
+      thead.appendChild(headerRow)
+      table.appendChild(thead)
+      
+      // 创建表体
+      const tbody = document.createElement('tbody')
+      allData.forEach((item: any, index: number) => {
+        const row = document.createElement('tr')
+        row.style.background = index % 2 === 0 ? '#2d2d2d' : '#1a1a1a'
+        
+        const cells = [
+          item.rank,
+          item.memberName,
+          `${item.attendanceRate.toFixed(2)}%`,
+          item.qualifiedSessions,
+          item.attendedSessions
+        ]
+        
+        cells.forEach(cellText => {
+          const td = document.createElement('td')
+          td.textContent = cellText
+          td.style.padding = '12px'
+          td.style.border = '1px solid #555'
+          row.appendChild(td)
+        })
+        
+        tbody.appendChild(row)
+      })
+      table.appendChild(tbody)
+      
+      exportContainer.appendChild(table)
+      document.body.appendChild(exportContainer)
+      
+      // 等待渲染完成
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      // 导出图片
+      const canvas = await html2canvas(exportContainer, {
+        backgroundColor: '#1a1a1a',
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        width: exportContainer.scrollWidth,
+        height: exportContainer.scrollHeight,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: exportContainer.scrollWidth,
+        windowHeight: exportContainer.scrollHeight
+      })
+      
+      // 清理临时容器
+      document.body.removeChild(exportContainer)
+      
+      // 转换为图片并下载 - 文件名格式与Excel一致
+      const now = new Date()
+      const year = now.getFullYear()
+      const month = String(now.getMonth() + 1).padStart(2, '0')
+      const day = String(now.getDate()).padStart(2, '0')
+      const hours = String(now.getHours()).padStart(2, '0')
+      const minutes = String(now.getMinutes()).padStart(2, '0')
+      const seconds = String(now.getSeconds()).padStart(2, '0')
+      const timestamp = `${year}${month}${day}_${hours}${minutes}${seconds}`
+      const fileName = `个人排名_${timestamp}.jpg`
+      
+      const link = document.createElement('a')
+      link.download = fileName
+      link.href = canvas.toDataURL('image/jpeg', 0.9)
+      link.click()
+      
+      console.log('个人排名图片导出成功')
+    } catch (error) {
+      console.error('导出个人排名图片失败:', error)
+      alert('导出失败: ' + (error instanceof Error ? error.message : String(error)))
+    }
+  }
+
+  // 导出团队排名为图片（导出所有数据，不分页）
+  const handleExportTeamRankingImage = async () => {
+    if (!rankingSeasonId) {
+      alert('请先选择赛季')
+      return
+    }
+
+    try {
+      // 先获取所有数据（不分页）
+      const params = new URLSearchParams({
+        seasonId: rankingSeasonId.toString(),
+        page: '0',
+        size: '10000', // 设置一个很大的值以获取所有数据
+        sortOrder: rankingSortOrder
+      })
+      
+      if (selectedRankingAttendanceTypes.length > 0) {
+        selectedRankingAttendanceTypes.forEach(type => {
+          params.append('attendanceTypes', type)
+        })
+      }
+      
+      if (rankingTeamName.trim()) {
+        params.append('teamName', rankingTeamName.trim())
+      }
+      
+      const response = await fetch(`/api/v1/attendance/ranking/team?${params.toString()}`)
+      if (!response.ok) {
+        throw new Error('获取数据失败')
+      }
+      
+      const data = await response.json()
+      const allData = data.content || []
+      
+      if (allData.length === 0) {
+        alert('没有可导出的数据')
+        return
+      }
+      
+      // 获取赛季名称 - 优先从allSeasons中查找，如果找不到则通过API获取
+      let seasonName = '未知赛季'
+      const season = allSeasons.find((s: any) => s.id === rankingSeasonId)
+      if (season) {
+        seasonName = season.name
+      } else {
+        // 如果allSeasons中没有，尝试通过API获取
+        try {
+          const seasonResponse = await fetch(`/api/v1/attendance/seasons/${rankingSeasonId}`)
+          if (seasonResponse.ok) {
+            const seasonData = await seasonResponse.json()
+            seasonName = seasonData.name || '未知赛季'
+          }
+        } catch (error) {
+          console.error('获取赛季信息失败:', error)
+        }
+      }
+      
+      // 创建隐藏的导出容器
+      const exportContainer = document.createElement('div')
+      exportContainer.style.position = 'absolute'
+      exportContainer.style.left = '-9999px'
+      exportContainer.style.top = '-9999px'
+      exportContainer.style.backgroundColor = '#1a1a1a'
+      exportContainer.style.padding = '20px'
+      
+      // 创建标题
+      const title = document.createElement('h2')
+      title.textContent = `${seasonName}团队出勤排行`
+      title.style.color = '#fff'
+      title.style.fontSize = '24px'
+      title.style.fontWeight = 'bold'
+      title.style.margin = '0 0 20px 0'
+      title.style.textAlign = 'center'
+      exportContainer.appendChild(title)
+      
+      // 创建表格
+      const table = document.createElement('table')
+      table.style.width = '100%'
+      table.style.minWidth = '600px'
+      table.style.borderCollapse = 'collapse'
+      table.style.color = '#fff'
+      
+      // 创建表头
+      const thead = document.createElement('thead')
+      const headerRow = document.createElement('tr')
+      headerRow.style.background = '#404040'
+      const headers = ['排名', '团队名', '平均出勤率（加成后）', '参与考勤次数']
+      headers.forEach(headerText => {
+        const th = document.createElement('th')
+        th.textContent = headerText
+        th.style.padding = '12px'
+        th.style.textAlign = 'left'
+        th.style.border = '1px solid #555'
+        headerRow.appendChild(th)
+      })
+      thead.appendChild(headerRow)
+      table.appendChild(thead)
+      
+      // 创建表体
+      const tbody = document.createElement('tbody')
+      allData.forEach((item: any, index: number) => {
+        const row = document.createElement('tr')
+        row.style.background = index % 2 === 0 ? '#2d2d2d' : '#1a1a1a'
+        
+        const cells = [
+          item.rank,
+          item.teamName,
+          `${item.averageAttendanceRate.toFixed(2)}%`,
+          item.totalSessions
+        ]
+        
+        cells.forEach(cellText => {
+          const td = document.createElement('td')
+          td.textContent = cellText
+          td.style.padding = '12px'
+          td.style.border = '1px solid #555'
+          row.appendChild(td)
+        })
+        
+        tbody.appendChild(row)
+      })
+      table.appendChild(tbody)
+      
+      exportContainer.appendChild(table)
+      document.body.appendChild(exportContainer)
+      
+      // 等待渲染完成
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      // 导出图片
+      const canvas = await html2canvas(exportContainer, {
+        backgroundColor: '#1a1a1a',
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        width: exportContainer.scrollWidth,
+        height: exportContainer.scrollHeight,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: exportContainer.scrollWidth,
+        windowHeight: exportContainer.scrollHeight
+      })
+      
+      // 清理临时容器
+      document.body.removeChild(exportContainer)
+      
+      // 转换为图片并下载 - 文件名格式与Excel一致
+      const now = new Date()
+      const year = now.getFullYear()
+      const month = String(now.getMonth() + 1).padStart(2, '0')
+      const day = String(now.getDate()).padStart(2, '0')
+      const hours = String(now.getHours()).padStart(2, '0')
+      const minutes = String(now.getMinutes()).padStart(2, '0')
+      const seconds = String(now.getSeconds()).padStart(2, '0')
+      const timestamp = `${year}${month}${day}_${hours}${minutes}${seconds}`
+      const fileName = `团队排名_${timestamp}.jpg`
+      
+      const link = document.createElement('a')
+      link.download = fileName
+      link.href = canvas.toDataURL('image/jpeg', 0.9)
+      link.click()
+      
+      console.log('团队排名图片导出成功')
+    } catch (error) {
+      console.error('导出团队排名图片失败:', error)
+      alert('导出失败: ' + (error instanceof Error ? error.message : String(error)))
+    }
   }
 
   // 搜索和筛选变化时重新加载
@@ -5434,6 +5977,25 @@ function AppContent() {
             {/* 成员详情 */}
             {modalActiveTab === 'members' && selectedSession.memberData && selectedSession.memberData !== '[]' && (
               <div style={{ marginBottom: '16px' }}>
+                {/* 表格标题和导出按钮 */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <h3 style={{ margin: 0, color: '#fff', fontSize: '16px' }}>成员详情</h3>
+                  <button
+                    onClick={handleExportMemberDetails}
+                    style={{
+                      padding: '8px 16px',
+                      background: '#28a745',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      fontWeight: 'bold'
+                    }}
+                  >
+                    导出Excel
+                  </button>
+                </div>
                 <div style={{ overflowX: 'auto', maxHeight: '300px' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
@@ -7076,6 +7638,7 @@ function AppContent() {
                 <div style={{ 
                   display: 'flex', 
                   alignItems: 'center', 
+                  justifyContent: 'center',
                   gap: '8px',
                   height: '400px',
                   padding: '0 20px',
@@ -7124,13 +7687,13 @@ function AppContent() {
                         }}>
                           {isPositive && (
                             <div className="positive-value" style={{ 
-                              fontSize: '11px',
+                              fontSize: '14px',
                               fontWeight: 'bold',
                               textAlign: 'center'
                             }}>
                               +{team.totalReward}
                               <div className="positive-percentage" style={{ 
-                                fontSize: '9px',
+                                fontSize: '12px',
                                 marginTop: '2px'
                               }}>
                                 {percentage}%
@@ -7197,13 +7760,13 @@ function AppContent() {
                         }}>
                           {!isPositive && (
                             <div className="negative-value" style={{ 
-                              fontSize: '11px',
+                              fontSize: '14px',
                               fontWeight: 'bold',
                               textAlign: 'center'
                             }}>
                               {team.totalReward}
                               <div className="negative-percentage" style={{ 
-                                fontSize: '9px',
+                                fontSize: '12px',
                                 marginTop: '2px'
                               }}>
                                 {percentage}%
@@ -7214,7 +7777,7 @@ function AppContent() {
                         
                         {/* 小组名称 - 始终在底部 */}
                         <div className="team-name" style={{ 
-                          fontSize: '11px',
+                          fontSize: '14px',
                           marginTop: '8px',
                           textAlign: 'center',
                           wordBreak: 'break-all',
@@ -7360,6 +7923,7 @@ function AppContent() {
                               border: '1px solid #555', 
                               color: '#fff',
                               fontWeight: 'bold',
+                              fontSize: '18px',
                               display: 'flex',
                               alignItems: 'center',
                               gap: '8px'
@@ -7371,8 +7935,8 @@ function AppContent() {
                                     src={logo.logoPath} 
                                     alt={team.teamName}
                                     style={{ 
-                                      width: '24px', 
-                                      height: '24px', 
+                                      width: '48px', 
+                                      height: '48px', 
                                       objectFit: 'contain',
                                       borderRadius: '4px'
                                     }}
@@ -7388,7 +7952,8 @@ function AppContent() {
                               padding: '12px 8px', 
                               border: '1px solid #555', 
                               textAlign: 'center', 
-                              color: team.花瓣 > 0 ? '#4caf50' : '#ccc'
+                              color: team.花瓣 > 0 ? '#4caf50' : '#ccc',
+                              fontSize: '18px'
                             }}>
                               {team.花瓣}
                             </td>
@@ -7396,7 +7961,8 @@ function AppContent() {
                               padding: '12px 8px', 
                               border: '1px solid #555', 
                               textAlign: 'center', 
-                              color: team.花 > 0 ? '#4caf50' : '#ccc'
+                              color: team.花 > 0 ? '#4caf50' : '#ccc',
+                              fontSize: '18px'
                             }}>
                               {team.花}
                             </td>
@@ -7404,7 +7970,8 @@ function AppContent() {
                               padding: '12px 8px', 
                               border: '1px solid #555', 
                               textAlign: 'center', 
-                              color: team.屎粒 > 0 ? '#f44336' : '#ccc'
+                              color: team.屎粒 > 0 ? '#f44336' : '#ccc',
+                              fontSize: '18px'
                             }}>
                               {team.屎粒}
                             </td>
@@ -7412,7 +7979,8 @@ function AppContent() {
                               padding: '12px 8px', 
                               border: '1px solid #555', 
                               textAlign: 'center', 
-                              color: team.屎 > 0 ? '#f44336' : '#ccc'
+                              color: team.屎 > 0 ? '#f44336' : '#ccc',
+                              fontSize: '18px'
                             }}>
                               {team.屎}
                             </td>
@@ -7421,7 +7989,8 @@ function AppContent() {
                               border: '1px solid #555', 
                               textAlign: 'center', 
                               color: team.现金 > 0 ? '#f44336' : team.现金 < 0 ? '#333' : '#ccc',
-                              fontWeight: team.现金 !== 0 ? 'bold' : 'normal'
+                              fontWeight: team.现金 !== 0 ? 'bold' : 'normal',
+                              fontSize: '18px'
                             }}>
                               {team.现金 > 0 ? '+' : ''}{team.现金}
                             </td>
@@ -7448,7 +8017,7 @@ function AppContent() {
                           minWidth: '120px',
                           color: '#fff',
                           fontWeight: 'bold',
-                          fontSize: '14px',
+                          fontSize: '18px',
                           display: 'flex',
                           alignItems: 'center',
                           gap: '8px'
@@ -7460,8 +8029,8 @@ function AppContent() {
                                 src={logo.logoPath} 
                                 alt={team.teamName}
                                 style={{ 
-                                  width: '24px', 
-                                  height: '24px', 
+                                  width: '48px', 
+                                  height: '48px', 
                                   objectFit: 'contain',
                                   borderRadius: '4px'
                                 }}
@@ -7542,7 +8111,7 @@ function AppContent() {
                             textAlign: 'right',
                             color: team.现金 > 0 ? '#f44336' : '#333',
                             fontWeight: 'bold',
-                            fontSize: '14px',
+                            fontSize: '18px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'flex-end',
@@ -7611,9 +8180,30 @@ function AppContent() {
                   <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {/* 考勤类别多选 */}
                     <div>
-                      <label style={{ display: 'block', marginBottom: '8px', color: '#fff', fontWeight: 'bold' }}>
-                        考勤类别（可多选）:
-                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <label style={{ color: '#fff', fontWeight: 'bold' }}>
+                          考勤类别（可多选）:
+                        </label>
+                        <button
+                          onClick={toggleAllRankingAttendanceTypes}
+                          style={{
+                            padding: '4px 12px',
+                            background: availableRankingAttendanceTypes.length > 0 && 
+                              availableRankingAttendanceTypes.every(type => selectedRankingAttendanceTypes.includes(type))
+                              ? '#dc3545' : '#28a745',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          {availableRankingAttendanceTypes.length > 0 && 
+                            availableRankingAttendanceTypes.every(type => selectedRankingAttendanceTypes.includes(type))
+                            ? '取消全选' : '全选'}
+                        </button>
+                      </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                         {availableRankingAttendanceTypes.map(type => (
                           <label
@@ -7698,7 +8288,41 @@ function AppContent() {
                     </div>
                   ) : (
                     <>
-                      <div style={{ overflowX: 'auto' }}>
+                      {/* 导出按钮 */}
+                      <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                        <button
+                          onClick={handleExportPersonalRanking}
+                          style={{
+                            padding: '8px 16px',
+                            background: '#28a745',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '14px',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          导出Excel
+                        </button>
+                        <button
+                          onClick={handleExportPersonalRankingImage}
+                          style={{
+                            padding: '8px 16px',
+                            background: '#17a2b8',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '14px',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          导出图片
+                        </button>
+                      </div>
+                      
+                      <div ref={personalRankingExportRef} style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', color: '#fff' }}>
                           <thead>
                             <tr style={{ background: '#404040' }}>
@@ -7773,9 +8397,30 @@ function AppContent() {
                   <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     {/* 考勤类别多选 */}
                     <div>
-                      <label style={{ display: 'block', marginBottom: '8px', color: '#fff', fontWeight: 'bold' }}>
-                        考勤类别（可多选）:
-                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <label style={{ color: '#fff', fontWeight: 'bold' }}>
+                          考勤类别（可多选）:
+                        </label>
+                        <button
+                          onClick={toggleAllRankingAttendanceTypes}
+                          style={{
+                            padding: '4px 12px',
+                            background: availableRankingAttendanceTypes.length > 0 && 
+                              availableRankingAttendanceTypes.every(type => selectedRankingAttendanceTypes.includes(type))
+                              ? '#dc3545' : '#28a745',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '12px',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          {availableRankingAttendanceTypes.length > 0 && 
+                            availableRankingAttendanceTypes.every(type => selectedRankingAttendanceTypes.includes(type))
+                            ? '取消全选' : '全选'}
+                        </button>
+                      </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
                         {availableRankingAttendanceTypes.map(type => (
                           <label
@@ -7860,7 +8505,41 @@ function AppContent() {
                     </div>
                   ) : (
                     <>
-                      <div style={{ overflowX: 'auto' }}>
+                      {/* 导出按钮 */}
+                      <div style={{ marginBottom: '12px', display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                        <button
+                          onClick={handleExportTeamRanking}
+                          style={{
+                            padding: '8px 16px',
+                            background: '#28a745',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '14px',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          导出Excel
+                        </button>
+                        <button
+                          onClick={handleExportTeamRankingImage}
+                          style={{
+                            padding: '8px 16px',
+                            background: '#17a2b8',
+                            color: '#fff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            cursor: 'pointer',
+                            fontSize: '14px',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          导出图片
+                        </button>
+                      </div>
+                      
+                      <div ref={teamRankingExportRef} style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', minWidth: '600px', borderCollapse: 'collapse', color: '#fff' }}>
                           <thead>
                             <tr style={{ background: '#404040' }}>
@@ -10293,10 +10972,26 @@ function AppContent() {
                 </label>
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/jpg,image/png,.jpg,.jpeg,.png"
                   onChange={(e) => {
                     const file = e.target.files?.[0]
                     if (file) {
+                      // 验证文件类型 - 只支持JPG和PNG
+                      const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png']
+                      if (!allowedTypes.includes(file.type)) {
+                        alert('只支持JPG和PNG格式的图片文件')
+                        e.target.value = '' // 清空选择
+                        return
+                      }
+                      
+                      // 验证文件大小（10MB = 10 * 1024 * 1024 字节）
+                      const maxSize = 10 * 1024 * 1024 // 10MB
+                      if (file.size > maxSize) {
+                        alert('文件大小不能超过10MB')
+                        e.target.value = '' // 清空选择
+                        return
+                      }
+                      
                       setLogoFile(file)
                     }
                   }}
@@ -10988,6 +11683,7 @@ function AppContent() {
                           border: '1px solid #555', 
                           color: '#fff',
                           fontWeight: 'bold',
+                          fontSize: '18px',
                           display: 'flex',
                           alignItems: 'center',
                           gap: '8px'
@@ -10999,8 +11695,8 @@ function AppContent() {
                                 src={logo.logoPath} 
                                 alt={team.teamName}
                                 style={{ 
-                                  width: '24px', 
-                                  height: '24px', 
+                                  width: '48px', 
+                                  height: '48px', 
                                   objectFit: 'contain',
                                   borderRadius: '4px'
                                 }}
@@ -11016,7 +11712,8 @@ function AppContent() {
                           padding: '12px 8px', 
                           border: '1px solid #555', 
                           textAlign: 'center', 
-                          color: team.花瓣 > 0 ? '#4caf50' : '#ccc'
+                          color: team.花瓣 > 0 ? '#4caf50' : '#ccc',
+                          fontSize: '18px'
                         }}>
                           {team.花瓣}
                         </td>
@@ -11024,7 +11721,8 @@ function AppContent() {
                           padding: '12px 8px', 
                           border: '1px solid #555', 
                           textAlign: 'center', 
-                          color: team.花 > 0 ? '#4caf50' : '#ccc'
+                          color: team.花 > 0 ? '#4caf50' : '#ccc',
+                          fontSize: '18px'
                         }}>
                           {team.花}
                         </td>
@@ -11032,7 +11730,8 @@ function AppContent() {
                           padding: '12px 8px', 
                           border: '1px solid #555', 
                           textAlign: 'center', 
-                          color: team.屎粒 > 0 ? '#f44336' : '#ccc'
+                          color: team.屎粒 > 0 ? '#f44336' : '#ccc',
+                          fontSize: '18px'
                         }}>
                           {team.屎粒}
                         </td>
@@ -11040,7 +11739,8 @@ function AppContent() {
                           padding: '12px 8px', 
                           border: '1px solid #555', 
                           textAlign: 'center', 
-                          color: team.屎 > 0 ? '#f44336' : '#ccc'
+                          color: team.屎 > 0 ? '#f44336' : '#ccc',
+                          fontSize: '18px'
                         }}>
                           {team.屎}
                         </td>
@@ -11049,7 +11749,8 @@ function AppContent() {
                           border: '1px solid #555', 
                           textAlign: 'center', 
                           color: team.现金 > 0 ? '#4caf50' : team.现金 < 0 ? '#f44336' : '#ccc',
-                          fontWeight: team.现金 !== 0 ? 'bold' : 'normal'
+                          fontWeight: team.现金 !== 0 ? 'bold' : 'normal',
+                          fontSize: '18px'
                         }}>
                           {team.现金 > 0 ? '+' : ''}{team.现金}
                         </td>
@@ -11304,7 +12005,6 @@ function AppContent() {
           </div>
         </div>
       )}
-    </div>
 
       {/* 导出组件（隐藏） */}
       <div ref={exportRef} style={{ position: 'absolute', left: '-9999px', top: '-9999px' }}>
@@ -11320,6 +12020,7 @@ function AppContent() {
         <PersonalStatsExportComponent 
           personalStats={personalStats}
         />
+      </div>
       </div>
       
       {/* 最低战功人员名单弹窗 */}
