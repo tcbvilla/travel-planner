@@ -207,3 +207,8 @@ tr[style*="background: #f8d7da"] td {
 .ranking-title {
   color: #000 !important;
 }
+
+/* 排名分页信息使用黑色 - 覆盖全局白色文字 */
+.ranking-pagination-info {
+  color: #000 !important;
+}

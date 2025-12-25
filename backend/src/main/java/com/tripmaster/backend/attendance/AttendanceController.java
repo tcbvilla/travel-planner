@@ -1543,7 +1543,7 @@ public class AttendanceController {
             } else {
                 // 查询指定类型
                 sessions = attendanceSessionRepository.findByAttendanceTypeAndTimeRangeAndSettled(
-                        attendanceType, startDateTime, endDateTime);
+                attendanceType, startDateTime, endDateTime);
             }
             
             // 转换为简化信息
@@ -1614,7 +1614,7 @@ public class AttendanceController {
             } else {
                 // 查询指定类型
                 sessions = attendanceSessionRepository.findByAttendanceTypeAndTimeRangeAndSettled(
-                        attendanceType, startDateTime, endDateTime);
+                attendanceType, startDateTime, endDateTime);
             }
             
             System.out.println(String.format("数据统计调试 - 查询到 %d 条考勤记录，考勤类型: %s, 时间范围: %s 到 %s", 
@@ -1792,6 +1792,137 @@ public class AttendanceController {
             
         } catch (Exception e) {
             throw new RuntimeException("计算团队出勤率失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 全团出勤率对比 - 计算所有团队在时间段内的出勤率数据（加成后）
+     */
+    @GetMapping("/statistics/all-teams-attendance-rate")
+    public AllTeamsAttendanceRateResponse getAllTeamsAttendanceRate(
+            @RequestParam String startDate, 
+            @RequestParam String endDate, 
+            @RequestParam(required = false) String attendanceType) {
+        try {
+            // 解析日期参数
+            LocalDateTime startDateTime = LocalDate.parse(startDate).atStartOfDay();
+            LocalDateTime endDateTime = LocalDate.parse(endDate).atTime(23, 59, 59);
+            
+            // 查询已结算的考勤记录
+            List<AttendanceSession> sessions;
+            if (attendanceType == null || attendanceType.trim().isEmpty() || "全部".equals(attendanceType)) {
+                // 查询所有类型（排除手动添加）
+                sessions = attendanceSessionRepository.findByTimeRangeAndSettledExcludingManual(
+                        startDateTime, endDateTime);
+            } else {
+                // 查询指定类型
+                sessions = attendanceSessionRepository.findByAttendanceTypeAndTimeRangeAndSettled(
+                        attendanceType, startDateTime, endDateTime);
+            }
+            
+            // 按开始时间排序
+            sessions.sort((a, b) -> {
+                if (a.getStartTime() == null || b.getStartTime() == null) {
+                    return 0;
+                }
+                return a.getStartTime().compareTo(b.getStartTime());
+            });
+            
+            List<SessionTeamRates> result = new ArrayList<>();
+            
+            for (AttendanceSession session : sessions) {
+                if (session.getMemberData() == null || session.getMemberData().isEmpty()) {
+                    continue;
+                }
+                
+                try {
+                    // 解析成员数据
+                    ObjectMapper mapper = new ObjectMapper();
+                    List<MemberData> memberDataList = mapper.readValue(session.getMemberData(), 
+                        mapper.getTypeFactory().constructCollectionType(List.class, MemberData.class));
+                    
+                    // 按团队分组
+                    Map<String, List<MemberData>> teamMembersMap = memberDataList.stream()
+                        .filter(member -> member.get分组() != null && !member.get分组().trim().isEmpty())
+                        .collect(Collectors.groupingBy(MemberData::get分组));
+                    
+                    // 如果没有任何团队数据，跳过
+                    if (teamMembersMap.isEmpty()) {
+                        continue;
+                    }
+                    
+                    // 计算每个团队的出勤率（加成后）
+                    Map<String, Double> teamRates = new HashMap<>();
+                    
+                    for (Map.Entry<String, List<MemberData>> entry : teamMembersMap.entrySet()) {
+                        String teamName = entry.getKey();
+                        List<MemberData> teamMembers = entry.getValue();
+                        
+                        // 计算团队出勤率 - 与单个团队接口逻辑一致
+                        long attendingCount = teamMembers.stream()
+                            .mapToLong(member -> member.is参加考勤() ? 1 : 0)
+                            .sum();
+                        
+                        long qualifiedCount = teamMembers.stream()
+                            .mapToLong(member -> {
+                                if (!member.is参加考勤()) {
+                                    return 0;
+                                }
+                                // 根据考勤类型选择达标判断标准
+                                boolean isQualified;
+                                if ("区间助攻考勤".equals(attendanceType)) {
+                                    isQualified = (member.get助攻后值() - member.get助攻前值()) >= session.getThreshold();
+                                } else {
+                                    isQualified = (member.get后值() - member.get前值()) >= session.getThreshold();
+                                }
+                                return isQualified ? 1 : 0;
+                            })
+                            .sum();
+                        
+                        double attendanceRate = 0.0;
+                        if (attendingCount > 0) {
+                            attendanceRate = (double) qualifiedCount / attendingCount * 100.0;
+                            // 四舍五入到小数点后2位
+                            attendanceRate = Math.round(attendanceRate * 100.0) / 100.0;
+                        }
+                        
+                        // 应用加成配置
+                        int memberCount = (int) attendingCount;
+                        TeamSizeBonusRule applicableRule = bonusConfigService.getApplicableBonusRule(memberCount);
+                        double bonusRate = attendanceRate;
+                        
+                        if (applicableRule != null) {
+                            bonusRate = attendanceRate + applicableRule.getAttendanceRateBonus();
+                            // 限制加成后出勤率不能超过100%
+                            if (bonusRate > 100.0) {
+                                bonusRate = 100.0;
+                            }
+                            // 四舍五入到小数点后2位
+                            bonusRate = Math.round(bonusRate * 100.0) / 100.0;
+                        }
+                        
+                        // 存储加成后出勤率
+                        teamRates.put(teamName, bonusRate);
+                    }
+                    
+                    // 创建考勤时间点的数据
+                    SessionTeamRates sessionData = new SessionTeamRates(
+                        session.getName(),  // 考勤名称
+                        session.getStartTime(),  // 开始时间（用于排序）
+                        teamRates  // 所有团队的加成后出勤率
+                    );
+                    
+                    result.add(sessionData);
+                    
+                } catch (Exception e) {
+                    System.err.println("处理考勤记录失败: " + session.getId() + ", " + e.getMessage());
+                }
+            }
+            
+            return new AllTeamsAttendanceRateResponse(result);
+            
+        } catch (Exception e) {
+            throw new RuntimeException("计算全团出勤率失败: " + e.getMessage());
         }
     }
 
@@ -3029,7 +3160,7 @@ public class AttendanceController {
             } else {
                 // 查询指定类型
                 sessions = attendanceSessionRepository.findByAttendanceTypeAndTimeRangeAndSettled(
-                    attendanceType, startDateTime, endDateTime);
+                attendanceType, startDateTime, endDateTime);
             }
             
             TeamCashSummary summary = new TeamCashSummary();
@@ -3171,7 +3302,7 @@ public class AttendanceController {
             } else {
                 // 查询指定类型
                 sessions = attendanceSessionRepository.findByAttendanceTypeAndTimeRangeAndSettled(
-                        attendanceType, startDateTime, endDateTime);
+                attendanceType, startDateTime, endDateTime);
             }
             
             PersonalStatsSummary summary = new PersonalStatsSummary();
@@ -3405,7 +3536,7 @@ public class AttendanceController {
             } else {
                 // 查询指定类型
                 sessions = attendanceSessionRepository.findByAttendanceTypeAndTimeRangeAndSettled(
-                        attendanceType, startDateTime, endDateTime);
+                attendanceType, startDateTime, endDateTime);
             }
             
             Set<String> memberNames = new HashSet<>();
@@ -3744,7 +3875,7 @@ public class AttendanceController {
                     } else {
                         currentRank = i + 1;
                         current.setRank(currentRank);
-                    }
+            }
                 } else {
                     current.setRank(1);
                     currentRank = 1;

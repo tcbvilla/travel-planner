@@ -7,11 +7,12 @@ import {
   LinearScale,
   PointElement,
   LineElement,
+  BarElement,
   Title,
   Tooltip,
   Legend,
 } from 'chart.js'
-import { Line } from 'react-chartjs-2'
+import { Line, Bar } from 'react-chartjs-2'
 import { AuthProvider, useAuth, type Role } from './auth/AuthContext'
 import LoginModal from './auth/LoginModal'
 import ProtectedRoute from './auth/ProtectedRoute'
@@ -27,10 +28,100 @@ ChartJS.register(
   LinearScale,
   PointElement,
   LineElement,
+  BarElement,
   Title,
   Tooltip,
   Legend
 )
+
+// 自定义插件：在柱状图下方绘制竖排团队名称
+const teamNamesBelowBarsPlugin = {
+  id: 'teamNamesBelowBars',
+  afterDraw: function(chart: any) {
+    const ctx = chart.ctx
+    const xScale = chart.scales.x
+    const yScale = chart.scales.y
+    const datasets = chart.data.datasets
+    
+    if (!xScale || !yScale || !datasets || datasets.length === 0) {
+      return
+    }
+    
+    // 遍历每个考勤（x轴上的每个点）
+    chart.data.labels.forEach((_: string, sessionIndex: number) => {
+      // 遍历每个团队，在对应的柱状图下方绘制名称
+      datasets.forEach((dataset: any, teamIndex: number) => {
+        const teamName = dataset.label
+        const value = dataset.data[sessionIndex]
+        
+        // 绘制所有有数据的团队（包括值为0的情况）
+        if (value !== undefined && value !== null) {
+          // 使用 Chart.js 的 getDatasetMeta 获取柱状图的实际位置
+          const meta = chart.getDatasetMeta(teamIndex)
+          if (!meta || !meta.data || !meta.data[sessionIndex]) {
+            return
+          }
+          
+          const barElement = meta.data[sessionIndex]
+          if (!barElement) {
+            return
+          }
+          
+          // 获取柱状图的中心x位置和底部y位置
+          const barX = barElement.x
+          const barBase = barElement.base || yScale.getPixelForValue(0)
+          
+          // 文本位置：在柱状图底线上方10px
+          const textY = barBase - 10
+          
+          // 检查位置是否在画布范围内
+          if (barX < 0 || barX > chart.width || textY < 0 || textY > chart.height) {
+            return
+          }
+          
+          // 保存上下文
+          ctx.save()
+          
+          // 设置文字样式
+          ctx.font = 'bold 11px Arial'
+          ctx.textAlign = 'center'
+          ctx.textBaseline = 'middle'
+          
+          // 设置描边和填充样式
+          ctx.strokeStyle = '#ffffff'
+          ctx.lineWidth = 3
+          ctx.lineJoin = 'round'
+          ctx.miterLimit = 2
+          ctx.fillStyle = '#000000'
+          
+          // 将团队名称拆分成单个字符，竖着排列
+          const chars = teamName.split('')
+          const charHeight = 14 // 每个字符的高度（包括间距）
+          
+          // 计算起始y位置（从下往上排列，所以从底部开始）
+          const startY = textY
+          
+          // 遍历每个字符，从上到下绘制
+          chars.forEach((char: string, charIndex: number) => {
+            const charY = startY - (chars.length - 1 - charIndex) * charHeight
+            
+            // 先绘制白边（描边）
+            ctx.strokeText(char, barX, charY)
+            
+            // 再绘制黑字（填充）
+            ctx.fillText(char, barX, charY)
+          })
+          
+          // 恢复上下文
+          ctx.restore()
+        }
+      })
+    })
+  }
+}
+
+// 注册自定义插件
+ChartJS.register(teamNamesBelowBarsPlugin)
 
 type DisplayRow = {
   成员: string
@@ -1151,6 +1242,8 @@ function AppContent() {
   const [attendanceRateData, setAttendanceRateData] = useState<any[]>([])
   const [absenceStatistics, setAbsenceStatistics] = useState<any[]>([])
   const [isLoadingStats, setIsLoadingStats] = useState(false)
+  const [allTeamsComparisonData, setAllTeamsComparisonData] = useState<any[]>([])
+  const [isLoadingAllTeams, setIsLoadingAllTeams] = useState(false)
   const [statsQueryResult, setStatsQueryResult] = useState<any>(null)
   const [availableAttendanceTypes, setAvailableAttendanceTypes] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -1338,7 +1431,7 @@ function AppContent() {
   const [personalRankingData, setPersonalRankingData] = useState<any[]>([])
   const [personalRankingLoading, setPersonalRankingLoading] = useState(false)
   const [personalRankingPage, setPersonalRankingPage] = useState(0)
-  const personalRankingSize = 10
+  const [personalRankingSize, setPersonalRankingSize] = useState<number | 'all'>(10)
   const [personalRankingTotal, setPersonalRankingTotal] = useState(0)
   const [selectedRankingAttendanceTypes, setSelectedRankingAttendanceTypes] = useState<string[]>([]) // 选中的考勤类别（排名弹窗专用）
   const [rankingMemberName, setRankingMemberName] = useState('') // 姓名搜索
@@ -1349,7 +1442,7 @@ function AppContent() {
   const [teamRankingData, setTeamRankingData] = useState<any[]>([])
   const [teamRankingLoading, setTeamRankingLoading] = useState(false)
   const [teamRankingPage, setTeamRankingPage] = useState(0)
-  const teamRankingSize = 10
+  const [teamRankingSize, setTeamRankingSize] = useState<number | 'all'>(10)
   const [teamRankingTotal, setTeamRankingTotal] = useState(0)
   const [rankingTeamName, setRankingTeamName] = useState('') // 团队名搜索
   
@@ -1774,6 +1867,52 @@ function AppContent() {
       setIsLoadingStats(false)
     }
   }
+
+  // 获取全团对比数据
+  const getAllTeamsComparison = async () => {
+    if (!statsQueryResult) {
+      alert('请先查询数据')
+      return
+    }
+    
+    setIsLoadingAllTeams(true)
+    setError(null)
+    
+    try {
+      const params = new URLSearchParams({
+        startDate: statsStartDate,
+        endDate: statsEndDate
+      })
+      
+      // 只有当不是"全部"时才传考勤类型参数
+      if (statsAttendanceType && statsAttendanceType !== '全部') {
+        params.append('attendanceType', statsAttendanceType)
+      }
+      
+      const response = await fetch(`/api/v1/attendance/statistics/all-teams-attendance-rate?${params.toString()}`)
+      
+      if (response.ok) {
+        const data = await response.json()
+        const sessions = data.sessions || []
+        
+        // 检查考勤数量是否超过30条
+        if (sessions.length > 30) {
+          setError(`考勤数量超过限制（${sessions.length}条），最多支持30条考勤。请调整时间范围后重试。`)
+          setAllTeamsComparisonData([])
+        } else {
+          setAllTeamsComparisonData(sessions)
+        }
+      } else {
+        const errorData = await response.json()
+        setError(`获取全团对比数据失败: ${errorData.message || '未知错误'}`)
+      }
+    } catch (error) {
+      console.error('获取全团对比数据失败:', error)
+      setError('网络错误: ' + error)
+    } finally {
+      setIsLoadingAllTeams(false)
+    }
+  }
   
   // 获取团队现金统计数据
   const getTeamCashSummary = async () => {
@@ -1823,6 +1962,8 @@ function AppContent() {
     setAbsenceStatistics([])
     // 清除现金统计
     setCashSummary(null)
+    // 清除全团对比数据
+    setAllTeamsComparisonData([])
     // 清除错误信息
     setError(null)
   }, [selectedStatsTeam])
@@ -3720,7 +3861,7 @@ function AppContent() {
       const params = new URLSearchParams({
         seasonId: rankingSeasonId.toString(),
         page: personalRankingPage.toString(),
-        size: personalRankingSize.toString(),
+        size: (personalRankingSize === 'all' ? 10000 : personalRankingSize).toString(),
         sortOrder: rankingSortOrder
       })
       
@@ -4258,7 +4399,7 @@ function AppContent() {
       const params = new URLSearchParams({
         seasonId: rankingSeasonId.toString(),
         page: teamRankingPage.toString(),
-        size: teamRankingSize.toString(),
+        size: (teamRankingSize === 'all' ? 10000 : teamRankingSize).toString(),
         sortOrder: rankingSortOrder
       })
       
@@ -4294,7 +4435,7 @@ function AppContent() {
     if (rankingSeasonId && rankingType === 'personal') {
       loadPersonalRanking()
     }
-  }, [personalRankingPage, rankingSeasonId, rankingType])
+  }, [personalRankingPage, personalRankingSize, rankingSeasonId, rankingType])
 
   // 搜索和筛选变化时重新加载（团队排名）
   useEffect(() => {
@@ -4309,7 +4450,7 @@ function AppContent() {
     if (rankingSeasonId && rankingType === 'team') {
       loadTeamRanking()
     }
-  }, [teamRankingPage, rankingSeasonId, rankingType])
+  }, [teamRankingPage, teamRankingSize, rankingSeasonId, rankingType])
 
   // 排名类型切换时加载对应数据
   useEffect(() => {
@@ -7640,7 +7781,7 @@ function AppContent() {
                   alignItems: 'center', 
                   justifyContent: 'center',
                   gap: '8px',
-                  height: '400px',
+                  height: '420px',
                   padding: '0 20px',
                   overflowX: 'auto',
                   position: 'relative',
@@ -7651,7 +7792,7 @@ function AppContent() {
                     position: 'absolute',
                     left: '20px',
                     right: '20px',
-                    top: 'calc(35px + 150px)', // 35px(正值数值) + 150px(正值区域) = 185px，正好是柱子的交界处
+                    top: 'calc(45px + 150px)', // 45px(正值数值) + 150px(正值区域) = 195px，正好是柱子的交界处
                     height: '1px',
                     background: '#999',
                     zIndex: 1
@@ -7680,10 +7821,11 @@ function AppContent() {
                       }}>
                         {/* 正值时的数值显示（顶部） */}
                         <div style={{ 
-                          height: '35px',
+                          height: '45px',
                           display: 'flex',
                           alignItems: 'flex-end',
-                          justifyContent: 'center'
+                          justifyContent: 'center',
+                          overflow: 'visible'
                         }}>
                           {isPositive && (
                             <div className="positive-value" style={{ 
@@ -7753,10 +7895,11 @@ function AppContent() {
                         
                         {/* 负值时的数值显示（底部） */}
                         <div style={{ 
-                          height: '35px',
+                          height: '45px',
                           display: 'flex',
                           alignItems: 'flex-start',
-                          justifyContent: 'center'
+                          justifyContent: 'center',
+                          overflow: 'visible'
                         }}>
                           {!isPositive && (
                             <div className="negative-value" style={{ 
@@ -8351,8 +8494,32 @@ function AppContent() {
 
                       {/* 分页 */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
-                        <div style={{ color: '#fff' }}>
-                          共 {personalRankingTotal} 条记录，第 {personalRankingPage + 1} 页，共 {Math.ceil(personalRankingTotal / personalRankingSize)} 页
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div className="ranking-pagination-info" style={{ color: '#000' }}>
+                            共 {personalRankingTotal} 条记录，第 {personalRankingPage + 1} 页，共 {Math.ceil(personalRankingTotal / (personalRankingSize === 'all' ? personalRankingTotal : personalRankingSize))} 页
+                          </div>
+                          <select
+                            value={personalRankingSize}
+                            onChange={(e) => {
+                              const value = e.target.value === 'all' ? 'all' : parseInt(e.target.value)
+                              setPersonalRankingSize(value)
+                              setPersonalRankingPage(0)
+                            }}
+                            style={{
+                              padding: '4px 8px',
+                              border: '1px solid #555',
+                              borderRadius: '4px',
+                              background: '#1a1a1a',
+                              color: '#fff',
+                              fontSize: '14px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <option value={10}>10</option>
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
+                            <option value="all">全部</option>
+                          </select>
                         </div>
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button
@@ -8371,14 +8538,14 @@ function AppContent() {
                           </button>
                           <button
                             onClick={() => setPersonalRankingPage(prev => prev + 1)}
-                            disabled={personalRankingPage >= Math.ceil(personalRankingTotal / personalRankingSize) - 1}
+                            disabled={personalRankingPage >= Math.ceil(personalRankingTotal / (personalRankingSize === 'all' ? personalRankingTotal : personalRankingSize)) - 1}
                             style={{
                               padding: '6px 12px',
-                              background: personalRankingPage >= Math.ceil(personalRankingTotal / personalRankingSize) - 1 ? '#555' : '#007bff',
+                              background: personalRankingPage >= Math.ceil(personalRankingTotal / (personalRankingSize === 'all' ? personalRankingTotal : personalRankingSize)) - 1 ? '#555' : '#007bff',
                               color: '#fff',
                               border: 'none',
                               borderRadius: '4px',
-                              cursor: personalRankingPage >= Math.ceil(personalRankingTotal / personalRankingSize) - 1 ? 'not-allowed' : 'pointer'
+                              cursor: personalRankingPage >= Math.ceil(personalRankingTotal / (personalRankingSize === 'all' ? personalRankingTotal : personalRankingSize)) - 1 ? 'not-allowed' : 'pointer'
                             }}
                           >
                             下一页
@@ -8566,8 +8733,32 @@ function AppContent() {
 
                       {/* 分页 */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
-                        <div style={{ color: '#fff' }}>
-                          共 {teamRankingTotal} 条记录，第 {teamRankingPage + 1} 页，共 {Math.ceil(teamRankingTotal / teamRankingSize)} 页
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div className="ranking-pagination-info" style={{ color: '#000' }}>
+                            共 {teamRankingTotal} 条记录，第 {teamRankingPage + 1} 页，共 {Math.ceil(teamRankingTotal / (teamRankingSize === 'all' ? teamRankingTotal : teamRankingSize))} 页
+                          </div>
+                          <select
+                            value={teamRankingSize}
+                            onChange={(e) => {
+                              const value = e.target.value === 'all' ? 'all' : parseInt(e.target.value)
+                              setTeamRankingSize(value)
+                              setTeamRankingPage(0)
+                            }}
+                            style={{
+                              padding: '4px 8px',
+                              border: '1px solid #555',
+                              borderRadius: '4px',
+                              background: '#1a1a1a',
+                              color: '#fff',
+                              fontSize: '14px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <option value={10}>10</option>
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
+                            <option value="all">全部</option>
+                          </select>
                         </div>
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button
@@ -8586,14 +8777,14 @@ function AppContent() {
                           </button>
                           <button
                             onClick={() => setTeamRankingPage(prev => prev + 1)}
-                            disabled={teamRankingPage >= Math.ceil(teamRankingTotal / teamRankingSize) - 1}
+                            disabled={teamRankingPage >= Math.ceil(teamRankingTotal / (teamRankingSize === 'all' ? teamRankingTotal : teamRankingSize)) - 1}
                             style={{
                               padding: '6px 12px',
-                              background: teamRankingPage >= Math.ceil(teamRankingTotal / teamRankingSize) - 1 ? '#555' : '#007bff',
+                              background: teamRankingPage >= Math.ceil(teamRankingTotal / (teamRankingSize === 'all' ? teamRankingTotal : teamRankingSize)) - 1 ? '#555' : '#007bff',
                               color: '#fff',
                               border: 'none',
                               borderRadius: '4px',
-                              cursor: teamRankingPage >= Math.ceil(teamRankingTotal / teamRankingSize) - 1 ? 'not-allowed' : 'pointer'
+                              cursor: teamRankingPage >= Math.ceil(teamRankingTotal / (teamRankingSize === 'all' ? teamRankingTotal : teamRankingSize)) - 1 ? 'not-allowed' : 'pointer'
                             }}
                           >
                             下一页
@@ -8821,43 +9012,65 @@ function AppContent() {
                           }}
                         >
                           <option value="">请选择团队</option>
+                          <option value="全团对比">全团对比</option>
                           {availableTeams.map((team) => (
                             <option key={team} value={team}>{team}</option>
                           ))}
                         </select>
-                        <button
-                          onClick={getTeamAttendanceRate}
-                          disabled={!selectedStatsTeam || isLoadingStats}
-                          style={{
-                            padding: '8px 16px',
-                            background: selectedStatsTeam && !isLoadingStats ? '#28a745' : '#6c757d',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: selectedStatsTeam && !isLoadingStats ? 'pointer' : 'not-allowed',
-                            fontSize: '14px',
-                            fontWeight: 'bold'
-                          }}
-                        >
-                          {isLoadingStats ? '计算中...' : '生成出勤率曲线'}
-                        </button>
-                        <button
-                          onClick={getTeamCashSummary}
-                          disabled={!selectedStatsTeam || isLoadingCash}
-                          style={{
-                            padding: '8px 16px',
-                            background: selectedStatsTeam && !isLoadingCash ? '#ff6b35' : '#6c757d',
-                            color: '#fff',
-                            border: 'none',
-                            borderRadius: '4px',
-                            cursor: selectedStatsTeam && !isLoadingCash ? 'pointer' : 'not-allowed',
-                            fontSize: '14px',
-                            fontWeight: 'bold',
-                            marginLeft: '8px'
-                          }}
-                        >
-                          {isLoadingCash ? '计算中...' : '生成现金统计'}
-                        </button>
+                        {selectedStatsTeam === '全团对比' ? (
+                          <button
+                            onClick={getAllTeamsComparison}
+                            disabled={isLoadingAllTeams}
+                            style={{
+                              padding: '8px 16px',
+                              background: !isLoadingAllTeams ? '#28a745' : '#6c757d',
+                              color: '#fff',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: !isLoadingAllTeams ? 'pointer' : 'not-allowed',
+                              fontSize: '14px',
+                              fontWeight: 'bold'
+                            }}
+                          >
+                            {isLoadingAllTeams ? '计算中...' : '生成全团对比'}
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={getTeamAttendanceRate}
+                              disabled={!selectedStatsTeam || isLoadingStats}
+                              style={{
+                                padding: '8px 16px',
+                                background: selectedStatsTeam && !isLoadingStats ? '#28a745' : '#6c757d',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: selectedStatsTeam && !isLoadingStats ? 'pointer' : 'not-allowed',
+                                fontSize: '14px',
+                                fontWeight: 'bold'
+                              }}
+                            >
+                              {isLoadingStats ? '计算中...' : '生成出勤率曲线'}
+                            </button>
+                            <button
+                              onClick={getTeamCashSummary}
+                              disabled={!selectedStatsTeam || isLoadingCash}
+                              style={{
+                                padding: '8px 16px',
+                                background: selectedStatsTeam && !isLoadingCash ? '#ff6b35' : '#6c757d',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: selectedStatsTeam && !isLoadingCash ? 'pointer' : 'not-allowed',
+                                fontSize: '14px',
+                                fontWeight: 'bold',
+                                marginLeft: '8px'
+                              }}
+                            >
+                              {isLoadingCash ? '计算中...' : '生成现金统计'}
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}
@@ -9191,6 +9404,217 @@ function AppContent() {
                       </div>
                     </div>
                   </div>
+              )}
+              
+              {/* 全团对比柱状图 */}
+              {allTeamsComparisonData.length > 0 && (
+                <div style={{ 
+                  background: '#3d3d3d', 
+                  padding: '20px', 
+                  borderRadius: '8px',
+                  marginTop: '20px'
+                }}>
+                  <h4 style={{ margin: '0 0 16px 0', color: '#fff' }}>
+                    全团出勤率对比
+                  </h4>
+                  
+                  {/* 图表容器 - 默认宽度显示6次考勤，居中，超过可滑动 */}
+                  {(() => {
+                    // 获取所有团队名称，用于计算宽度
+                    const allTeamNames = new Set<string>()
+                    allTeamsComparisonData.forEach(session => {
+                      Object.keys(session.teamRates || {}).forEach(team => {
+                        allTeamNames.add(team)
+                      })
+                    })
+                    const teamNames = Array.from(allTeamNames).sort()
+                    
+                    // 固定每个考勤的宽度（像素），确保无论考勤数量多少，每个考勤宽度一致
+                    const fixedCategoryWidth = 216 // 每个考勤固定216px宽度
+                    
+                    return (
+                      <div style={{ 
+                        background: '#1a1a1a', 
+                        padding: '20px', 
+                        borderRadius: '8px',
+                        width: '100%',
+                        maxWidth: '864px' // 外层容器固定最大宽度
+                      }}>
+                        {/* 图例区域 - 占满宽度 */}
+                        <div style={{
+                          width: '100%',
+                          marginBottom: '20px',
+                          display: 'flex',
+                          justifyContent: 'center',
+                          flexWrap: 'wrap',
+                          gap: '15px'
+                        }}>
+                          {teamNames.map((teamName, teamIndex) => {
+                            const hues = [200, 280, 40, 220, 320, 60, 180, 260, 20, 240, 300, 80, 160, 340, 100]
+                            const hue = hues[teamIndex % hues.length] || (teamIndex * 40) % 360
+                            const color = `hsl(${hue}, 50%, 60%)`
+                            return (
+                              <div key={teamName} style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '8px'
+                              }}>
+                                <div style={{
+                                  width: '12px',
+                                  height: '12px',
+                                  borderRadius: '50%',
+                                  backgroundColor: color,
+                                  border: `1px solid hsl(${hue}, 50%, 50%)`
+                                }}></div>
+                                <span style={{ color: '#fff', fontSize: '12px' }}>{teamName}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        
+                        {/* 图表容器 - 居中显示，超出可滑动 */}
+                        <div style={{ 
+                          display: 'flex',
+                          justifyContent: 'center',
+                          overflowX: 'auto',
+                          width: '100%'
+                        }}>
+                          <div style={{ 
+                            width: `${allTeamsComparisonData.length * fixedCategoryWidth}px`, // 考勤数量 × 固定宽度
+                            height: '350px'
+                          }}>
+                          <Bar
+                            data={{
+                              labels: allTeamsComparisonData.map(s => s.sessionName),
+                              datasets: (() => {
+                                // 为每个团队创建数据集
+                                return teamNames.map((teamName, teamIndex) => ({
+                                  label: teamName,
+                                  data: allTeamsComparisonData.map(session => 
+                                    session.teamRates && session.teamRates[teamName] !== undefined 
+                                      ? Number(session.teamRates[teamName])
+                                      : 0
+                                  ),
+                                  backgroundColor: (() => {
+                                    // 使用柔和的色相，确保有足够的区分度，色相间隔至少40度
+                                    // 色相分布：蓝绿色、紫色、橙黄色、青蓝色、粉紫色、黄绿色、红色系等
+                                    const hues = [200, 280, 40, 220, 320, 60, 180, 260, 20, 240, 300, 80, 160, 340, 100]
+                                    const hue = hues[teamIndex % hues.length] || (teamIndex * 40) % 360 // 如果超过预设数量，每40度一个色相
+                                    return `hsl(${hue}, 50%, 60%)`
+                                  })(),
+                                  borderColor: (() => {
+                                    const hues = [200, 280, 40, 220, 320, 60, 180, 260, 20, 240, 300, 80, 160, 340, 100]
+                                    const hue = hues[teamIndex % hues.length] || (teamIndex * 40) % 360
+                                    return `hsl(${hue}, 50%, 50%)`
+                                  })(),
+                                  borderWidth: 1,
+                                  // 设置柱状图宽度和间距
+                                  categoryPercentage: 0.8, // 类别宽度占80%，留出间距
+                                  barPercentage: 0.8 // 柱状图宽度为类别宽度的80%
+                                }))
+                              })()
+                        }}
+                        options={{
+                          responsive: true, // 启用响应式，但容器宽度已固定
+                          maintainAspectRatio: false,
+                          plugins: {
+                            title: {
+                              display: false
+                            },
+                            legend: {
+                              display: false // 禁用内置图例，使用外部自定义图例
+                            },
+                            tooltip: {
+                              backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                              titleColor: '#fff',
+                              bodyColor: '#fff',
+                              borderColor: '#555',
+                              borderWidth: 1,
+                              callbacks: {
+                                label: function(context: any) {
+                                  return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`
+                                }
+                              }
+                            }
+                          },
+                          scales: {
+                            x: {
+                              display: true,
+                              title: {
+                                display: true,
+                                text: '考勤名称',
+                                color: '#fff',
+                                font: {
+                                  size: 14
+                                }
+                              },
+                              ticks: {
+                                color: '#ccc',
+                                font: {
+                                  size: 11
+                                },
+                                maxRotation: 0,
+                                minRotation: 0,
+                                // 标签换行处理：每8个字符换行，确保不超出柱状图范围
+                                callback: function(value: any): string | string[] {
+                                  const labels = (this as any).chart?.data?.labels || []
+                                  const label = labels[Number(value)] as string
+                                  if (!label) return ''
+                                  // 如果标签太长，按字符数分割换行（每8个字符换行）
+                                  if (label.length > 8) {
+                                    const chunks: string[] = []
+                                    for (let i = 0; i < label.length; i += 8) {
+                                      chunks.push(label.slice(i, i + 8))
+                                    }
+                                    return chunks
+                                  }
+                                  return label
+                                }
+                              },
+                              grid: {
+                                color: 'rgba(255, 255, 255, 0.2)',
+                                display: true,
+                                // 添加分隔线，更清晰地区分每次考勤
+                                drawOnChartArea: true,
+                                lineWidth: 1
+                              },
+                              offset: true // 在轴的两端留出空间
+                            },
+                            y: {
+                              display: true,
+                              title: {
+                                display: true,
+                                text: '出勤率 (%)',
+                                color: '#fff',
+                                font: {
+                                  size: 14
+                                }
+                              },
+                              min: 0,
+                              max: 100,
+                              ticks: {
+                                color: '#ccc',
+                                font: {
+                                  size: 11
+                                },
+                                callback: function(value: any) {
+                                  return value + '%'
+                                }
+                              },
+                              grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                              }
+                            }
+                          }
+                        } as any}
+                        plugins={[teamNamesBelowBarsPlugin]}
+                      />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
               )}
               
               {/* 缺勤统计 */}

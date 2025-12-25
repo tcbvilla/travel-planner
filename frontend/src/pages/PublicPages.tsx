@@ -58,7 +58,7 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
   const [personalRankingData, setPersonalRankingData] = useState<any[]>([])
   const [personalRankingLoading, setPersonalRankingLoading] = useState(false)
   const [personalRankingPage, setPersonalRankingPage] = useState(0)
-  const [personalRankingSize] = useState(10)
+  const [personalRankingSize, setPersonalRankingSize] = useState<number | 'all'>(10)
   const [personalRankingTotal, setPersonalRankingTotal] = useState(0)
   const [selectedRankingAttendanceTypes, setSelectedRankingAttendanceTypes] = useState<string[]>([])
   const [rankingMemberName, setRankingMemberName] = useState('')
@@ -69,7 +69,7 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
   const [teamRankingData, setTeamRankingData] = useState<any[]>([])
   const [teamRankingLoading, setTeamRankingLoading] = useState(false)
   const [teamRankingPage, setTeamRankingPage] = useState(0)
-  const [teamRankingSize] = useState(10)
+  const [teamRankingSize, setTeamRankingSize] = useState<number | 'all'>(10)
   const [teamRankingTotal, setTeamRankingTotal] = useState(0)
   const [rankingTeamName, setRankingTeamName] = useState('')
 
@@ -276,7 +276,7 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
       const params = new URLSearchParams({
         seasonId: rankingSeasonId.toString(),
         page: personalRankingPage.toString(),
-        size: personalRankingSize.toString(),
+        size: (personalRankingSize === 'all' ? 10000 : personalRankingSize).toString(),
         sortOrder: rankingSortOrder
       })
       
@@ -316,7 +316,7 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
       const params = new URLSearchParams({
         seasonId: rankingSeasonId.toString(),
         page: teamRankingPage.toString(),
-        size: teamRankingSize.toString(),
+        size: (teamRankingSize === 'all' ? 10000 : teamRankingSize).toString(),
         sortOrder: rankingSortOrder
       })
       
@@ -395,7 +395,7 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
         loadTeamRanking()
       }
     }
-  }, [rankingType, personalRankingPage, teamRankingPage, rankingSeasonId])
+  }, [rankingType, personalRankingPage, teamRankingPage, personalRankingSize, teamRankingSize, rankingSeasonId])
 
   // 当选择赛季时，初始化排名数据
   useEffect(() => {
@@ -917,7 +917,7 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                   alignItems: 'center', 
                   justifyContent: 'center',
                   gap: '8px',
-                  height: '400px',
+                  height: '420px',
                   padding: '0 20px',
                   overflowX: 'auto',
                   position: 'relative',
@@ -928,7 +928,7 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                     position: 'absolute',
                     left: '20px',
                     right: '20px',
-                    top: 'calc(35px + 150px)',
+                    top: 'calc(45px + 150px)', // 45px(正值数值) + 150px(正值区域) = 195px，正好是柱子的交界处
                     height: '1px',
                     background: '#999',
                     zIndex: 1
@@ -955,10 +955,11 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                       }}>
                         {/* 正值时的数值显示（顶部） */}
                         <div style={{ 
-                          height: '35px',
+                          height: '45px',
                           display: 'flex',
                           alignItems: 'flex-end',
-                          justifyContent: 'center'
+                          justifyContent: 'center',
+                          overflow: 'visible'
                         }}>
                           {isPositive && (
                             <div className="positive-value" style={{ 
@@ -1028,10 +1029,11 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                         
                         {/* 负值时的数值显示（底部） */}
                         <div style={{ 
-                          height: '35px',
+                          height: '45px',
                           display: 'flex',
                           alignItems: 'flex-start',
-                          justifyContent: 'center'
+                          justifyContent: 'center',
+                          overflow: 'visible'
                         }}>
                           {!isPositive && (
                             <div className="negative-value" style={{ 
@@ -1592,8 +1594,32 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
 
                       {/* 分页 */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
-                        <div style={{ color: '#fff' }}>
-                          共 {personalRankingTotal} 条记录，第 {personalRankingPage + 1} 页，共 {Math.ceil(personalRankingTotal / personalRankingSize)} 页
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div className="ranking-pagination-info" style={{ color: '#000' }}>
+                            共 {personalRankingTotal} 条记录，第 {personalRankingPage + 1} 页，共 {Math.ceil(personalRankingTotal / (personalRankingSize === 'all' ? personalRankingTotal : personalRankingSize))} 页
+                          </div>
+                          <select
+                            value={personalRankingSize}
+                            onChange={(e) => {
+                              const value = e.target.value === 'all' ? 'all' : parseInt(e.target.value)
+                              setPersonalRankingSize(value)
+                              setPersonalRankingPage(0)
+                            }}
+                            style={{
+                              padding: '4px 8px',
+                              border: '1px solid #555',
+                              borderRadius: '4px',
+                              background: '#1a1a1a',
+                              color: '#fff',
+                              fontSize: '14px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <option value={10}>10</option>
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
+                            <option value="all">全部</option>
+                          </select>
                         </div>
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button
@@ -1612,14 +1638,14 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                           </button>
                           <button
                             onClick={() => setPersonalRankingPage(prev => prev + 1)}
-                            disabled={personalRankingPage >= Math.ceil(personalRankingTotal / personalRankingSize) - 1}
+                            disabled={personalRankingPage >= Math.ceil(personalRankingTotal / (personalRankingSize === 'all' ? personalRankingTotal : personalRankingSize)) - 1}
                             style={{
                               padding: '6px 12px',
-                              background: personalRankingPage >= Math.ceil(personalRankingTotal / personalRankingSize) - 1 ? '#555' : '#007bff',
+                              background: personalRankingPage >= Math.ceil(personalRankingTotal / (personalRankingSize === 'all' ? personalRankingTotal : personalRankingSize)) - 1 ? '#555' : '#007bff',
                               color: '#fff',
                               border: 'none',
                               borderRadius: '4px',
-                              cursor: personalRankingPage >= Math.ceil(personalRankingTotal / personalRankingSize) - 1 ? 'not-allowed' : 'pointer'
+                              cursor: personalRankingPage >= Math.ceil(personalRankingTotal / (personalRankingSize === 'all' ? personalRankingTotal : personalRankingSize)) - 1 ? 'not-allowed' : 'pointer'
                             }}
                           >
                             下一页
@@ -1773,8 +1799,32 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
 
                       {/* 分页 */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
-                        <div style={{ color: '#fff' }}>
-                          共 {teamRankingTotal} 条记录，第 {teamRankingPage + 1} 页，共 {Math.ceil(teamRankingTotal / teamRankingSize)} 页
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div className="ranking-pagination-info" style={{ color: '#000' }}>
+                            共 {teamRankingTotal} 条记录，第 {teamRankingPage + 1} 页，共 {Math.ceil(teamRankingTotal / (teamRankingSize === 'all' ? teamRankingTotal : teamRankingSize))} 页
+                          </div>
+                          <select
+                            value={teamRankingSize}
+                            onChange={(e) => {
+                              const value = e.target.value === 'all' ? 'all' : parseInt(e.target.value)
+                              setTeamRankingSize(value)
+                              setTeamRankingPage(0)
+                            }}
+                            style={{
+                              padding: '4px 8px',
+                              border: '1px solid #555',
+                              borderRadius: '4px',
+                              background: '#1a1a1a',
+                              color: '#fff',
+                              fontSize: '14px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            <option value={10}>10</option>
+                            <option value={50}>50</option>
+                            <option value={100}>100</option>
+                            <option value="all">全部</option>
+                          </select>
                         </div>
                         <div style={{ display: 'flex', gap: '8px' }}>
                           <button
@@ -1793,14 +1843,14 @@ const PublicPages: React.FC<PublicPagesProps> = ({ onBackToLogin }) => {
                           </button>
                           <button
                             onClick={() => setTeamRankingPage(prev => prev + 1)}
-                            disabled={teamRankingPage >= Math.ceil(teamRankingTotal / teamRankingSize) - 1}
+                            disabled={teamRankingPage >= Math.ceil(teamRankingTotal / (teamRankingSize === 'all' ? teamRankingTotal : teamRankingSize)) - 1}
                             style={{
                               padding: '6px 12px',
-                              background: teamRankingPage >= Math.ceil(teamRankingTotal / teamRankingSize) - 1 ? '#555' : '#007bff',
+                              background: teamRankingPage >= Math.ceil(teamRankingTotal / (teamRankingSize === 'all' ? teamRankingTotal : teamRankingSize)) - 1 ? '#555' : '#007bff',
                               color: '#fff',
                               border: 'none',
                               borderRadius: '4px',
-                              cursor: teamRankingPage >= Math.ceil(teamRankingTotal / teamRankingSize) - 1 ? 'not-allowed' : 'pointer'
+                              cursor: teamRankingPage >= Math.ceil(teamRankingTotal / (teamRankingSize === 'all' ? teamRankingTotal : teamRankingSize)) - 1 ? 'not-allowed' : 'pointer'
                             }}
                           >
                             下一页
