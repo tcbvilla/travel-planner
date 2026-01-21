@@ -1,5 +1,7 @@
 package com.tripmaster.backend.attendance;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public class DisplayRow {
     private String 成员;
     private String 分组;
@@ -11,6 +13,9 @@ public class DisplayRow {
     private long 助攻差值;
     private boolean 达标;
     private boolean 参加考勤;
+    
+    @JsonProperty("使用配置分组")
+    private boolean 使用配置分组;
 
     public String get成员() { return 成员; }
     public void set成员(String 成员) { this.成员 = 成员; }
@@ -41,6 +46,9 @@ public class DisplayRow {
 
     public boolean is参加考勤() { return 参加考勤; }
     public void set参加考勤(boolean 参加考勤) { this.参加考勤 = 参加考勤; }
+
+    public boolean is使用配置分组() { return 使用配置分组; }
+    public void set使用配置分组(boolean 使用配置分组) { this.使用配置分组 = 使用配置分组; }
 }
 
 

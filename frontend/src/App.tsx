@@ -51,6 +51,11 @@ const teamNamesBelowBarsPlugin = {
     chart.data.labels.forEach((_: string, sessionIndex: number) => {
       // 遍历每个团队，在对应的柱状图下方绘制名称
       datasets.forEach((dataset: any, teamIndex: number) => {
+        // 如果该团队数据集被隐藏，则不绘制名称
+        if (!chart.isDatasetVisible(teamIndex)) {
+          return
+        }
+        
         const teamName = dataset.label
         const value = dataset.data[sessionIndex]
         
@@ -134,6 +139,7 @@ type DisplayRow = {
   助攻差值: number
   达标: boolean
   参加考勤: boolean
+  使用配置分组: boolean
 }
 
 type GroupStat = {
@@ -937,8 +943,42 @@ function AppContent() {
   // 导出组件引用
   const exportRef = useRef<HTMLDivElement>(null)
   const personalExportRef = useRef<HTMLDivElement>(null)
+  const allTeamsChartRef = useRef<any>(null)
+  const [hiddenTeams, setHiddenTeams] = useState<Set<string>>(new Set())
   const personalRankingExportRef = useRef<HTMLDivElement>(null)
   const teamRankingExportRef = useRef<HTMLDivElement>(null)
+
+  // 配置管理页签状态
+  const [configSubTab, setConfigSubTab] = useState<'bonus' | 'logo' | 'ranking' | 'group'>('bonus')
+  
+  // 分组配置相关状态
+  const [groupSubTab, setGroupSubTab] = useState<'groups' | 'members'>('groups')
+  const [groups, setGroups] = useState<any[]>([])
+  const [members, setMembers] = useState<any[]>([])
+  const [loadingGroups, setLoadingGroups] = useState(false)
+  const [loadingMembers, setLoadingMembers] = useState(false)
+  const [filterGroupId, setFilterGroupId] = useState<string>('')
+  const [groupMemberSearchTerm, setGroupMemberSearchTerm] = useState<string>('')
+  const [showGroupModal, setShowGroupModal] = useState(false)
+  const [showMemberModal, setShowMemberModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [editingGroup, setEditingGroup] = useState<any>(null)
+  const [editingMember, setEditingMember] = useState<any>(null)
+  const [groupFormName, setGroupFormName] = useState('')
+  const [groupFormDescription, setGroupFormDescription] = useState('')
+  const [memberFormName, setMemberFormName] = useState('')
+  const [memberFormGroupId, setMemberFormGroupId] = useState<string>('')
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importResult, setImportResult] = useState<any>(null)
+  const [groupCurrentPage, setGroupCurrentPage] = useState(0)
+  const [groupTotalPages, setGroupTotalPages] = useState(0)
+  const [memberCurrentPage, setMemberCurrentPage] = useState(0)
+  const [memberTotalPages, setMemberTotalPages] = useState(0)
+  
+  const [loadingLogs, setLoadingLogs] = useState(false)
+  const [currentLogPage, setCurrentLogPage] = useState(0)
+  const [totalLogPages, setTotalLogPages] = useState(0)
+  const [totalLogElements, setTotalLogElements] = useState(0)
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1299,8 +1339,32 @@ function AppContent() {
     if (activeTab === 'config') {
       loadRankingExclusionList()
       loadAvailableRankingMembers()
+      if (configSubTab === 'group') {
+        if (groupSubTab === 'groups') {
+          loadGroups()
+        } else {
+          loadMembers()
+        }
+      }
     }
   }, [activeTab])
+  
+  // 监听分组筛选变化
+  useEffect(() => {
+    if (activeTab === 'config' && configSubTab === 'group' && groupSubTab === 'members') {
+      loadMembers(0)
+    }
+  }, [filterGroupId])
+  
+  // 监听成员搜索词变化
+  useEffect(() => {
+    if (activeTab === 'config' && configSubTab === 'group' && groupSubTab === 'members') {
+      const timer = setTimeout(() => {
+        loadMembers(0)
+      }, 300) // Debounce 300ms
+      return () => clearTimeout(timer)
+    }
+  }, [groupMemberSearchTerm])
 
   // 考勤会话相关状态
   const [sessions, setSessions] = useState<AttendanceSession[]>([])
@@ -1519,11 +1583,6 @@ function AppContent() {
   const [manualMemberName, setManualMemberName] = useState('')
   const rankingExclusionDropdownRef = useRef<HTMLDivElement>(null)
   
-  const [loadingLogs, setLoadingLogs] = useState(false)
-  const [currentLogPage, setCurrentLogPage] = useState(0)
-  const [totalLogPages, setTotalLogPages] = useState(0)
-  const [totalLogElements, setTotalLogElements] = useState(0)
-
   // 新增函数：处理"若任务"状态变化
   const handleTaskStatusChange = (status: '胜利' | '失败') => {
     setTaskStatus(status)
@@ -2707,7 +2766,8 @@ function AppContent() {
           助攻后值: assistNext,
           助攻差值: assistDiff,
           达标: diff >= threshold,
-          参加考勤: true
+          参加考勤: true,
+          使用配置分组: false
         })
       }
       setFilteredCount(filtered)
@@ -3653,6 +3713,266 @@ function AppContent() {
       alert('保存失败')
     } finally {
       setLoadingRankingExclusion(false)
+    }
+  }
+  
+  // ==================== 分组配置相关函数 ====================
+  
+  // 加载小组列表
+  const loadGroups = async (page = 0) => {
+    setLoadingGroups(true)
+    try {
+      const response = await fetch(`/api/v1/group-config/groups?page=${page}&size=20`)
+      if (response.ok) {
+        const data = await response.json()
+        setGroups(data.content || [])
+        setGroupCurrentPage(data.number || 0)
+        setGroupTotalPages(data.totalPages || 0)
+      }
+    } catch (error) {
+      console.error('Load groups failed:', error)
+    } finally {
+      setLoadingGroups(false)
+    }
+  }
+  
+  // 加载成员列表
+  const loadMembers = async (page = 0) => {
+    setLoadingMembers(true)
+    try {
+      let url = `/api/v1/group-config/members?page=${page}&size=20`
+      if (filterGroupId) {
+        if (filterGroupId === 'null') {
+          url += '&emptyGroup=true'
+        } else {
+          url += `&groupId=${filterGroupId}`
+        }
+      }
+      if (groupMemberSearchTerm.trim()) {
+        url += `&memberName=${encodeURIComponent(groupMemberSearchTerm.trim())}`
+      }
+      const response = await fetch(url)
+      if (response.ok) {
+        const data = await response.json()
+        setMembers(data.content || [])
+        setMemberCurrentPage(data.number || 0)
+        setMemberTotalPages(data.totalPages || 0)
+      }
+    } catch (error) {
+      console.error('Load members failed:', error)
+    } finally {
+      setLoadingMembers(false)
+    }
+  }
+  
+  // 显示创建小组弹窗
+  const showCreateGroupModal = () => {
+    setEditingGroup(null)
+    setGroupFormName('')
+    setGroupFormDescription('')
+    setShowGroupModal(true)
+  }
+  
+  // 显示编辑小组弹窗
+  const showEditGroupModal = (group: any) => {
+    setEditingGroup(group)
+    setGroupFormName(group.groupName)
+    setGroupFormDescription(group.description || '')
+    setShowGroupModal(true)
+  }
+  
+  // 保存小组
+  const saveGroup = async () => {
+    if (!groupFormName.trim()) {
+      alert('请输入小组名称')
+      return
+    }
+    
+    try {
+      const url = editingGroup 
+        ? `/api/v1/group-config/groups/${editingGroup.id}`
+        : '/api/v1/group-config/groups'
+      
+      const response = await fetch(url, {
+        method: editingGroup ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          groupName: groupFormName.trim(),
+          description: groupFormDescription.trim()
+        })
+      })
+      
+      const result = await response.json()
+      if (response.ok) {
+        alert(editingGroup ? '小组已更新' : '小组已创建')
+        setShowGroupModal(false)
+        loadGroups(groupCurrentPage)
+      } else {
+        alert('保存失败: ' + (result.error || '未知错误'))
+      }
+    } catch (error) {
+      console.error('Save group failed:', error)
+      alert('保存失败')
+    }
+  }
+  
+  // 删除小组
+  const deleteGroup = async (id: number) => {
+    if (!confirm('确定要删除该小组吗？该小组下的成员将被设为未分组。')) {
+      return
+    }
+    
+    try {
+      const response = await fetch(`/api/v1/group-config/groups/${id}`, {
+        method: 'DELETE'
+      })
+      
+      if (response.ok) {
+        alert('小组已删除')
+        loadGroups(groupCurrentPage)
+      } else {
+        const result = await response.json()
+        alert('删除失败: ' + (result.error || '未知错误'))
+      }
+    } catch (error) {
+      console.error('Delete group failed:', error)
+      alert('删除失败')
+    }
+  }
+  
+  // 显示创建成员弹窗
+  const showCreateMemberModal = () => {
+    setEditingMember(null)
+    setMemberFormName('')
+    setMemberFormGroupId('')
+    setShowMemberModal(true)
+  }
+  
+  // 显示编辑成员弹窗
+  const showEditMemberModal = (member: any) => {
+    setEditingMember(member)
+    setMemberFormName(member.memberName)
+    setMemberFormGroupId(member.teamGroup ? String(member.teamGroup.id) : '')
+    setShowMemberModal(true)
+  }
+  
+  // 保存成员
+  const saveMember = async () => {
+    if (!memberFormName.trim()) {
+      alert('请输入成员名称')
+      return
+    }
+    
+    try {
+      const url = editingMember 
+        ? `/api/v1/group-config/members/${editingMember.id}`
+        : '/api/v1/group-config/members'
+      
+      const response = await fetch(url, {
+        method: editingMember ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          memberName: memberFormName.trim(),
+          groupId: memberFormGroupId ? Number(memberFormGroupId) : null
+        })
+      })
+      
+      const result = await response.json()
+      if (response.ok) {
+        alert(editingMember ? '成员已更新' : '成员已创建')
+        setShowMemberModal(false)
+        loadMembers(memberCurrentPage)
+      } else {
+        alert('保存失败: ' + (result.error || '未知错误'))
+      }
+    } catch (error) {
+      console.error('Save member failed:', error)
+      alert('保存失败')
+    }
+  }
+  
+  // 删除成员
+  const deleteMember = async (id: number) => {
+    if (!confirm('确定要删除该成员吗？')) {
+      return
+    }
+    
+    try {
+      const response = await fetch(`/api/v1/group-config/members/${id}`, {
+        method: 'DELETE'
+      })
+      
+      if (response.ok) {
+        alert('成员已删除')
+        loadMembers(memberCurrentPage)
+      } else {
+        const result = await response.json()
+        alert('删除失败: ' + (result.error || '未知错误'))
+      }
+    } catch (error) {
+      console.error('Delete member failed:', error)
+      alert('删除失败')
+    }
+  }
+  
+  // 批量删除
+  const batchDeleteMembers = async (deleteType: 'ALL' | 'EMPTY_GROUP') => {
+    const message = deleteType === 'ALL' 
+      ? '确定要删除所有成员吗？' 
+      : '确定要删除所有未分组的成员吗？'
+    
+    if (!confirm(message)) {
+      return
+    }
+    
+    try {
+      const response = await fetch('/api/v1/group-config/members/batch', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deleteType })
+      })
+      
+      if (response.ok) {
+        alert('成员已删除')
+        loadMembers(0)
+      } else {
+        const result = await response.json()
+        alert('删除失败: ' + (result.error || '未知错误'))
+      }
+    } catch (error) {
+      console.error('Batch delete failed:', error)
+      alert('删除失败')
+    }
+  }
+  
+  // 导入CSV
+  const importCsv = async () => {
+    if (!importFile) {
+      alert('请选择 CSV 文件')
+      return
+    }
+    
+    try {
+      const formData = new FormData()
+      formData.append('file', importFile)
+      
+      const response = await fetch('/api/v1/group-config/import/csv', {
+        method: 'POST',
+        body: formData
+      })
+      
+      const result = await response.json()
+      if (response.ok) {
+        setImportResult(result)
+        setShowImportModal(false)
+        loadMembers(0)
+        loadGroups(groupCurrentPage)
+      } else {
+        alert('导入失败: ' + (result.error || '未知错误'))
+      }
+    } catch (error) {
+      console.error('Import failed:', error)
+      alert('导入失败')
     }
   }
   
@@ -5633,11 +5953,25 @@ function AppContent() {
             </div>
 
             {activeSubTab === 'members' && (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #dee2e6' }}>
-                  <thead>
-                    <tr style={{ background: '#404040' }}>
-                      <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>成员</th>
+              <div>
+                <div style={{ marginBottom: '12px', padding: '12px', background: '#3d3d3d', borderRadius: '4px' }}>
+                  <div style={{ color: '#fff', fontSize: '14px', marginBottom: '8px', fontWeight: 'bold' }}>分组列颜色说明：</div>
+                  <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div className="group-from-config" style={{ width: '20px', height: '20px', border: '1px solid #666' }}></div>
+                      <span style={{ color: '#fff', fontSize: '14px' }}>使用成员配置的分组</span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div className="group-from-csv" style={{ width: '20px', height: '20px', border: '1px solid #666' }}></div>
+                      <span style={{ color: '#fff', fontSize: '14px' }}>使用CSV文件的分组</span>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid #dee2e6' }}>
+                    <thead>
+                      <tr style={{ background: '#404040' }}>
+                        <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>成员</th>
                       <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>分组</th>
                       <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>战功总量（前值）</th>
                       <th style={{ padding: '8px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>战功总量（后值）</th>
@@ -5650,22 +5984,34 @@ function AppContent() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((r) => (
-                      <tr key={r.成员} style={{ background: r.达标 ? '#d4edda' : '#f8d7da' }}>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.成员}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.分组}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.前值}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.后值}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.差值}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.助攻前值 || 0}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.助攻后值 || 0}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.助攻差值 || 0}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.参加考勤 ? '参加' : '不参加'}</td>
-                        <td style={{ padding: '8px', border: '1px solid #dee2e6', color: '#000' }}>{r.达标 ? '出勤' : '未出勤'}</td>
-                      </tr>
-                    ))}
+                    {rows.map((r, index) => {
+                      // 调试日志，确认字段是否存在
+                      if (index === 0) console.log('First row data:', r);
+                      
+                      return (
+                        <tr key={`${r.成员}-${index}`} style={{ background: 'transparent' }}>
+                          <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.成员}</td>
+                          <td 
+                            className={r.使用配置分组 ? 'group-from-config' : 'group-from-csv'}
+                            style={{ 
+                              padding: '8px', 
+                              border: '1px solid #dee2e6'
+                            }}
+                          >{r.分组}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.前值}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.后值}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.差值}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.助攻前值 || 0}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.助攻后值 || 0}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.助攻差值 || 0}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.参加考勤 ? '参加' : '不参加'}</td>
+                        <td style={{ padding: '8px', border: '1px solid #dee2e6' }}>{r.达标 ? '出勤' : '未出勤'}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
 
@@ -9412,9 +9758,12 @@ function AppContent() {
                   background: '#3d3d3d', 
                   padding: '20px', 
                   borderRadius: '8px',
-                  marginTop: '20px'
+                  marginTop: '20px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center'
                 }}>
-                  <h4 style={{ margin: '0 0 16px 0', color: '#fff' }}>
+                  <h4 style={{ margin: '0 0 16px 0', color: '#fff', textAlign: 'center' }}>
                     全团出勤率对比
                   </h4>
                   
@@ -9429,8 +9778,132 @@ function AppContent() {
                     })
                     const teamNames = Array.from(allTeamNames).sort()
                     
-                    // 固定每个考勤的宽度（像素），确保无论考勤数量多少，每个考勤宽度一致
-                    const fixedCategoryWidth = 216 // 每个考勤固定216px宽度
+                    // 定义固定尺寸
+                    const barWidth = 20 // 每个柱子固定 20px
+                    const barSpacing = 4 // 柱子之间的像素间距
+                    const categoryPadding = 40 // 每个考勤周期之间的额外留白间距
+                    
+                    // 根据团队数量动态计算每个考勤所需的像素宽度
+                    const dynamicCategoryWidth = Math.max(216, (teamNames.length * (barWidth + barSpacing)) + categoryPadding)
+                    
+                    const chartWidth = allTeamsComparisonData.length * dynamicCategoryWidth // 图表总宽度
+                    const maxVisibleWidth = 864 // 最多显示4个考勤的宽度
+
+                    // 1. 定义完全一致的图表数据和配置
+                    const chartData = {
+                      labels: allTeamsComparisonData.map(s => s.sessionName),
+                      datasets: teamNames.map((teamName, teamIndex) => ({
+                        label: teamName,
+                        data: allTeamsComparisonData.map(session => 
+                          session.teamRates && session.teamRates[teamName] !== undefined 
+                            ? Number(session.teamRates[teamName])
+                            : 0
+                        ),
+                        backgroundColor: (() => {
+                          const hues = [200, 280, 40, 220, 320, 60, 180, 260, 20, 240, 300, 80, 160, 340, 100]
+                          const hue = hues[teamIndex % hues.length] || (teamIndex * 40) % 360
+                          return `hsl(${hue}, 50%, 60%)`
+                        })(),
+                        borderColor: (() => {
+                          const hues = [200, 280, 40, 220, 320, 60, 180, 260, 20, 240, 300, 80, 160, 340, 100]
+                          const hue = hues[teamIndex % hues.length] || (teamIndex * 40) % 360
+                          return `hsl(${hue}, 50%, 50%)`
+                        })(),
+                        borderWidth: 1,
+                        barThickness: barWidth,
+                        categoryPercentage: 0.9, 
+                        barPercentage: 0.9,
+                        hidden: hiddenTeams.has(teamName)
+                      }))
+                    };
+
+                    const chartOptions = {
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      layout: {
+                        padding: {
+                          left: 0,
+                          right: 0,
+                          top: 10,
+                          bottom: 0
+                        }
+                      },
+                      plugins: {
+                        title: { display: false },
+                        legend: { display: false },
+                        tooltip: {
+                          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                          titleColor: '#fff',
+                          bodyColor: '#fff',
+                          borderColor: '#555',
+                          borderWidth: 1,
+                          callbacks: {
+                            label: function(context: any) {
+                              return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`
+                            }
+                          }
+                        }
+                      },
+                      scales: {
+                        x: {
+                          display: true,
+                          title: {
+                            display: true,
+                            text: '考勤名称',
+                            color: '#fff',
+                            font: { size: 14 }
+                          },
+                          ticks: {
+                            color: '#ccc',
+                            font: { size: 11 },
+                            maxRotation: 0,
+                            minRotation: 0,
+                            callback: function(value: any): string | string[] {
+                              const labels = (this as any).chart?.data?.labels || []
+                              const label = labels[Number(value)] as string
+                              if (!label) return ''
+                              if (label.length > 8) {
+                                const chunks: string[] = []
+                                for (let i = 0; i < label.length; i += 8) {
+                                  chunks.push(label.slice(i, i + 8))
+                                }
+                                return chunks
+                              }
+                              return label
+                            }
+                          },
+                          grid: {
+                            color: 'rgba(255, 255, 255, 0.2)',
+                            display: true,
+                            drawOnChartArea: true,
+                            lineWidth: 1
+                          },
+                          offset: true
+                        },
+                        y: {
+                          display: true,
+                          min: 0,
+                          max: 100,
+                          afterFit: function(scaleInstance: any) {
+                            scaleInstance.width = 65; // 强制 Y 轴宽度为 65px
+                          },
+                          title: {
+                            display: true,
+                            text: '出勤率 (%)',
+                            color: '#fff',
+                            font: { size: 13, weight: 'bold' }
+                          },
+                          ticks: {
+                            color: '#ccc',
+                            font: { size: 11 },
+                            callback: (value: any) => value + '%'
+                          },
+                          grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                          }
+                        }
+                      }
+                    } as any;
                     
                     return (
                       <div style={{ 
@@ -9438,177 +9911,114 @@ function AppContent() {
                         padding: '20px', 
                         borderRadius: '8px',
                         width: '100%',
-                        maxWidth: '864px' // 外层容器固定最大宽度
+                        maxWidth: '904px', // 864px 图表最大宽度 + 40px 左右内边距
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center' // 内部图例和图表容器居中对齐
                       }}>
-                        {/* 图例区域 - 占满宽度 */}
+                        {/* 自定义图例容器 - 固定在外层，不随图表滚动 */}
                         <div style={{
                           width: '100%',
+                          maxWidth: '864px',
                           marginBottom: '20px',
                           display: 'flex',
-                          justifyContent: 'center',
-                          flexWrap: 'wrap',
-                          gap: '15px'
+                          justifyContent: 'center'
                         }}>
-                          {teamNames.map((teamName, teamIndex) => {
-                            const hues = [200, 280, 40, 220, 320, 60, 180, 260, 20, 240, 300, 80, 160, 340, 100]
-                            const hue = hues[teamIndex % hues.length] || (teamIndex * 40) % 360
-                            const color = `hsl(${hue}, 50%, 60%)`
-                            return (
-                              <div key={teamName} style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '8px'
-                              }}>
-                                <div style={{
-                                  width: '12px',
-                                  height: '12px',
-                                  borderRadius: '50%',
-                                  backgroundColor: color,
-                                  border: `1px solid hsl(${hue}, 50%, 50%)`
-                                }}></div>
-                                <span style={{ color: '#fff', fontSize: '12px' }}>{teamName}</span>
-                              </div>
-                            )
-                          })}
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'center',
+                            flexWrap: 'wrap',
+                            gap: '15px'
+                          }}>
+                            {teamNames.map((teamName, teamIndex) => {
+                              const hues = [200, 280, 40, 220, 320, 60, 180, 260, 20, 240, 300, 80, 160, 340, 100]
+                              const hue = hues[teamIndex % hues.length] || (teamIndex * 40) % 360
+                              const color = `hsl(${hue}, 50%, 60%)`
+                              const borderColor = `hsl(${hue}, 50%, 50%)`
+                              const isHidden = hiddenTeams.has(teamName)
+                              
+                              return (
+                                <div 
+                                  key={teamName} 
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px',
+                                    cursor: 'pointer',
+                                    opacity: isHidden ? 0.5 : 1,
+                                    transition: 'opacity 0.2s'
+                                  }}
+                                  onClick={() => {
+                                    const newHidden = new Set(hiddenTeams)
+                                    if (isHidden) {
+                                      newHidden.delete(teamName)
+                                    } else {
+                                      newHidden.add(teamName)
+                                    }
+                                    setHiddenTeams(newHidden)
+                                  }}
+                                >
+                                  <div style={{
+                                    width: '12px',
+                                    height: '12px',
+                                    borderRadius: '50%',
+                                    backgroundColor: color,
+                                    border: `1px solid ${borderColor}`
+                                  }}></div>
+                                  <span style={{ color: '#fff', fontSize: '12px' }}>{teamName}</span>
+                                </div>
+                              )
+                            })}
+                          </div>
                         </div>
                         
-                        {/* 图表容器 - 居中显示，超出可滑动 */}
+                        {/* 图表滚动容器 - 使用相对定位来固定 Y 轴 */}
                         <div style={{ 
-                          display: 'flex',
-                          justifyContent: 'center',
-                          overflowX: 'auto',
-                          width: '100%'
+                          width: '100%',
+                          maxWidth: '864px',
+                          position: 'relative', 
+                          background: '#1a1a1a',
+                          borderRadius: '4px',
+                          overflow: 'hidden'
                         }}>
-                          <div style={{ 
-                            width: `${allTeamsComparisonData.length * fixedCategoryWidth}px`, // 考勤数量 × 固定宽度
-                            height: '350px'
+                          {/* 固定的 Y 轴层：它实际上是一个只露出左侧 Y 轴部分的完整图表 */}
+                          <div style={{
+                            position: 'absolute',
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            width: '66px', // 对应 Y 轴的 65px 宽度 + 1px 边距
+                            zIndex: 10,
+                            background: '#1a1a1a', 
+                            borderRight: '1px solid rgba(255, 255, 255, 0.2)',
+                            pointerEvents: 'none', 
+                            overflow: 'hidden'
                           }}>
-                          <Bar
-                            data={{
-                              labels: allTeamsComparisonData.map(s => s.sessionName),
-                              datasets: (() => {
-                                // 为每个团队创建数据集
-                                return teamNames.map((teamName, teamIndex) => ({
-                                  label: teamName,
-                                  data: allTeamsComparisonData.map(session => 
-                                    session.teamRates && session.teamRates[teamName] !== undefined 
-                                      ? Number(session.teamRates[teamName])
-                                      : 0
-                                  ),
-                                  backgroundColor: (() => {
-                                    // 使用柔和的色相，确保有足够的区分度，色相间隔至少40度
-                                    // 色相分布：蓝绿色、紫色、橙黄色、青蓝色、粉紫色、黄绿色、红色系等
-                                    const hues = [200, 280, 40, 220, 320, 60, 180, 260, 20, 240, 300, 80, 160, 340, 100]
-                                    const hue = hues[teamIndex % hues.length] || (teamIndex * 40) % 360 // 如果超过预设数量，每40度一个色相
-                                    return `hsl(${hue}, 50%, 60%)`
-                                  })(),
-                                  borderColor: (() => {
-                                    const hues = [200, 280, 40, 220, 320, 60, 180, 260, 20, 240, 300, 80, 160, 340, 100]
-                                    const hue = hues[teamIndex % hues.length] || (teamIndex * 40) % 360
-                                    return `hsl(${hue}, 50%, 50%)`
-                                  })(),
-                                  borderWidth: 1,
-                                  // 设置柱状图宽度和间距
-                                  categoryPercentage: 0.8, // 类别宽度占80%，留出间距
-                                  barPercentage: 0.8 // 柱状图宽度为类别宽度的80%
-                                }))
-                              })()
-                        }}
-                        options={{
-                          responsive: true, // 启用响应式，但容器宽度已固定
-                          maintainAspectRatio: false,
-                          plugins: {
-                            title: {
-                              display: false
-                            },
-                            legend: {
-                              display: false // 禁用内置图例，使用外部自定义图例
-                            },
-                            tooltip: {
-                              backgroundColor: 'rgba(0, 0, 0, 0.8)',
-                              titleColor: '#fff',
-                              bodyColor: '#fff',
-                              borderColor: '#555',
-                              borderWidth: 1,
-                              callbacks: {
-                                label: function(context: any) {
-                                  return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}%`
-                                }
-                              }
-                            }
-                          },
-                          scales: {
-                            x: {
-                              display: true,
-                              title: {
-                                display: true,
-                                text: '考勤名称',
-                                color: '#fff',
-                                font: {
-                                  size: 14
-                                }
-                              },
-                              ticks: {
-                                color: '#ccc',
-                                font: {
-                                  size: 11
-                                },
-                                maxRotation: 0,
-                                minRotation: 0,
-                                // 标签换行处理：每8个字符换行，确保不超出柱状图范围
-                                callback: function(value: any): string | string[] {
-                                  const labels = (this as any).chart?.data?.labels || []
-                                  const label = labels[Number(value)] as string
-                                  if (!label) return ''
-                                  // 如果标签太长，按字符数分割换行（每8个字符换行）
-                                  if (label.length > 8) {
-                                    const chunks: string[] = []
-                                    for (let i = 0; i < label.length; i += 8) {
-                                      chunks.push(label.slice(i, i + 8))
-                                    }
-                                    return chunks
-                                  }
-                                  return label
-                                }
-                              },
-                              grid: {
-                                color: 'rgba(255, 255, 255, 0.2)',
-                                display: true,
-                                // 添加分隔线，更清晰地区分每次考勤
-                                drawOnChartArea: true,
-                                lineWidth: 1
-                              },
-                              offset: true // 在轴的两端留出空间
-                            },
-                            y: {
-                              display: true,
-                              title: {
-                                display: true,
-                                text: '出勤率 (%)',
-                                color: '#fff',
-                                font: {
-                                  size: 14
-                                }
-                              },
-                              min: 0,
-                              max: 100,
-                              ticks: {
-                                color: '#ccc',
-                                font: {
-                                  size: 11
-                                },
-                                callback: function(value: any) {
-                                  return value + '%'
-                                }
-                              },
-                              grid: {
-                                color: 'rgba(255, 255, 255, 0.1)'
-                              }
-                            }
-                          }
-                        } as any}
-                        plugins={[teamNamesBelowBarsPlugin]}
-                      />
+                            {/* 这里的图表宽度和高度必须与下方完全一致，以实现完美对齐 */}
+                            <div style={{ width: `${chartWidth}px`, height: '350px' }}>
+                              <Bar data={chartData} options={chartOptions} plugins={[teamNamesBelowBarsPlugin]} />
+                            </div>
+                          </div>
+                          
+                          {/* 实际滚动的图表层 */}
+                          <div style={{ 
+                            width: '100%',
+                            overflowX: 'auto',
+                            display: 'flex',
+                            justifyContent: chartWidth <= 864 ? 'center' : 'flex-start'
+                          }}>
+                            <div style={{ 
+                              width: `${chartWidth}px`,
+                              height: '350px',
+                              flexShrink: 0
+                            }}>
+                              <Bar
+                                ref={allTeamsChartRef}
+                                data={chartData}
+                                options={chartOptions}
+                                plugins={[teamNamesBelowBarsPlugin]}
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -11112,6 +11522,80 @@ function AppContent() {
         <div style={{ background: '#2d2d2d', padding: '20px', borderRadius: '8px', minWidth: '900px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h2 style={{ color: '#fff', margin: 0 }}>配置管理</h2>
+          </div>
+          
+          {/* 子页签 */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 20, borderBottom: '1px solid #555', paddingBottom: 10 }}>
+            <button
+              onClick={() => setConfigSubTab('bonus')}
+              style={{
+                padding: '8px 16px',
+                border: 'none',
+                background: configSubTab === 'bonus' ? '#007bff' : '#555',
+                color: '#fff',
+                cursor: 'pointer',
+                borderRadius: '4px',
+                fontWeight: configSubTab === 'bonus' ? 'bold' : 'normal'
+              }}
+            >
+              团队加成配置
+            </button>
+            <button
+              onClick={() => setConfigSubTab('logo')}
+              style={{
+                padding: '8px 16px',
+                border: 'none',
+                background: configSubTab === 'logo' ? '#007bff' : '#555',
+                color: '#fff',
+                cursor: 'pointer',
+                borderRadius: '4px',
+                fontWeight: configSubTab === 'logo' ? 'bold' : 'normal'
+              }}
+            >
+              团徽管理
+            </button>
+            <button
+              onClick={() => setConfigSubTab('ranking')}
+              style={{
+                padding: '8px 16px',
+                border: 'none',
+                background: configSubTab === 'ranking' ? '#007bff' : '#555',
+                color: '#fff',
+                cursor: 'pointer',
+                borderRadius: '4px',
+                fontWeight: configSubTab === 'ranking' ? 'bold' : 'normal'
+              }}
+            >
+              排名管理
+            </button>
+            <button
+              onClick={() => {
+                setConfigSubTab('group')
+                if (groupSubTab === 'groups') {
+                  loadGroups()
+                } else {
+                  loadMembers()
+                }
+              }}
+              style={{
+                padding: '8px 16px',
+                border: 'none',
+                background: configSubTab === 'group' ? '#007bff' : '#555',
+                color: '#fff',
+                cursor: 'pointer',
+                borderRadius: '4px',
+                fontWeight: configSubTab === 'group' ? 'bold' : 'normal'
+              }}
+            >
+              分组配置
+            </button>
+          </div>
+          
+          {/* 团队加成配置 */}
+          {configSubTab === 'bonus' && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h3 style={{ color: '#fff', margin: 0 }}>团队加成规则</h3>
             <div>
               <button
                 onClick={addBonusRule}
@@ -11325,16 +11809,13 @@ function AppContent() {
               <li>可以设置多个不重叠的人数区间，覆盖不同规模的团队</li>
             </ul>
           </div>
+          </div>
+          )}
           
           {/* 团徽管理 */}
-          <div style={{ 
-            marginTop: '40px', 
-            padding: '20px', 
-            background: '#2d2d2d', 
-            borderRadius: '8px',
-            border: '1px solid #444'
-          }}>
-            <h2 style={{ color: '#fff', margin: '0 0 20px 0' }}>团徽管理</h2>
+          {configSubTab === 'logo' && (
+          <div>
+            <h3 style={{ color: '#fff', margin: '0 0 20px 0' }}>团徽管理</h3>
             
             {/* 上传表单 */}
             <div style={{ 
@@ -11539,16 +12020,12 @@ function AppContent() {
               )}
             </div>
           </div>
+          )}
           
           {/* 排名管理 */}
-          <div style={{ 
-            marginTop: '40px', 
-            padding: '20px', 
-            background: '#2d2d2d', 
-            borderRadius: '8px',
-            border: '1px solid #444'
-          }}>
-            <h2 style={{ color: '#fff', margin: '0 0 20px 0' }}>排名管理</h2>
+          {configSubTab === 'ranking' && (
+          <div>
+            <h3 style={{ color: '#fff', margin: '0 0 20px 0' }}>排名管理</h3>
             
             <div style={{ 
               background: '#3d3d3d', 
@@ -11751,6 +12228,374 @@ function AppContent() {
               </ul>
             </div>
           </div>
+          )}
+          
+          {/* 分组配置 */}
+          {configSubTab === 'group' && (
+          <div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+              <button
+                onClick={() => {
+                  setGroupSubTab('groups')
+                  loadGroups()
+                }}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  background: groupSubTab === 'groups' ? '#28a745' : '#555',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  borderRadius: '4px',
+                  fontWeight: groupSubTab === 'groups' ? 'bold' : 'normal'
+                }}
+              >
+                小组管理
+              </button>
+              <button
+                onClick={() => {
+                  setGroupSubTab('members')
+                  loadMembers()
+                }}
+                style={{
+                  padding: '8px 16px',
+                  border: 'none',
+                  background: groupSubTab === 'members' ? '#28a745' : '#555',
+                  color: '#fff',
+                  cursor: 'pointer',
+                  borderRadius: '4px',
+                  fontWeight: groupSubTab === 'members' ? 'bold' : 'normal'
+                }}
+              >
+                成员管理
+              </button>
+            </div>
+            
+            {/* 小组管理 */}
+            {groupSubTab === 'groups' && (
+            <div>
+              <div style={{ marginBottom: 16 }}>
+                <button
+                  onClick={showCreateGroupModal}
+                  style={{
+                    padding: '8px 16px',
+                    background: '#28a745',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  新建小组
+                </button>
+              </div>
+              
+              {loadingGroups ? (
+                <div style={{ color: '#fff', textAlign: 'center', padding: '40px' }}>
+                  加载中...
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#404040' }}>
+                        <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>小组名称</th>
+                        <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>描述</th>
+                        <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>成员数量</th>
+                        <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>更新时间</th>
+                        <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {groups.map((g) => (
+                        <tr key={g.id} style={{ background: '#2d2d2d' }}>
+                          <td style={{ padding: '12px', border: '1px solid #dee2e6', color: '#fff' }}>{g.groupName}</td>
+                          <td style={{ padding: '12px', border: '1px solid #dee2e6', color: '#fff' }}>{g.description || '-'}</td>
+                          <td style={{ padding: '12px', border: '1px solid #dee2e6', color: '#fff' }}>{g.memberCount || 0}</td>
+                          <td style={{ padding: '12px', border: '1px solid #dee2e6', color: '#fff' }}>
+                            {new Date(g.updatedAt).toLocaleString()}
+                          </td>
+                          <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                            <button
+                              onClick={() => showEditGroupModal(g)}
+                              style={{ padding: '4px 8px', background: '#007bff', color: '#fff', border: 'none', cursor: 'pointer', marginRight: 8 }}
+                            >
+                              编辑
+                            </button>
+                            <button
+                              onClick={() => deleteGroup(g.id)}
+                              style={{ padding: '4px 8px', background: '#dc3545', color: '#fff', border: 'none', cursor: 'pointer' }}
+                            >
+                              删除
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  
+                  {groupTotalPages > 1 && (
+                    <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center', gap: 8 }}>
+                      <button
+                        onClick={() => loadGroups(groupCurrentPage - 1)}
+                        disabled={groupCurrentPage === 0}
+                        style={{ 
+                          padding: '8px 12px', 
+                          border: '1px solid #444', 
+                          background: groupCurrentPage === 0 ? '#555' : '#2d2d2d', 
+                          color: '#fff',
+                          cursor: groupCurrentPage === 0 ? 'not-allowed' : 'pointer',
+                          borderRadius: '4px'
+                        }}
+                      >
+                        上一页
+                      </button>
+                      <span style={{ padding: '8px 12px', color: '#fff' }}>
+                        第 {groupCurrentPage + 1} 页 / 共 {groupTotalPages} 页
+                      </span>
+                      <button
+                        onClick={() => loadGroups(groupCurrentPage + 1)}
+                        disabled={groupCurrentPage === groupTotalPages - 1}
+                        style={{ 
+                          padding: '8px 12px', 
+                          border: '1px solid #444', 
+                          background: groupCurrentPage === groupTotalPages - 1 ? '#555' : '#2d2d2d', 
+                          color: '#fff',
+                          cursor: groupCurrentPage === groupTotalPages - 1 ? 'not-allowed' : 'pointer',
+                          borderRadius: '4px'
+                        }}
+                      >
+                        下一页
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            )}
+            
+            {/* 成员管理 */}
+            {groupSubTab === 'members' && (
+            <div>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                <button
+                  onClick={showCreateMemberModal}
+                  style={{
+                    padding: '8px 16px',
+                    background: '#28a745',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  新建成员
+                </button>
+                <button
+                  onClick={() => setShowImportModal(true)}
+                  style={{
+                    padding: '8px 16px',
+                    background: '#007bff',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  从 CSV 导入
+                </button>
+                <button
+                  onClick={() => batchDeleteMembers('ALL')}
+                  style={{
+                    padding: '8px 16px',
+                    background: '#dc3545',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  全部删除
+                </button>
+                <button
+                  onClick={() => batchDeleteMembers('EMPTY_GROUP')}
+                  style={{
+                    padding: '8px 16px',
+                    background: '#ffc107',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  删除未分组
+                </button>
+              </div>
+              
+              <div style={{ marginBottom: 16, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+                <div>
+                  <label style={{ color: '#fff', marginRight: 8 }}>搜索成员名称：</label>
+                  <input
+                    type="text"
+                    value={groupMemberSearchTerm}
+                    onChange={(e) => {
+                      setGroupMemberSearchTerm(e.target.value)
+                    }}
+                    placeholder="输入成员名称进行搜索..."
+                    style={{
+                      padding: '8px',
+                      background: '#555',
+                      color: '#fff',
+                      border: '1px solid #666',
+                      borderRadius: '4px',
+                      width: '300px'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ color: '#fff', marginRight: 8 }}>按小组筛选：</label>
+                  <select
+                    value={filterGroupId}
+                    onChange={(e) => {
+                      setFilterGroupId(e.target.value)
+                      setMemberCurrentPage(0)
+                    }}
+                    style={{
+                      padding: '8px',
+                      background: '#555',
+                      color: '#fff',
+                      border: '1px solid #666',
+                      borderRadius: '4px'
+                    }}
+                  >
+                    <option value="">所有小组</option>
+                    <option value="null">未分组</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>{g.groupName}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              
+              {loadingMembers ? (
+                <div style={{ color: '#fff', textAlign: 'center', padding: '40px' }}>
+                  加载中...
+                </div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#404040' }}>
+                        <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>成员名称</th>
+                        <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>所属小组</th>
+                        <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>更新时间</th>
+                        <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', color: '#fff' }}>操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {members
+                        .filter((m) => {
+                          if (!groupMemberSearchTerm.trim()) return true
+                          return m.memberName.toLowerCase().includes(groupMemberSearchTerm.toLowerCase().trim())
+                        })
+                        .map((m) => (
+                        <tr key={m.id} style={{ background: '#2d2d2d' }}>
+                          <td style={{ padding: '12px', border: '1px solid #dee2e6', color: '#fff' }}>{m.memberName}</td>
+                          <td style={{ padding: '12px', border: '1px solid #dee2e6', color: m.teamGroup ? '#fff' : '#ff6b6b' }}>
+                            {m.teamGroup ? m.teamGroup.groupName : '未分配'}
+                          </td>
+                          <td style={{ padding: '12px', border: '1px solid #dee2e6', color: '#fff' }}>
+                            {new Date(m.updatedAt).toLocaleString()}
+                          </td>
+                          <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                            <button
+                              onClick={() => showEditMemberModal(m)}
+                              style={{ padding: '4px 8px', background: '#007bff', color: '#fff', border: 'none', cursor: 'pointer', marginRight: 8 }}
+                            >
+                              编辑
+                            </button>
+                            <button
+                              onClick={() => deleteMember(m.id)}
+                              style={{ padding: '4px 8px', background: '#dc3545', color: '#fff', border: 'none', cursor: 'pointer' }}
+                            >
+                              删除
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  
+                  {memberTotalPages > 1 && (
+                    <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center', gap: 8 }}>
+                      <button
+                        onClick={() => loadMembers(memberCurrentPage - 1)}
+                        disabled={memberCurrentPage === 0}
+                        style={{ 
+                          padding: '8px 12px', 
+                          border: '1px solid #444', 
+                          background: memberCurrentPage === 0 ? '#555' : '#2d2d2d', 
+                          color: '#fff',
+                          cursor: memberCurrentPage === 0 ? 'not-allowed' : 'pointer',
+                          borderRadius: '4px'
+                        }}
+                      >
+                        上一页
+                      </button>
+                      <span style={{ padding: '8px 12px', color: '#fff' }}>
+                        第 {memberCurrentPage + 1} 页 / 共 {memberTotalPages} 页
+                      </span>
+                      <button
+                        onClick={() => loadMembers(memberCurrentPage + 1)}
+                        disabled={memberCurrentPage === memberTotalPages - 1}
+                        style={{ 
+                          padding: '8px 12px', 
+                          border: '1px solid #444', 
+                          background: memberCurrentPage === memberTotalPages - 1 ? '#555' : '#2d2d2d', 
+                          color: '#fff',
+                          cursor: memberCurrentPage === memberTotalPages - 1 ? 'not-allowed' : 'pointer',
+                          borderRadius: '4px'
+                        }}
+                      >
+                        下一页
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              
+              {importResult && (
+                <div style={{ 
+                  marginTop: 16, 
+                  padding: 16, 
+                  background: '#d4edda', 
+                  color: '#155724',
+                  borderRadius: '4px',
+                  border: '1px solid #c3e6cb'
+                }}>
+                  <h4 style={{ margin: '0 0 8px 0' }}>导入成功</h4>
+                  <p style={{ margin: 4 }}>已创建：{importResult.created}</p>
+                  <p style={{ margin: 4 }}>已更新：{importResult.updated}</p>
+                  <p style={{ margin: 4 }}>未匹配到的小组（已设为空）：{importResult.unmatchedGroups}</p>
+                  <button
+                    onClick={() => setImportResult(null)}
+                    style={{
+                      marginTop: 8,
+                      padding: '4px 8px',
+                      background: '#155724',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    关闭
+                  </button>
+                </div>
+              )}
+            </div>
+            )}
+          </div>
+          )}
         </div>
       )}
 
@@ -12626,6 +13471,286 @@ function AppContent() {
         </div>
       )}
 
+
+      {/* 小组创建/编辑弹窗 */}
+      {showGroupModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#2d2d2d',
+            padding: '24px',
+            borderRadius: '8px',
+            width: '500px'
+          }}>
+            <h3 style={{ color: '#fff', marginBottom: '16px' }}>
+              {editingGroup ? '编辑小组' : '新建小组'}
+            </h3>
+            
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ color: '#fff', display: 'block', marginBottom: '8px' }}>
+                小组名称：
+              </label>
+              <input
+                type="text"
+                value={groupFormName}
+                onChange={(e) => setGroupFormName(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  background: '#555',
+                  color: '#fff',
+                  border: '1px solid #666',
+                  borderRadius: '4px',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+            
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ color: '#fff', display: 'block', marginBottom: '8px' }}>
+                描述：
+              </label>
+              <input
+                type="text"
+                value={groupFormDescription}
+                onChange={(e) => setGroupFormDescription(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  background: '#555',
+                  color: '#fff',
+                  border: '1px solid #666',
+                  borderRadius: '4px',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+            
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowGroupModal(false)}
+                style={{
+                  padding: '8px 16px',
+                  background: '#6c757d',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={saveGroup}
+                style={{
+                  padding: '8px 16px',
+                  background: '#28a745',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* 成员创建/编辑弹窗 */}
+      {showMemberModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#2d2d2d',
+            padding: '24px',
+            borderRadius: '8px',
+            width: '500px'
+          }}>
+            <h3 style={{ color: '#fff', marginBottom: '16px' }}>
+              {editingMember ? '编辑成员' : '新建成员'}
+            </h3>
+            
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ color: '#fff', display: 'block', marginBottom: '8px' }}>
+                成员名称：
+              </label>
+              <input
+                type="text"
+                value={memberFormName}
+                onChange={(e) => setMemberFormName(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  background: '#555',
+                  color: '#fff',
+                  border: '1px solid #666',
+                  borderRadius: '4px',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+            
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ color: '#fff', display: 'block', marginBottom: '8px' }}>
+                所属小组（可选）：
+              </label>
+              <select
+                value={memberFormGroupId}
+                onChange={(e) => setMemberFormGroupId(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  background: '#555',
+                  color: '#fff',
+                  border: '1px solid #666',
+                  borderRadius: '4px',
+                  boxSizing: 'border-box'
+                }}
+              >
+                <option value="">无小组</option>
+                {groups.map((g) => (
+                  <option key={g.id} value={g.id}>{g.groupName}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowMemberModal(false)}
+                style={{
+                  padding: '8px 16px',
+                  background: '#6c757d',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={saveMember}
+                style={{
+                  padding: '8px 16px',
+                  background: '#28a745',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* CSV导入弹窗 */}
+      {showImportModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#2d2d2d',
+            padding: '24px',
+            borderRadius: '8px',
+            width: '500px'
+          }}>
+            <h3 style={{ color: '#fff', marginBottom: '16px' }}>从 CSV 导入成员</h3>
+            
+            <p style={{ color: '#ccc', marginBottom: '16px' }}>
+              请上传包含"成员"和"分组"（或"门阀"）列的 CSV 文件。
+              成员将被创建或更新。小组必须预先存在。
+            </p>
+            
+            <div style={{ marginBottom: '16px' }}>
+              <input
+                type="file"
+                accept=".csv"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) {
+                    setImportFile(file)
+                  }
+                }}
+                style={{
+                  padding: '8px',
+                  background: '#555',
+                  color: '#fff',
+                  border: '1px solid #666',
+                  borderRadius: '4px',
+                  width: '100%'
+                }}
+              />
+            </div>
+            
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowImportModal(false)
+                  setImportFile(null)
+                }}
+                style={{
+                  padding: '8px 16px',
+                  background: '#6c757d',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={importCsv}
+                disabled={!importFile}
+                style={{
+                  padding: '8px 16px',
+                  background: importFile ? '#28a745' : '#6c757d',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: importFile ? 'pointer' : 'not-allowed'
+                }}
+              >
+                导入
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 登录模态框 */}
       <LoginModal 

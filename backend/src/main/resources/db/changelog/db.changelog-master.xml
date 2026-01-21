@@ -44,4 +44,7 @@
     <!-- 添加排名排除名单表 -->
     <include file="changesets/013-add-ranking-exclusions.xml" relativeToChangelogFile="true"/>
 
+    <!-- 添加分组配置表 -->
+    <include file="changesets/014-add-group-config.xml" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

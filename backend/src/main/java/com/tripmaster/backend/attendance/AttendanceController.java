@@ -78,6 +78,9 @@ public class AttendanceController {
     @Autowired
     private RankingExclusionRepository rankingExclusionRepository;
     
+    @Autowired
+    private GroupConfigService groupConfigService;
+    
     @Value("${app.upload.team-logos-dir:${user.home}/uploads/team_logos}")
     private String teamLogosUploadDir;
 
@@ -91,6 +94,10 @@ public class AttendanceController {
 
         Map<String, Map<String, String>> startMap = indexByMember(startRows);
         Map<String, Map<String, String>> endMap = indexByMember(endRows);
+        
+        // Get member->group mapping from configuration
+        Map<String, String> memberGroupMapping = groupConfigService.getMappingMap();
+        System.out.println("Loaded member-group mapping, size: " + memberGroupMapping.size());
 
         List<MemberData> result = new ArrayList<>();
         int filteredCount = 0;
@@ -106,8 +113,13 @@ public class AttendanceController {
                 continue;
             }
             
-            String startGroup = s.getOrDefault("分组", "");
-            String endGroup = t.getOrDefault("分组", "");
+            // Support both "分组" and "门阀" column names
+            String csvGroup = getGroupNameFromRow(s);
+            
+            // Apply mapping: use configured group if available, otherwise use CSV group
+            boolean usedMapping = memberGroupMapping.containsKey(member);
+            String finalGroup = memberGroupMapping.getOrDefault(member, csvGroup);
+            System.out.println("Member: " + member + ", CSV group: " + csvGroup + ", Final group: " + finalGroup + ", Used mapping: " + usedMapping);
             
             // 边界值处理：分组不一致的成员归属于起始分组
             // 不再过滤，而是使用起始分组进行统计
@@ -123,12 +135,13 @@ public class AttendanceController {
 
             MemberData memberData = new MemberData();
             memberData.set成员(member);
-            memberData.set分组(startGroup);
+            memberData.set分组(finalGroup);  // Use mapped group instead of CSV group
             memberData.set前值(prev);
             memberData.set后值(next);
             memberData.set助攻前值(assistPrev);
             memberData.set助攻后值(assistNext);
             memberData.set参加考勤(true); // 默认参加考勤
+            memberData.set使用配置分组(usedMapping);
             result.add(memberData);
         }
 
@@ -151,6 +164,7 @@ public class AttendanceController {
                 row.set达标((data.get后值() - data.get前值()) >= threshold);
             }
             row.set参加考勤(data.is参加考勤());
+            row.set使用配置分组(data.is使用配置分组());
             displayRows.add(row);
         }
         
@@ -610,6 +624,20 @@ public class AttendanceController {
         } catch (Exception e) {
             return 0L;
         }
+    }
+    
+    /**
+     * Get group name from CSV row, supporting both "分组" and "门阀" column names
+     * Priority: "分组" > "门阀"
+     */
+    private String getGroupNameFromRow(Map<String, String> row) {
+        String groupName = row.get("分组");
+        if (groupName != null && !groupName.trim().isEmpty()) {
+            return groupName.trim();
+        }
+        // Fallback to "门阀" if "分组" is not available
+        String menfa = row.get("门阀");
+        return menfa != null ? menfa.trim() : "";
     }
 
     private String removeBom(String s) {

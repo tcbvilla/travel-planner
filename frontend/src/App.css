@@ -212,3 +212,14 @@ tr[style*="background: #f8d7da"] td {
 .ranking-pagination-info {
   color: #000 !important;
 }
+
+/* 成员管理分组来源标记颜色 */
+.group-from-config {
+  background-color: #a8d5b3 !important;
+  color: #000 !important;
+}
+
+.group-from-csv {
+  background-color: #e6c78a !important;
+  color: #000 !important;
+}
