@@ -959,6 +959,9 @@ function AppContent() {
   const [loadingMembers, setLoadingMembers] = useState(false)
   const [filterGroupId, setFilterGroupId] = useState<string>('')
   const [groupMemberSearchTerm, setGroupMemberSearchTerm] = useState<string>('')
+  const [mappingEnabled, setMappingEnabled] = useState<boolean>(true)
+  const [showMappingToggleConfirm, setShowMappingToggleConfirm] = useState<boolean>(false)
+  const [pendingMappingState, setPendingMappingState] = useState<boolean>(false)
   const [showGroupModal, setShowGroupModal] = useState(false)
   const [showMemberModal, setShowMemberModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
@@ -1365,6 +1368,13 @@ function AppContent() {
       return () => clearTimeout(timer)
     }
   }, [groupMemberSearchTerm])
+  
+  // 加载开关状态
+  useEffect(() => {
+    if (activeTab === 'config' && configSubTab === 'group') {
+      loadMappingEnabled()
+    }
+  }, [activeTab, configSubTab])
 
   // 考勤会话相关状态
   const [sessions, setSessions] = useState<AttendanceSession[]>([])
@@ -3737,6 +3747,18 @@ function AppContent() {
   }
   
   // 加载成员列表
+  const loadMappingEnabled = async () => {
+    try {
+      const response = await fetch('/api/v1/group-config/mapping-enabled')
+      if (response.ok) {
+        const data = await response.json()
+        setMappingEnabled(data.enabled)
+      }
+    } catch (error) {
+      console.error('Failed to load mapping enabled status:', error)
+    }
+  }
+
   const loadMembers = async (page = 0) => {
     setLoadingMembers(true)
     try {
@@ -9787,7 +9809,6 @@ function AppContent() {
                     const dynamicCategoryWidth = Math.max(216, (teamNames.length * (barWidth + barSpacing)) + categoryPadding)
                     
                     const chartWidth = allTeamsComparisonData.length * dynamicCategoryWidth // 图表总宽度
-                    const maxVisibleWidth = 864 // 最多显示4个考勤的宽度
 
                     // 1. 定义完全一致的图表数据和配置
                     const chartData = {
@@ -12233,6 +12254,48 @@ function AppContent() {
           {/* 分组配置 */}
           {configSubTab === 'group' && (
           <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ color: '#fff', margin: 0 }}>分组配置</h2>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ color: '#fff', fontSize: '14px' }}>
+                  启用成员分组配置匹配：
+                </span>
+                <label style={{ position: 'relative', display: 'inline-block', width: '50px', height: '24px', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={mappingEnabled}
+                    onChange={(e) => {
+                      setPendingMappingState(e.target.checked)
+                      setShowMappingToggleConfirm(true)
+                    }}
+                    style={{ opacity: 0, width: 0, height: 0 }}
+                  />
+                  <span style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: mappingEnabled ? '#28a745' : '#6c757d',
+                    transition: '0.4s',
+                    borderRadius: '24px'
+                  }}>
+                    <span style={{
+                      position: 'absolute',
+                      height: '18px',
+                      width: '18px',
+                      left: mappingEnabled ? '28px' : '3px',
+                      bottom: '3px',
+                      backgroundColor: 'white',
+                      transition: '0.4s',
+                      borderRadius: '50%'
+                    }}></span>
+                  </span>
+                </label>
+              </div>
+            </div>
+            
             <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
               <button
                 onClick={() => {
@@ -13746,6 +13809,90 @@ function AppContent() {
                 }}
               >
                 导入
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 开关确认弹窗 */}
+      {showMappingToggleConfirm && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: '#2d2d2d',
+            padding: '24px',
+            borderRadius: '8px',
+            maxWidth: '500px',
+            border: '1px solid #555'
+          }}>
+            <h3 style={{ marginTop: 0, color: '#fff' }}>确认修改配置</h3>
+            <p style={{ color: '#fff', lineHeight: '1.6' }}>
+              {pendingMappingState 
+                ? '开启后，添加考勤时将优先使用成员配置的分组。'
+                : '关闭后，添加考勤时将仅使用 CSV 文件中的分组/门阀，不再匹配成员配置。'
+              }
+            </p>
+            <p style={{ color: '#ffc107', fontSize: '14px', margin: '12px 0' }}>
+              此设置将影响后续所有考勤导入，是否确认？
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button
+                onClick={() => {
+                  setShowMappingToggleConfirm(false)
+                }}
+                style={{
+                  padding: '8px 16px',
+                  background: '#6c757d',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                取消
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const response = await fetch('/api/v1/group-config/mapping-enabled', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ enabled: pendingMappingState })
+                    })
+                    if (response.ok) {
+                      setMappingEnabled(pendingMappingState)
+                      alert('配置已更新')
+                    } else {
+                      alert('更新失败')
+                    }
+                  } catch (error) {
+                    console.error('Failed to update mapping enabled:', error)
+                    alert('更新失败')
+                  } finally {
+                    setShowMappingToggleConfirm(false)
+                  }
+                }}
+                style={{
+                  padding: '8px 16px',
+                  background: '#28a745',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                确认
               </button>
             </div>
           </div>

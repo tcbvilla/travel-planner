@@ -47,4 +47,7 @@
     <!-- 添加分组配置表 -->
     <include file="changesets/014-add-group-config.xml" relativeToChangelogFile="true"/>
 
+    <!-- 添加系统配置表 -->
+    <include file="changesets/015-add-system-config.xml" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

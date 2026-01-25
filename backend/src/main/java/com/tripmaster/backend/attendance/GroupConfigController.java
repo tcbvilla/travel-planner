@@ -18,6 +18,9 @@ public class GroupConfigController {
     @Autowired
     private GroupConfigService groupConfigService;
     
+    @Autowired
+    private SystemConfigService systemConfigService;
+    
     // ==================== Team Group Management ====================
     
     @GetMapping("/groups")
@@ -132,5 +135,20 @@ public class GroupConfigController {
     @GetMapping("/members/mapping")
     public Map<String, String> getMemberGroupMapping() {
         return groupConfigService.getMappingMap();
+    }
+    
+    // ==================== Mapping Enabled Switch ====================
+    
+    @GetMapping("/mapping-enabled")
+    public ResponseEntity<Map<String, Boolean>> getMappingEnabled() {
+        boolean enabled = systemConfigService.isMemberGroupMappingEnabled();
+        return ResponseEntity.ok(Map.of("enabled", enabled));
+    }
+    
+    @PostMapping("/mapping-enabled")
+    public ResponseEntity<?> setMappingEnabled(@RequestBody Map<String, Boolean> request) {
+        boolean enabled = request.getOrDefault("enabled", true);
+        systemConfigService.setMemberGroupMappingEnabled(enabled);
+        return ResponseEntity.ok(Map.of("enabled", enabled, "message", "Configuration updated"));
     }
 }

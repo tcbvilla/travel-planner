@@ -152,8 +152,8 @@ public class CascadeRevocationService {
             
             for (SynthesisChain chain : allChains) {
                 if (!processedChainIds.contains(chain.getId()) && !chainsToRevoke.contains(chain)) {
-                    // 检查这个合成链是否应该被撤销
-                    if (shouldRevokeChainByCondition(chain) || dependsOnRevokedChains(chain, chainsToRevoke)) {
+                    // 只检查依赖关系，不检查合成条件（避免误判历史合成链）
+                    if (dependsOnRevokedChains(chain, chainsToRevoke)) {
                         chainsToRevoke.add(chain);
                         processedChainIds.add(chain.getId());
                         hasNewChains = true;
