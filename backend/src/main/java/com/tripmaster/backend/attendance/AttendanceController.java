@@ -84,9 +84,6 @@ public class AttendanceController {
     @Autowired
     private SystemConfigService systemConfigService;
     
-    @Autowired
-    private SystemConfigService systemConfigService;
-    
     @Value("${app.upload.team-logos-dir:${user.home}/uploads/team_logos}")
     private String teamLogosUploadDir;
 
@@ -101,15 +98,6 @@ public class AttendanceController {
         Map<String, Map<String, String>> startMap = indexByMember(startRows);
         Map<String, Map<String, String>> endMap = indexByMember(endRows);
         
-        // Get member->group mapping from configuration (only if enabled)
-        Map<String, String> memberGroupMapping = new HashMap<>();
-        boolean mappingEnabled = systemConfigService.isMemberGroupMappingEnabled();
-        if (mappingEnabled) {
-            memberGroupMapping = groupConfigService.getMappingMap();
-            System.out.println("Member group mapping enabled, loaded size: " + memberGroupMapping.size());
-        } else {
-            System.out.println("Member group mapping disabled, using CSV groups only");
-        }
         // Get member->group mapping from configuration (only if enabled)
         Map<String, String> memberGroupMapping = new HashMap<>();
         boolean mappingEnabled = systemConfigService.isMemberGroupMappingEnabled();
