@@ -84,9 +84,6 @@ public class AttendanceController {
     @Autowired
     private SystemConfigService systemConfigService;
     
-    @Autowired
-    private SystemConfigService systemConfigService;
-    
     @Value("${app.upload.team-logos-dir:${user.home}/uploads/team_logos}")
     private String teamLogosUploadDir;
 
@@ -101,15 +98,6 @@ public class AttendanceController {
         Map<String, Map<String, String>> startMap = indexByMember(startRows);
         Map<String, Map<String, String>> endMap = indexByMember(endRows);
         
-        // Get member->group mapping from configuration (only if enabled)
-        Map<String, String> memberGroupMapping = new HashMap<>();
-        boolean mappingEnabled = systemConfigService.isMemberGroupMappingEnabled();
-        if (mappingEnabled) {
-            memberGroupMapping = groupConfigService.getMappingMap();
-            System.out.println("Member group mapping enabled, loaded size: " + memberGroupMapping.size());
-        } else {
-            System.out.println("Member group mapping disabled, using CSV groups only");
-        }
         // Get member->group mapping from configuration (only if enabled)
         Map<String, String> memberGroupMapping = new HashMap<>();
         boolean mappingEnabled = systemConfigService.isMemberGroupMappingEnabled();
@@ -2570,11 +2558,6 @@ public class AttendanceController {
             Season season = seasonRepository.findById(seasonId)
                     .orElseThrow(() -> new RuntimeException("未找到赛季: " + seasonId));
             
-            // 获取该赛季所有已结算的考勤记录的结算记录（只统计ACTIVE状态的记录）
-            List<SettlementRecord> settlementRecords = settlementRecordRepository.findBySeasonId(seasonId)
-                    .stream()
-                    .filter(record -> "ACTIVE".equals(record.getRecordStatus()))
-                    .collect(Collectors.toList());
             // 获取该赛季所有已结算的考勤记录的结算记录（只统计ACTIVE状态的记录）
             List<SettlementRecord> settlementRecords = settlementRecordRepository.findBySeasonId(seasonId)
                     .stream()
