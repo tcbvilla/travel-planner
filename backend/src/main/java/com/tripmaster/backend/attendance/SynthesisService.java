@@ -158,17 +158,25 @@ public class SynthesisService {
             
             // 逐次处理合成，每次重新获取最新状态
             for (int i = 0; i < synthesisCount; i++) {
-                // 每次合成前重新获取最新的ACTIVE记录
+                // 每次合成前重新获取最新的ACTIVE记录，按ID降序排序（优先使用最新创建的记录）
                 List<SettlementRecord> latestPetalRecords = getActiveRecordsByTeam(seasonId)
                         .getOrDefault(teamName, new ArrayList<>())
                         .stream()
                         .filter(record -> "花瓣".equals(record.getCodeValue()))
                         .filter(record -> "ACTIVE".equals(record.getRecordStatus()))
+                        .sorted((r1, r2) -> Long.compare(r2.getId(), r1.getId())) // 按ID降序，优先使用最新记录
                         .collect(Collectors.toList());
+                
+                System.out.println(String.format("  [花瓣→花] 第%d次合成，查询到%d条ACTIVE花瓣记录，ID列表: %s", 
+                    i + 1, latestPetalRecords.size(),
+                    latestPetalRecords.stream().map(r -> r.getId().toString()).collect(Collectors.joining(", "))));
                 
                 // 检查是否还有足够的记录进行合成
                 if (latestPetalRecords.size() >= 3) {
                     List<SettlementRecord> selectedRecords = latestPetalRecords.subList(0, 3);
+                    
+                    System.out.println(String.format("  [花瓣→花] 选择的3条记录ID: %s", 
+                        selectedRecords.stream().map(r -> r.getId().toString()).collect(Collectors.joining(", "))));
                     
                     synthesizeItems(teamName, seasonId, seasonName, selectedRecords, "花", "UPGRADE", 
                                   "3个花瓣合成1个花", triggerBatchId, attendanceSessionId);
@@ -211,17 +219,25 @@ public class SynthesisService {
             
             // 逐次处理合成，每次重新获取最新状态
             for (int i = 0; i < synthesisCount; i++) {
-                // 每次合成前重新获取最新的ACTIVE记录
+                // 每次合成前重新获取最新的ACTIVE记录，按ID降序排序（优先使用最新创建的记录）
                 List<SettlementRecord> latestFlowerRecords = getActiveRecordsByTeam(seasonId)
                         .getOrDefault(teamName, new ArrayList<>())
                         .stream()
                         .filter(record -> "花".equals(record.getCodeValue()))
                         .filter(record -> "ACTIVE".equals(record.getRecordStatus()))
+                        .sorted((r1, r2) -> Long.compare(r2.getId(), r1.getId())) // 按ID降序，优先使用最新记录
                         .collect(Collectors.toList());
+                
+                System.out.println(String.format("  [花→现金] 第%d次合成，查询到%d条ACTIVE花记录，ID列表: %s", 
+                    i + 1, latestFlowerRecords.size(),
+                    latestFlowerRecords.stream().map(r -> "ID:" + r.getId() + "(批次:" + r.getSettlementBatchId() + ",合成链:" + r.getSynthesisChainId() + ")").collect(Collectors.joining(", "))));
                 
                 // 检查是否还有足够的记录进行合成
                 if (latestFlowerRecords.size() >= 3) {
                     List<SettlementRecord> selectedRecords = latestFlowerRecords.subList(0, 3);
+                    
+                    System.out.println(String.format("  [花→现金] 选择的3条记录: %s", 
+                        selectedRecords.stream().map(r -> "ID:" + r.getId() + "(批次:" + r.getSettlementBatchId() + ")").collect(Collectors.joining(", "))));
                     
                     synthesizeItemsToCash(teamName, seasonId, seasonName, selectedRecords, 
                                         BigDecimal.valueOf(648), "CASH_CONVERT", "3个花合成648元现金",
@@ -265,17 +281,25 @@ public class SynthesisService {
             
             // 逐次处理合成，每次重新获取最新状态
             for (int i = 0; i < synthesisCount; i++) {
-                // 每次合成前重新获取最新的ACTIVE记录
+                // 每次合成前重新获取最新的ACTIVE记录，按ID降序排序（优先使用最新创建的记录）
                 List<SettlementRecord> latestShitParticleRecords = getActiveRecordsByTeam(seasonId)
                         .getOrDefault(teamName, new ArrayList<>())
                         .stream()
                         .filter(record -> "屎粒".equals(record.getCodeValue()))
                         .filter(record -> "ACTIVE".equals(record.getRecordStatus()))
+                        .sorted((r1, r2) -> Long.compare(r2.getId(), r1.getId())) // 按ID降序，优先使用最新记录
                         .collect(Collectors.toList());
+                
+                System.out.println(String.format("  [屎粒→屎] 第%d次合成，查询到%d条ACTIVE屎粒记录，ID列表: %s", 
+                    i + 1, latestShitParticleRecords.size(),
+                    latestShitParticleRecords.stream().map(r -> r.getId().toString()).collect(Collectors.joining(", "))));
                 
                 // 检查是否还有足够的记录进行合成
                 if (latestShitParticleRecords.size() >= 3) {
                     List<SettlementRecord> selectedRecords = latestShitParticleRecords.subList(0, 3);
+                    
+                    System.out.println(String.format("  [屎粒→屎] 选择的3条记录ID: %s", 
+                        selectedRecords.stream().map(r -> r.getId().toString()).collect(Collectors.joining(", "))));
                     
                     synthesizeItems(teamName, seasonId, seasonName, selectedRecords, "屎", "UPGRADE",
                                   "3个屎粒合成1个屎", triggerBatchId, attendanceSessionId);
@@ -323,31 +347,34 @@ public class SynthesisService {
             
             // 逐次处理合成，每次重新获取最新状态
             for (int i = 0; i < synthesisCount; i++) {
-                // 每次合成前重新获取最新的ACTIVE记录
+                // 每次合成前重新获取最新的ACTIVE记录，按ID降序排序（优先使用最新创建的记录）
                 List<SettlementRecord> latestShitRecords = getActiveRecordsByTeam(seasonId)
                         .getOrDefault(teamName, new ArrayList<>())
                         .stream()
                         .filter(record -> "屎".equals(record.getCodeValue()))
                         .filter(record -> "ACTIVE".equals(record.getRecordStatus()))
+                        .sorted((r1, r2) -> Long.compare(r2.getId(), r1.getId())) // 按ID降序，优先使用最新记录
                         .collect(Collectors.toList());
+                
+                System.out.println(String.format("  [屎→现金] 第%d次合成，查询到%d条ACTIVE屎记录，ID列表: %s", 
+                    i + 1, latestShitRecords.size(),
+                    latestShitRecords.stream().map(r -> "ID:" + r.getId() + "(批次:" + r.getSettlementBatchId() + ",合成链:" + r.getSynthesisChainId() + ")").collect(Collectors.joining(", "))));
                 
                 // 检查是否还有足够的记录进行合成
                 if (latestShitRecords.size() >= 3) {
                     List<SettlementRecord> selectedRecords = latestShitRecords.subList(0, 3);
                     
-                    System.out.println(String.format("团队 %s 第 %d 次合成，选择记录: %s", teamName, i + 1,
-                        selectedRecords.stream()
-                            .map(r -> "ID:" + r.getId())
-                            .collect(Collectors.joining(", "))));
+                    System.out.println(String.format("  [屎→现金] 选择的3条记录: %s", 
+                        selectedRecords.stream().map(r -> "ID:" + r.getId() + "(批次:" + r.getSettlementBatchId() + ")").collect(Collectors.joining(", "))));
                     
                     synthesizeItemsToCash(teamName, seasonId, seasonName, selectedRecords, 
                                         BigDecimal.valueOf(-648), "CASH_CONVERT", "3个屎合成-648元现金惩罚",
                                         triggerBatchId, attendanceSessionId);
                     
-                    System.out.println(String.format("团队 %s 第 %d 次合成完成", teamName, i + 1));
+                    System.out.println(String.format("  [屎→现金] 第%d次合成完成", i + 1));
                 } else {
                     // 如果记录不足，跳出循环
-                    System.out.println(String.format("团队 %s 第 %d 次合成时记录不足: %d < 3，跳出循环", teamName, i + 1, latestShitRecords.size()));
+                    System.out.println(String.format("  [屎→现金] 第%d次合成时记录不足: %d < 3，跳出循环", i + 1, latestShitRecords.size()));
                     break;
                 }
             }
@@ -381,6 +408,9 @@ public class SynthesisService {
         
         // 保存合成记录获得ID
         synthesizedRecord = settlementRecordRepository.save(synthesizedRecord);
+        
+        System.out.println(String.format("  [合成完成] 创建新记录ID: %d, 类型: %s, 批次: %s, 合成链ID: %d", 
+            synthesizedRecord.getId(), targetCodeValue, synthesizedRecord.getSettlementBatchId(), chain.getId()));
         
         // 标记原始记录为已合成
         markRecordsAsSynthesized(sourceRecords, chain.getId());
@@ -423,6 +453,9 @@ public class SynthesisService {
         // 保存现金记录获得ID
         cashRecord = settlementRecordRepository.save(cashRecord);
         
+        System.out.println(String.format("  [合成完成] 创建新现金记录ID: %d, 金额: %s, 批次: %s, 合成链ID: %d", 
+            cashRecord.getId(), cashAmount, cashRecord.getSettlementBatchId(), chain.getId()));
+        
         // 标记原始记录为已合成
         markRecordsAsSynthesized(sourceRecords, chain.getId());
         
@@ -456,20 +489,42 @@ public class SynthesisService {
         chain.setTriggerSettlementBatchId(triggerBatchId);
         chain.setAttendanceSessionId(attendanceSessionId);
         
-        // 关键修复：记录原始批次ID（以BATCH_或MANUAL_开头），不记录合成批次ID
-        List<String> originalBatchIds = sourceRecords.stream()
-                .map(SettlementRecord::getSettlementBatchId)
-                .filter(batchId -> batchId.startsWith("BATCH_") || batchId.startsWith("MANUAL_")) // 保留原始批次ID和手动批次ID
-                .distinct()
-                .collect(Collectors.toList());
+        // 修复：收集所有批次ID，包括原始批次(BATCH_/MANUAL_)和合成批次(SYNTHESIS_)
+        // 这样可以正确追踪依赖关系，支持多级合成的级联撤销
+        Set<String> allBatchIds = new HashSet<>();
         
-        // 如果没有原始批次ID，说明都是合成记录，需要追溯到原始批次
-        if (originalBatchIds.isEmpty()) {
-            originalBatchIds = traceToOriginalBatchIds(sourceRecords);
+        for (SettlementRecord record : sourceRecords) {
+            String batchId = record.getSettlementBatchId();
+            
+            if (batchId.startsWith("BATCH_") || batchId.startsWith("MANUAL_")) {
+                // 直接记录原始批次ID
+                allBatchIds.add(batchId);
+            } else if (batchId.startsWith("SYNTHESIS_")) {
+                // 对于合成记录，既要记录其批次ID，也要追溯到原始批次
+                allBatchIds.add(batchId);
+                
+                // 追溯到原始批次
+                if (record.getSynthesisChainId() != null) {
+                    SynthesisChain sourceChain = synthesisChainRepository.findById(record.getSynthesisChainId())
+                            .orElse(null);
+                    if (sourceChain != null) {
+                        try {
+                            List<String> chainOriginalBatchIds = objectMapper.readValue(
+                                    sourceChain.getSourceBatchIds(), new TypeReference<List<String>>() {});
+                            allBatchIds.addAll(chainOriginalBatchIds);
+                        } catch (Exception e) {
+                            System.err.println("解析源合成链批次ID失败: " + e.getMessage());
+                        }
+                    }
+                }
+            }
         }
         
+        List<String> sourceBatchIds = new ArrayList<>(allBatchIds);
+        System.out.println(String.format("  [创建合成链] 源批次ID: %s", sourceBatchIds));
+        
         try {
-            chain.setSourceBatchIds(objectMapper.writeValueAsString(originalBatchIds));
+            chain.setSourceBatchIds(objectMapper.writeValueAsString(sourceBatchIds));
             // 初始化为空数组，后续会更新
             chain.setSynthesisRecordIds("[]");
             chain.setSynthesisLogIds("[]");

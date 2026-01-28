@@ -84,6 +84,9 @@ public class AttendanceController {
     @Autowired
     private SystemConfigService systemConfigService;
     
+    @Autowired
+    private SystemConfigService systemConfigService;
+    
     @Value("${app.upload.team-logos-dir:${user.home}/uploads/team_logos}")
     private String teamLogosUploadDir;
 
@@ -98,6 +101,15 @@ public class AttendanceController {
         Map<String, Map<String, String>> startMap = indexByMember(startRows);
         Map<String, Map<String, String>> endMap = indexByMember(endRows);
         
+        // Get member->group mapping from configuration (only if enabled)
+        Map<String, String> memberGroupMapping = new HashMap<>();
+        boolean mappingEnabled = systemConfigService.isMemberGroupMappingEnabled();
+        if (mappingEnabled) {
+            memberGroupMapping = groupConfigService.getMappingMap();
+            System.out.println("Member group mapping enabled, loaded size: " + memberGroupMapping.size());
+        } else {
+            System.out.println("Member group mapping disabled, using CSV groups only");
+        }
         // Get member->group mapping from configuration (only if enabled)
         Map<String, String> memberGroupMapping = new HashMap<>();
         boolean mappingEnabled = systemConfigService.isMemberGroupMappingEnabled();
@@ -2183,7 +2195,6 @@ public class AttendanceController {
             
             // 保存结算记录
             List<SettlementRecord> records = new ArrayList<>();
-            StringBuilder settlementContent = new StringBuilder();
             
             for (SettlementResult result : settlementResults) {
                 // 判断是否为现金奖励
@@ -2221,34 +2232,71 @@ public class AttendanceController {
                         records.add(record);
                     }
                 }
+            }
+            
+            // 保存记录后再构建日志内容，使用实际保存的 codeValue
+            settlementRecordRepository.saveAll(records);
+            System.out.println("保存了 " + records.size() + " 条结算记录");
+            
+            // 按团队分组统计，构建日志内容
+            StringBuilder settlementContent = new StringBuilder();
+            Map<String, Map<String, Object>> teamSummary = new HashMap<>();
+            
+            for (SettlementRecord record : records) {
+                String teamName = record.getTeamName();
+                teamSummary.putIfAbsent(teamName, new HashMap<>());
+                Map<String, Object> summary = teamSummary.get(teamName);
                 
-                // 构建日志内容
-                settlementContent.append(result.getTeamName())
-                        .append(": ");
-                
-                if ("现金".equals(result.getRewardType())) {
-                    // 现金奖励显示具体金额
-                    BigDecimal amount = result.getAmount();
-                    if (amount != null) {
-                        settlementContent.append("现金")
-                                .append(amount.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
-                                .append(amount)
-                                .append("元");
-                    } else {
-                        settlementContent.append("现金 x").append(result.getQuantity());
+                if ("CASH".equals(record.getRewardMode())) {
+                    // 现金奖励
+                    BigDecimal cashAmount = record.getCashAmount();
+                    if (cashAmount != null) {
+                        BigDecimal existingCash = (BigDecimal) summary.getOrDefault("cash", BigDecimal.ZERO);
+                        summary.put("cash", existingCash.add(cashAmount));
                     }
                 } else {
-                    // 码表奖励显示类型和数量
-                    settlementContent.append(result.getRewardType())
-                            .append(" x")
-                            .append(result.getQuantity());
+                    // 码表奖励，按 codeValue 分组统计数量
+                    String codeValue = record.getCodeValue();
+                    @SuppressWarnings("unchecked")
+                    Map<String, Integer> items = (Map<String, Integer>) summary.getOrDefault("items", new HashMap<String, Integer>());
+                    items.put(codeValue, items.getOrDefault(codeValue, 0) + 1);
+                    summary.put("items", items);
+                }
+            }
+            
+            // 构建日志内容字符串
+            for (Map.Entry<String, Map<String, Object>> entry : teamSummary.entrySet()) {
+                String teamName = entry.getKey();
+                Map<String, Object> summary = entry.getValue();
+                
+                settlementContent.append(teamName).append(": ");
+                
+                // 现金奖励
+                if (summary.containsKey("cash")) {
+                    BigDecimal cashAmount = (BigDecimal) summary.get("cash");
+                    settlementContent.append("现金")
+                            .append(cashAmount.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
+                            .append(cashAmount)
+                            .append("元");
+                }
+                
+                // 码表奖励
+                if (summary.containsKey("items")) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Integer> items = (Map<String, Integer>) summary.get("items");
+                    for (Map.Entry<String, Integer> itemEntry : items.entrySet()) {
+                        if (settlementContent.length() > 0 && 
+                            !settlementContent.toString().endsWith(": ")) {
+                            settlementContent.append(" ");
+                        }
+                        settlementContent.append(itemEntry.getKey())
+                                .append(" x")
+                                .append(itemEntry.getValue());
+                    }
                 }
                 
                 settlementContent.append("; ");
             }
-            
-            settlementRecordRepository.saveAll(records);
-            System.out.println("保存了 " + records.size() + " 条结算记录");
             
             // 记录日志
             SettlementLog log = new SettlementLog();
@@ -2527,6 +2575,11 @@ public class AttendanceController {
                     .stream()
                     .filter(record -> "ACTIVE".equals(record.getRecordStatus()))
                     .collect(Collectors.toList());
+            // 获取该赛季所有已结算的考勤记录的结算记录（只统计ACTIVE状态的记录）
+            List<SettlementRecord> settlementRecords = settlementRecordRepository.findBySeasonId(seasonId)
+                    .stream()
+                    .filter(record -> "ACTIVE".equals(record.getRecordStatus()))
+                    .collect(Collectors.toList());
             
             if (settlementRecords.isEmpty()) {
                 Map<String, Object> response = new HashMap<>();
@@ -2623,8 +2676,11 @@ public class AttendanceController {
             Season season = seasonRepository.findById(seasonId)
                     .orElseThrow(() -> new RuntimeException("未找到赛季: " + seasonId));
             
-            // 获取该赛季所有的结算记录（包括所有状态，以便显示完整历史记录）
-            List<SettlementRecord> allSettlementRecords = settlementRecordRepository.findBySeasonId(seasonId);
+            // 获取该赛季所有的结算记录（显示ACTIVE和SYNTHESIZED状态的记录，用于查看完整历史）
+            List<SettlementRecord> allSettlementRecords = settlementRecordRepository.findBySeasonId(seasonId)
+                    .stream()
+                    .filter(record -> "ACTIVE".equals(record.getRecordStatus()) || "SYNTHESIZED".equals(record.getRecordStatus()))
+                    .collect(Collectors.toList());
             
             // 获取所有团队名称
             Set<String> allTeamNamesSet = allSettlementRecords.stream()
@@ -2988,6 +3044,38 @@ public class AttendanceController {
             // 使用第一条记录作为代表进行后续处理
             SettlementRecord firstRecord = savedRecords.get(0);
             
+            // 创建结算日志
+            StringBuilder settlementContent = new StringBuilder();
+            settlementContent.append(request.getTeamName().trim())
+                    .append(": ");
+            
+            if ("CASH".equals(firstRecord.getRewardMode())) {
+                // 现金奖励显示具体金额
+                BigDecimal cashAmount = firstRecord.getCashAmount();
+                if (cashAmount != null) {
+                    settlementContent.append("现金")
+                            .append(cashAmount.compareTo(BigDecimal.ZERO) >= 0 ? "+" : "")
+                            .append(cashAmount)
+                            .append("元");
+                } else {
+                    settlementContent.append("现金 x").append(quantity);
+                }
+            } else {
+                // 码表奖励显示类型和数量，使用 codeValue 而不是 rewardType
+                settlementContent.append(firstRecord.getCodeValue())
+                        .append(" x")
+                        .append(quantity);
+            }
+            
+            SettlementLog log = new SettlementLog();
+            log.setAttendanceRecordName(manualSession.getName());
+            log.setSettlementSeason(season.getName());
+            log.setSettlementContent(settlementContent.toString());
+            log.setAttendanceSession(manualSession);
+            
+            settlementLogRepository.save(log);
+            System.out.println("保存手动添加结算日志成功");
+            
             // 触发合成逻辑
             try {
                 synthesisService.checkAndPerformSynthesis(
@@ -3058,8 +3146,47 @@ public class AttendanceController {
                 return ResponseEntity.badRequest().body(Map.of("error", "该记录或相关合成记录已支付，无法撤销。请先撤销支付状态。"));
             }
             
-            // 5. 执行级联撤销
+            // 5. 构建撤销日志内容，体现具体的撤销内容
+            StringBuilder revokeContent = new StringBuilder();
+            revokeContent.append("撤销手动添加，删除了以下结算记录：");
+            
+            // 记录直接删除的记录
+            for (SettlementRecord directRecord : analysis.getDirectRecords()) {
+                revokeContent.append(directRecord.getTeamName())
+                        .append(": ");
+                if ("CASH".equals(directRecord.getRewardMode())) {
+                    revokeContent.append("现金").append(directRecord.getCashAmount()).append("元");
+                } else {
+                    revokeContent.append(directRecord.getCodeValue())
+                            .append(" x").append(directRecord.getQuantity());
+                }
+                revokeContent.append("; ");
+            }
+            
+            // 如果有级联影响，记录合成撤销信息
+            if (analysis.isHasImpact()) {
+                revokeContent.append(" 级联撤销合成：删除了")
+                        .append(analysis.getSynthesisRecordsToDelete().size())
+                        .append("条合成记录，恢复了")
+                        .append(analysis.getRecordsToRestore().size())
+                        .append("条原始记录");
+            }
+            
+            // 执行级联撤销
             cascadeRevocationService.executeRevocationWithCascade(targetBatchId);
+            
+            // 记录撤销日志
+            AttendanceSession manualSession = record.getAttendanceSession();
+            if (manualSession != null) {
+                SettlementLog log = new SettlementLog();
+                log.setAttendanceRecordName(manualSession.getName());
+                log.setSettlementSeason(manualSession.getSeason() != null ? manualSession.getSeason().getName() : "未知赛季");
+                log.setSettlementContent(revokeContent.toString());
+                log.setAttendanceSession(manualSession);
+                
+                settlementLogRepository.save(log);
+                System.out.println("保存撤销手动添加日志成功");
+            }
             
             // 6. 撤销后重新触发合成检查
             Long seasonId = record.getAttendanceSession() != null && record.getAttendanceSession().getSeason() != null 

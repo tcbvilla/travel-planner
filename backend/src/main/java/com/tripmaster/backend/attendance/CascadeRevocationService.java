@@ -134,34 +134,71 @@ public class CascadeRevocationService {
         List<SynthesisChain> chainsToRevoke = new ArrayList<>();
         List<SynthesisChain> allChains = synthesisChainRepository.findAll();
         
-        // 1. 查找直接依赖该批次的合成链
+        // 添加调试日志
+        System.out.println("=== findAllChainsToRevoke 开始 ===");
+        System.out.println("  目标批次ID: " + batchId);
+        System.out.println("  数据库中的所有合成链数量: " + allChains.size());
+        System.out.println("  数据库中的所有合成链ID: " + 
+                allChains.stream()
+                        .map(c -> c.getId().toString())
+                        .collect(Collectors.joining(", ")));
+        
+        // 对于每个合成链，打印其synthesisRecordIds
+        for (SynthesisChain chain : allChains) {
+            List<Long> recordIds = parseIdList(chain.getSynthesisRecordIds());
+            System.out.println("  合成链 " + chain.getId() + 
+                             " 产生的记录: " + recordIds + 
+                             ", 类型: " + chain.getSynthesisType() +
+                             ", 源批次: " + chain.getSourceBatchIds());
+        }
+        System.out.println("=== 开始检查每个合成链是否需要撤销 ===");
+        
+        // 1. 查找直接依赖该批次的合成链，并验证撤销后是否还满足合成条件
         for (SynthesisChain chain : allChains) {
             List<String> sourceBatchIds = parseStringList(chain.getSourceBatchIds());
             if (sourceBatchIds.contains(batchId)) {
-                chainsToRevoke.add(chain);
-                System.out.println("添加依赖批次 " + batchId + " 的合成链: " + chain.getId());
+                // 关键修改：检查撤销该批次后，合成链是否还满足条件
+                if (shouldRevokeChainAfterBatchRemoval(chain, batchId)) {
+                    chainsToRevoke.add(chain);
+                    System.out.println("添加需要撤销的合成链: " + chain.getId() + " (撤销批次 " + batchId + " 后不满足合成条件)");
+                } else {
+                    System.out.println("合成链 " + chain.getId() + " 虽然依赖批次 " + batchId + "，但撤销后仍满足合成条件，不需要撤销");
+                }
             }
         }
         
-        // 2. 递归查找所有需要撤销的合成链
+        // 2. 递归查找所有需要撤销的合成链（依赖已被撤销合成链的其他合成链）
         Set<Long> processedChainIds = new HashSet<>();
         boolean hasNewChains;
+        int iteration = 1;
         
         do {
             hasNewChains = false;
+            System.out.println("=== 开始第 " + iteration + " 轮递归查找依赖合成链 ===");
+            System.out.println("  当前已确定撤销的合成链ID: " + chainsToRevoke.stream()
+                    .map(c -> c.getId().toString())
+                    .collect(Collectors.joining(", ")));
             
             for (SynthesisChain chain : allChains) {
                 if (!processedChainIds.contains(chain.getId()) && !chainsToRevoke.contains(chain)) {
-                    // 只检查依赖关系，不检查合成条件（避免误判历史合成链）
+                    // 检查这个合成链是否依赖已被撤销的合成链
+                    System.out.println("  检查合成链 " + chain.getId() + " 是否依赖已撤销的合成链...");
                     if (dependsOnRevokedChains(chain, chainsToRevoke)) {
                         chainsToRevoke.add(chain);
                         processedChainIds.add(chain.getId());
                         hasNewChains = true;
-                        System.out.println("添加需要撤销的合成链: " + chain.getId() + " (类型: " + chain.getSynthesisType() + ")");
+                        System.out.println("  ✓ 添加需要撤销的合成链: " + chain.getId() + " (依赖已撤销的合成链)");
+                    } else {
+                        System.out.println("  ✗ 合成链 " + chain.getId() + " 不依赖已撤销的合成链");
                     }
                 }
             }
+            
+            System.out.println("  第 " + iteration + " 轮完成，发现新合成链: " + hasNewChains);
+            iteration++;
         } while (hasNewChains);
+        
+        System.out.println("=== 递归查找完成，共找到 " + chainsToRevoke.size() + " 个需要撤销的合成链 ===");
         
         return chainsToRevoke;
     }
@@ -172,27 +209,59 @@ public class CascadeRevocationService {
     private boolean dependsOnRevokedChains(SynthesisChain chain, List<SynthesisChain> revokedChains) {
         try {
             List<String> sourceBatchIds = parseStringList(chain.getSourceBatchIds());
+            System.out.println("    合成链 " + chain.getId() + " 的源批次: " + sourceBatchIds);
             
+            // 获取已撤销合成链的ID集合和记录ID集合
+            Set<Long> revokedChainIds = revokedChains.stream()
+                    .map(SynthesisChain::getId)
+                    .collect(Collectors.toSet());
+            
+            Set<Long> revokedRecordIds = new HashSet<>();
             for (SynthesisChain revokedChain : revokedChains) {
-                List<Long> revokedRecordIds = parseIdList(revokedChain.getSynthesisRecordIds());
+                List<Long> recordIds = parseIdList(revokedChain.getSynthesisRecordIds());
+                revokedRecordIds.addAll(recordIds);
+            }
+            
+            System.out.println("    已撤销合成链ID: " + revokedChainIds);
+            System.out.println("    已撤销合成链产生的记录ID: " + revokedRecordIds);
+            
+            // 查找当前合成链使用的所有源记录
+            List<SettlementRecord> sourceRecords = new ArrayList<>();
+            for (String batchId : sourceBatchIds) {
+                List<SettlementRecord> batchRecords = settlementRecordRepository.findBySettlementBatchId(batchId);
+                sourceRecords.addAll(batchRecords);
+                System.out.println("      源批次 " + batchId + " 包含 " + batchRecords.size() + " 条记录");
+            }
+            
+            System.out.println("    当前合成链使用的源记录总数: " + sourceRecords.size());
+            
+            // 检查源记录是否依赖已撤销的合成链
+            for (SettlementRecord record : sourceRecords) {
+                System.out.println("      检查源记录 " + record.getId() + 
+                                 ", synthesisChainId=" + record.getSynthesisChainId() + 
+                                 ", 批次=" + record.getSettlementBatchId());
                 
-                for (String batchId : sourceBatchIds) {
-                    if (batchId.startsWith("SYNTHESIS")) {
-                        List<SettlementRecord> batchRecords = settlementRecordRepository.findBySettlementBatchId(batchId);
-                        for (SettlementRecord record : batchRecords) {
-                            if (revokedRecordIds.contains(record.getId())) {
-                                System.out.println("合成链 " + chain.getId() + " 依赖已被撤销的合成链 " + revokedChain.getId());
-                                return true;
-                            }
-                        }
-                    }
+                // 方法1：检查源记录是否由已撤销的合成链产生（通过synthesisChainId）
+                if (record.getSynthesisChainId() != null && revokedChainIds.contains(record.getSynthesisChainId())) {
+                    System.out.println("      ✓ 找到依赖：记录 " + record.getId() + 
+                                     " 由已撤销合成链 " + record.getSynthesisChainId() + " 产生");
+                    return true;
+                }
+                
+                // 方法2：检查源记录ID是否在已撤销合成链产生的记录中
+                if (revokedRecordIds.contains(record.getId())) {
+                    System.out.println("      ✓ 找到依赖：记录 " + record.getId() + 
+                                     " 是已撤销合成链产生的记录");
+                    return true;
                 }
             }
             
+            System.out.println("    未找到依赖关系");
             return false;
             
         } catch (Exception e) {
             System.err.println("检查撤销依赖关系失败: " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }
@@ -345,18 +414,24 @@ public class CascadeRevocationService {
             // 获取合成链的源批次ID列表
             List<String> sourceBatchIds = parseStringList(chain.getSourceBatchIds());
             
+            // 添加调试日志
+            System.out.println("=== 检查合成链 " + chain.getId() + " 撤销批次 " + removedBatchId + " 的影响 ===");
+            System.out.println("  合成链类型: " + chain.getSynthesisType());
+            System.out.println("  源批次列表: " + sourceBatchIds);
+            
             // 关键修复：检查合成链的源批次是否仍然存在
             // 如果任何源批次不存在，说明这个合成链应该被撤销
             for (String batchId : sourceBatchIds) {
                 List<SettlementRecord> batchRecords = settlementRecordRepository.findBySettlementBatchId(batchId);
                 if (batchRecords.isEmpty()) {
-                    System.out.println("合成链 " + chain.getId() + " 的源批次 " + batchId + " 不存在，需要撤销");
+                    System.out.println("  源批次 " + batchId + " 不存在，需要撤销合成链");
                     return true;
                 }
             }
             
             // 如果被撤销的批次不在源批次中，不需要撤销
             if (!sourceBatchIds.contains(removedBatchId)) {
+                System.out.println("  被撤销批次 " + removedBatchId + " 不在源批次列表中，不需要撤销合成链");
                 return false;
             }
             
@@ -365,13 +440,27 @@ public class CascadeRevocationService {
             for (String batchId : sourceBatchIds) {
                 List<SettlementRecord> batchRecords = settlementRecordRepository.findBySettlementBatchId(batchId);
                 sourceRecords.addAll(batchRecords);
+                System.out.println("  批次 " + batchId + " 包含 " + batchRecords.size() + " 条记录");
+                for (SettlementRecord record : batchRecords) {
+                    System.out.println("    - 记录ID: " + record.getId() + ", 类型: " + record.getCodeValue() + 
+                                     ", 数量: " + record.getQuantity() + ", 状态: " + record.getRecordStatus() + 
+                                     ", 批次ID: " + record.getSettlementBatchId());
+                }
             }
+            
+            System.out.println("  源记录总数: " + sourceRecords.size() + " 条");
             
             // 过滤掉被撤销批次的记录
             List<SettlementRecord> remainingRecords = sourceRecords.stream()
                     .filter(record -> !removedBatchId.equals(record.getSettlementBatchId()))
                     .filter(record -> "ACTIVE".equals(record.getRecordStatus()) || "SYNTHESIZED".equals(record.getRecordStatus()))
                     .collect(Collectors.toList());
+            
+            System.out.println("  过滤后剩余记录: " + remainingRecords.size() + " 条 (已排除批次 " + removedBatchId + " 和 DELETED 状态)");
+            for (SettlementRecord record : remainingRecords) {
+                System.out.println("    - 记录ID: " + record.getId() + ", 类型: " + record.getCodeValue() + 
+                                 ", 数量: " + record.getQuantity() + ", 状态: " + record.getRecordStatus());
+            }
             
             // 按类型分组统计数量
             Map<String, Double> itemCounts = new HashMap<>();
@@ -382,11 +471,21 @@ public class CascadeRevocationService {
                 }
             }
             
+            System.out.println("  统计结果: " + itemCounts);
+            
             // 检查是否还满足合成条件
-            return !checkSynthesisConditions(chain.getSynthesisType(), itemCounts);
+            boolean stillMeetCondition = checkSynthesisConditions(chain.getSynthesisType(), itemCounts);
+            boolean shouldRevoke = !stillMeetCondition;
+            
+            System.out.println("  撤销后是否还满足合成条件: " + stillMeetCondition);
+            System.out.println("  是否需要撤销合成链: " + shouldRevoke);
+            System.out.println("=== 检查完成 ===");
+            
+            return shouldRevoke;
             
         } catch (Exception e) {
             System.err.println("检查合成链撤销条件失败: " + e.getMessage());
+            e.printStackTrace();
             return false;
         }
     }
